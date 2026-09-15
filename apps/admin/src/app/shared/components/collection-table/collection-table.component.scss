@@ -1,0 +1,102 @@
+.table-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+table {
+  width: 100%;
+  min-width: 720px;
+}
+
+.mat-mdc-cell.numeric,
+td.numeric {
+  /*
+   * A money cell never wraps. "525,00" above "USDT" reads as two values, and a
+   * date broken across lines is unscannable in a column of them.
+   */
+  white-space: nowrap;
+}
+
+.header {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  white-space: nowrap;
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable:hover {
+  color: var(--text-secondary);
+}
+
+.sort-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+/**
+ * Wraps rather than truncates.
+ *
+ * A drop link or a transaction hash cut off in the middle is a value nobody can
+ * compare, which is the only thing anyone does with either.
+ */
+.mono {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.actions-header {
+  width: 48px;
+}
+
+.actions-cell {
+  width: 48px;
+  text-align: right;
+}
+
+.destructive {
+  color: var(--danger);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--gap-xl);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.pending {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  width: 100%;
+  padding: var(--gap-sm) var(--gap-md);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.pending:hover {
+  background: rgb(76 141 255 / 22%);
+}
+
+.pending mat-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}

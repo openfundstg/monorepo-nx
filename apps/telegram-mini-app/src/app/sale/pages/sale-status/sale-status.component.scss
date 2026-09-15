@@ -1,0 +1,509 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  margin: 0;
+}
+
+.glass-card {
+  margin-bottom: 20px;
+}
+
+.mt-3 {
+  margin-top: 16px;
+}
+
+/* --- Connection ---------------------------------------------------------- */
+
+.conn-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-danger);
+  transition: background var(--t-base);
+}
+
+.conn-indicator.online {
+  color: var(--c-success);
+}
+
+.conn-indicator.online .conn-dot {
+  background: var(--c-success);
+}
+
+/* --- Public id ----------------------------------------------------------- */
+
+.public-id-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background var(--t-base),
+    transform var(--t-fast);
+}
+
+.public-id-card:active {
+  background: var(--surface-active);
+  transform: scale(0.99);
+}
+
+.public-id-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.public-id-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  word-break: break-all;
+}
+
+.public-id-hint {
+  font-size: 12px;
+  color: var(--accent-text);
+}
+
+.public-id-copied {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-success);
+}
+
+/* --- Status -------------------------------------------------------------- */
+
+.status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-badge {
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.badge-created {
+  background: var(--surface-nested);
+  color: var(--text-muted);
+}
+
+.badge-terminal_ready,
+.badge-awaiting_fiat {
+  background: var(--c-warning-soft);
+  color: var(--c-warning);
+}
+
+.badge-completed {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.badge-failed,
+.badge-cancelled {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+.amount {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.detail-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-value.muted {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.detail-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.flex-align {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bank-icon-sm {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+/* --- Progress ------------------------------------------------------------ */
+
+.progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.progress-percent {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.progress-track {
+  display: flex;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-nested);
+  overflow: hidden;
+}
+
+// Square-ended on purpose: the track is what rounds the bar, and a rounded
+// right edge here would cut a notch of background between this and the pending
+// stretch beside it.
+.progress-fill {
+  height: 100%;
+  min-width: 2px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+// Money on its way, in the same colour at a third of its weight: clearly part
+// of the same bar, clearly not the same claim as money that has arrived.
+.progress-pending {
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.3;
+  transition: width 0.4s ease;
+}
+
+.progress-caption {
+  margin: 10px 0 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* --- Feed ---------------------------------------------------------------- */
+
+.section-title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.feed-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.feed-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.feed-text {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.feed-time {
+  flex-shrink: 0;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+
+.feed-empty {
+  margin: 0;
+  padding: 8px 0;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* --- Timeline ------------------------------------------------------------ */
+
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.timeline-step {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 16px;
+  opacity: 0.45;
+  transition: opacity var(--t-base);
+}
+
+.timeline-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 32px;
+  bottom: -24px;
+  left: 15px;
+  width: 2px;
+  background: var(--border-strong);
+  transition: background var(--t-base);
+  z-index: 1;
+}
+
+.timeline-step.active {
+  opacity: 1;
+}
+
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-nested);
+  font-size: 14px;
+  font-weight: 700;
+  transition:
+    background var(--t-base),
+    border-color var(--t-base);
+}
+
+.timeline-step.active .step-icon {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/*
+  A step behind us, drawn in the accent rather than in green.
+
+  Dimmed to a third of the fill the *current* step carries, so the tracker reads
+  as one colour going quiet behind the live step instead of as two colours
+  competing — green marked a finished step louder than the one the user is
+  actually waiting on. The stretch of track a completed step owns is dimmed with
+  it, or the line would still be pointing at nothing.
+*/
+.timeline-step.completed .step-icon {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  color: var(--text);
+}
+
+.timeline-step.completed:not(:last-child)::before {
+  background: var(--accent-dim);
+}
+
+.step-content h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.step-content p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* --- States -------------------------------------------------------------- */
+
+.error-card {
+  background: var(--c-danger-soft);
+  border-color: transparent;
+  color: var(--c-danger);
+  text-align: center;
+}
+
+.error-card p {
+  margin: 0;
+}
+
+/*
+  Not the accent: this button is the way *back*, not the thing to do next, and
+  on a screen whose job is to be watched there is nothing to lead the eye to.
+*/
+.primary-btn {
+  background: var(--surface-nested);
+  color: var(--text);
+}
+
+.primary-btn:active:not(:disabled) {
+  background: var(--surface-active);
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 40px;
+}
+
+/* --- Stopping early ------------------------------------------------------ */
+
+.stop-card {
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.stop-hint {
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/*
+  Deliberately not a primary button: this is destructive and unrecoverable, so
+  it reads as an outline until armed, then commits to red.
+*/
+.stop-btn {
+  width: 100%;
+  padding: 13px 16px;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--c-danger);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--t-base),
+    color var(--t-base);
+}
+
+.stop-btn.armed {
+  background: var(--c-danger);
+  color: var(--on-fill);
+}
+
+.stop-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.stop-error {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--c-danger);
+}
+
+.stop-done {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--c-success);
+}
+
+/*
+ * The one thing on this screen the user still has to *do*. Amber rather than
+ * the green of a finished stop: nothing is wrong, but nothing is finished
+ * either, and it will not finish on its own.
+ */
+.jar-closure-card {
+  margin-top: 12px;
+  padding: 14px;
+  border-color: transparent;
+  border-left: 3px solid var(--c-warning);
+  background: var(--c-warning-soft);
+
+  h4 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    color: var(--c-warning);
+  }
+
+  p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+}
+
+/* Says whether this order will close itself or is waiting on a manual top-up. */
+.remainder-note {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.remainder-note-label {
+  color: var(--text-faint);
+}

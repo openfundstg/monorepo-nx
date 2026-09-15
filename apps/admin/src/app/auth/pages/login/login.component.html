@@ -1,0 +1,39 @@
+<div class="login">
+  <form class="card login__form" [formGroup]="form" (ngSubmit)="submit()">
+    <div class="login__brand">
+      <app-brand-mark [size]="28" />
+      <h1>{{ 'login.title' | translate }}</h1>
+    </div>
+
+    @if (expired()) {
+      <p class="login__notice">{{ 'login.session_expired' | translate }}</p>
+    }
+
+    <mat-form-field appearance="outline">
+      <mat-label>{{ 'login.username' | translate }}</mat-label>
+      <input matInput formControlName="username" autocomplete="username" cdkFocusInitial />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>{{ 'login.password' | translate }}</mat-label>
+      <input matInput type="password" formControlName="password" autocomplete="current-password" />
+    </mat-form-field>
+
+    @if (error(); as failure) {
+      <!--
+        The code, translated. Never `failure.message` — that is English written
+        for whoever reads the logs, and the two codes this endpoint returns are
+        deliberately identical for a wrong name and a wrong password.
+      -->
+      <p class="login__error">{{ 'errors.' + failure.code | translate }}</p>
+    }
+
+    <button mat-flat-button color="primary" type="submit" [disabled]="loading()">
+      {{ 'login.submit' | translate }}
+    </button>
+
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+  </form>
+</div>

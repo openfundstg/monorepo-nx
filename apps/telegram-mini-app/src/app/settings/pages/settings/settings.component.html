@@ -1,0 +1,122 @@
+<h1 class="page-title">{{ 'settings.title' | translate }}</h1>
+
+<section class="glass-card">
+  <header class="section-header">
+    <h2 class="section-label">{{ 'settings.language' | translate }}</h2>
+    @if (saved()) {
+      <span class="saved-badge">{{ 'settings.saved' | translate }}</span>
+    }
+  </header>
+
+  <p class="section-hint">{{ 'settings.language_hint' | translate }}</p>
+
+  <ul class="lang-list">
+    @for (option of languages; track option.code) {
+      <li>
+        <button
+          type="button"
+          class="lang-item"
+          [class.active]="option.code === current()"
+          [attr.aria-pressed]="option.code === current()"
+          (click)="onSelect(option.code)"
+        >
+          <span class="lang-flag" aria-hidden="true">{{ option.flag }}</span>
+          <!-- Endonym, not a translation key — see APP_LANGUAGES. -->
+          <span class="lang-name">{{ option.endonym }}</span>
+          @if (option.code === current()) {
+            <span class="lang-check" aria-hidden="true">✓</span>
+          }
+        </button>
+      </li>
+    }
+  </ul>
+</section>
+
+<section class="glass-card">
+  <h2 class="section-label">{{ 'settings.privacy' | translate }}</h2>
+
+  <label class="toggle-row">
+    <input
+      type="checkbox"
+      class="toggle-input"
+      [checked]="showNameToReferrer()"
+      [disabled]="savingVisibility()"
+      (change)="onToggleNameVisibility($any($event.target).checked)"
+    />
+    <span class="toggle-text">
+      <span class="toggle-title">{{ 'settings.show_name_to_referrer' | translate }}</span>
+      <span class="toggle-hint">{{ 'settings.show_name_to_referrer_hint' | translate }}</span>
+    </span>
+  </label>
+</section>
+
+<!--
+  Only once we know. `undefined` means the read has not answered — or failed —
+  and a section that rendered "you are not subscribed" then would be telling
+  somebody who is exactly the opposite of the truth.
+-->
+@if (watch() !== undefined) {
+  <section class="glass-card">
+    <h2 class="section-label">{{ 'settings.notifications' | translate }}</h2>
+    <p class="section-hint">{{ 'fiat.watch.settings_hint' | translate }}</p>
+
+    @if (watch(); as request) {
+      <p class="watch-row">
+        {{
+          'fiat.watch.active'
+            | translate
+              : {
+                  from: formatUahWhole(request.minAmountUah),
+                  to: formatUahWhole(request.maxAmountUah)
+                }
+        }}
+      </p>
+      <p class="watch-mode">
+        {{
+          (request.mode === Mode.ONCE ? 'fiat.watch.mode_once' : 'fiat.watch.mode_always')
+            | translate
+        }}
+      </p>
+
+      <button
+        type="button"
+        class="ghost-btn"
+        [disabled]="cancellingWatch()"
+        (click)="onCancelWatch()"
+      >
+        {{ 'fiat.watch.cancel' | translate }}
+      </button>
+    } @else {
+      <!--
+        No control to subscribe from here on purpose: a range is chosen against
+        the amounts actually on offer, and this screen shows none of them.
+      -->
+      <p class="watch-row muted">{{ 'fiat.watch.none' | translate }}</p>
+    }
+  </section>
+}
+
+<!--
+  Where an existing user finds the tour a new one is shown once. Replaying
+  navigates home first: the tour is anchored to the dashboard and shows itself
+  the moment that screen has loaded.
+-->
+<section class="glass-card">
+  <h2 class="section-label">{{ 'settings.tour' | translate }}</h2>
+  <p class="section-hint">{{ 'settings.tour_hint' | translate }}</p>
+
+  <button type="button" class="row-btn" (click)="replayTour()">
+    <span class="row-icon" aria-hidden="true">🧭</span>
+    <span class="row-text">{{ 'settings.tour_action' | translate }}</span>
+    <span class="row-chevron" aria-hidden="true">›</span>
+  </button>
+</section>
+
+<!--
+  The one place in the app that simply says whose app this is. It sits at the
+  foot of the last screen rather than in a header, where it would take space
+  from a balance on every scroll for a fact the user learns once.
+-->
+<footer class="brand">
+  <app-logo [size]="28" [wordmark]="true" />
+</footer>

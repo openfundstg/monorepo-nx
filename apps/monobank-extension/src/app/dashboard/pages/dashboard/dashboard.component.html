@@ -1,0 +1,113 @@
+<section class="terminals-section">
+  <h3>{{ 'DASHBOARD.ACTIVE_JARS' | translate }}</h3>
+
+  <div class="terminal-controls">
+    <div class="search-row">
+      <input
+        type="search"
+        class="search-input"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        [placeholder]="'DASHBOARD.SEARCH_PLACEHOLDER' | translate"
+      />
+      @if (isSearching()) {
+        <span class="search-spinner" aria-hidden="true"></span>
+      }
+      @if (search()) {
+        <button
+          type="button"
+          class="clear-search"
+          [title]="'DASHBOARD.SEARCH_CLEAR' | translate"
+          (click)="clearSearch()"
+        >
+          ✕
+        </button>
+      }
+    </div>
+
+    @if (search()) {
+      <p class="search-note">
+        {{ 'DASHBOARD.SEARCH_SCOPE' | translate }}
+        @if (archivedCount()) {
+          <span class="search-note-archived">
+            {{ 'DASHBOARD.SEARCH_ARCHIVED_COUNT' | translate: { count: archivedCount() } }}
+          </span>
+        }
+        @if (hiddenMatchCount()) {
+          <span class="search-note-more">
+            {{ 'DASHBOARD.SEARCH_MORE' | translate: { count: hiddenMatchCount() } }}
+          </span>
+        }
+      </p>
+    }
+    @if (searchFailed()) {
+      <p class="search-error">{{ 'DASHBOARD.SEARCH_FAILED' | translate }}</p>
+    }
+
+    <div class="filter-row">
+      <button
+        type="button"
+        class="filter-chip"
+        [class.active]="filter() === TerminalFilter.ALL"
+        (click)="setFilter(TerminalFilter.ALL)"
+      >
+        {{ 'DASHBOARD.FILTER_ALL' | translate }}
+      </button>
+      <button
+        type="button"
+        class="filter-chip"
+        [class.active]="filter() === TerminalFilter.TMA"
+        (click)="setFilter(TerminalFilter.TMA)"
+      >
+        {{ 'DASHBOARD.FILTER_TMA' | translate }}
+        @if (tmaCount()) {
+          <span class="chip-count">{{ tmaCount() }}</span>
+        }
+      </button>
+      <button
+        type="button"
+        class="filter-chip"
+        [class.active]="filter() === TerminalFilter.OTHER"
+        (click)="setFilter(TerminalFilter.OTHER)"
+      >
+        {{ 'DASHBOARD.FILTER_OTHER' | translate }}
+      </button>
+    </div>
+  </div>
+
+  @if (terminals().length === 0) {
+    <div class="empty-state">
+      <!--
+        Three different problems, and telling them apart matters: an account with
+        no jars at all, a search still in flight, and a search that came back
+        with nothing. The middle one used to read as the last.
+      -->
+      <p>
+        @if (isSearching()) {
+          {{ 'DASHBOARD.SEARCHING' | translate }}
+        } @else if (search()) {
+          {{ 'DASHBOARD.NO_MATCHES' | translate }}
+        } @else {
+          {{ (hasTerminals() ? 'DASHBOARD.NO_MATCHES' : 'DASHBOARD.NO_JARS') | translate }}
+        }
+      </p>
+    </div>
+  } @else {
+    <div class="terminals-grid accordion-layout">
+      @for (terminal of terminals(); track terminal.terminalId || terminal.id) {
+        <app-terminal-card
+          [terminal]="terminal"
+          [hasAlert]="hasActiveAlert(terminal.terminalId)"
+          [isExpanded]="isTerminalExpanded(terminal.terminalId)"
+          (toggle)="toggleTerminal(terminal.terminalId)"
+        ></app-terminal-card>
+
+        @if (isTerminalExpanded(terminal.terminalId)) {
+          <div class="accordion-body">
+            <app-terminal-alerts [terminalId]="terminal.terminalId!"></app-terminal-alerts>
+          </div>
+        }
+      }
+    </div>
+  }
+</section>

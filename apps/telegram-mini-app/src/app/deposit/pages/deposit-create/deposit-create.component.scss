@@ -1,0 +1,86 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-title {
+  margin-bottom: 20px;
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.amount-input-wrap {
+  position: relative;
+}
+
+.amount-input {
+  width: 100%;
+  padding: 14px 60px 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--t-base);
+}
+
+.amount-input:focus {
+  border-color: var(--accent);
+}
+
+.amount-input::placeholder {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+.input-suffix {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.equivalent {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.eq-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.eq-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-success);
+}
+
+.validation-error {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--c-danger);
+}
+
+.error-msg {
+  text-align: center;
+}

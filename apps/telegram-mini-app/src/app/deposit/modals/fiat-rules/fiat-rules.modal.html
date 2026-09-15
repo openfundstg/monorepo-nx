@@ -1,0 +1,26 @@
+<div class="backdrop" (click)="dismissed.emit()"></div>
+
+<div class="sheet glass-card" (click)="$event.stopPropagation()">
+  <h2 class="title">{{ 'fiat.rules.title' | translate }}</h2>
+
+  <ul class="rules">
+    <!--
+      The parameter goes to every rule, though only the timing one reads it:
+      ngx-translate ignores what a string does not interpolate, and a list that
+      branched per key would be a list nobody could add a rule to.
+    -->
+    @for (key of ruleKeys; track key) {
+      <li>{{ key | translate: { minutes: payWindowMinutes() } }}</li>
+    }
+  </ul>
+
+  <!-- The one line that says what the other eight cost. -->
+  <p class="warning">
+    <span class="warning-icon" aria-hidden="true">⚠️</span>
+    {{ 'fiat.rules.warning' | translate }}
+  </p>
+
+  <button class="primary-btn" (click)="dismissed.emit()">
+    {{ 'common.close' | translate }}
+  </button>
+</div>

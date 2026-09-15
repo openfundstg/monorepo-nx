@@ -1,0 +1,24 @@
+<app-page-header title="deposits.title" subtitle="deposits.subtitle">
+  <app-search-field
+    [value]="state().search"
+    placeholder="deposits.search_placeholder"
+    (search)="onSearch($event)"
+  />
+</app-page-header>
+
+<app-collection-table
+  [columns]="columns"
+  [rows]="state().items"
+  [total]="state().total"
+  [page]="state().page"
+  [limit]="state().limit"
+  [loading]="state().loading"
+  [error]="state().error"
+  [sort]="state().sort"
+  [direction]="state().direction"
+  [pendingCount]="state().pendingCount"
+  emptyMessage="deposits.empty"
+  (pageChange)="onPage($event)"
+  (sortChange)="onSort($event)"
+  (refresh)="onRefresh()"
+/>

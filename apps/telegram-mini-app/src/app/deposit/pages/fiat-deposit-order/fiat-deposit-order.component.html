@@ -1,0 +1,185 @@
+@if (loading()) {
+  <div class="spinner"></div>
+} @else if (deposit(); as order) {
+  <h2 class="page-title">{{ 'fiat.order_title' | translate }}</h2>
+
+  @if (awaitingPayment()) {
+    <div class="pay-card glass-card">
+      <span class="pay-label">{{ 'fiat.transfer_exactly' | translate }}</span>
+      <!--
+        Copyable for the same reason the card is: retyping it into a banking app
+        is the step where a digit gets dropped, which lands as a partial payment
+        somebody then has to chase. A fee the bank adds on top is fine — a
+        digit that went missing is not.
+      -->
+      <button class="amount-row" (click)="copyAmount()">
+        <span class="pay-amount">{{ remainingLabel() }} {{ 'common.uah' | translate }}</span>
+        <span class="copy-hint">
+          {{ (copiedAmount() ? 'deposit.copied' : 'deposit.copy') | translate }}
+        </span>
+      </button>
+
+      <span class="pay-label">{{ 'fiat.to_card' | translate }}</span>
+      <button class="card-row" (click)="copyCard()">
+        <span class="card-number">{{ order.recipientCard }}</span>
+        <span class="copy-hint">
+          {{ (copiedCard() ? 'deposit.copied' : 'deposit.copy') | translate }}
+        </span>
+      </button>
+
+      <!--
+        Said before they pay, not after we refuse. A bank that adds its fee on
+        top makes the receipt state more than this figure, and the check accepts
+        that — but the credit is the order's amount, so the fee is the payer's.
+        Somebody who learns this from a rejected receipt has already paid it.
+      -->
+      <p class="fee-note">{{ 'fiat.fee_note' | translate }}</p>
+
+      <div class="timer" [class.timer--out]="overdue()">
+        @if (overdue()) {
+          {{ 'fiat.overdue' | translate }}
+        } @else {
+          {{ 'deposit.time_remaining' | translate }}: <strong>{{ formattedTime() }}</strong>
+        }
+      </div>
+    </div>
+
+    @if (order.coveredUah > 0) {
+      <div class="coverage glass-card">
+        <div class="coverage-head">
+          <span>{{ 'fiat.covered' | translate }}</span>
+          <strong>
+            {{ formatUahWhole(order.coveredUah) }} / {{ formatUahWhole(order.amountUah) }}
+            {{ 'common.uah' | translate }}
+          </strong>
+        </div>
+        <div class="coverage-bar"><span [style.width.%]="coveragePercent()"></span></div>
+        <p class="coverage-hint">{{ 'fiat.partial_hint' | translate }}</p>
+      </div>
+    }
+
+    <!--
+      Both waiting states say the same thing in different words: something is
+      happening that the user cannot hurry, and they should not transfer again.
+      Leaving the upload button here instead would invite a second payment.
+    -->
+    @if (uploading() || recognising()) {
+      <div class="waiting glass-card">
+        <span class="btn-spinner"></span>
+        <span class="waiting-title">{{ 'fiat.checking_receipt' | translate }}</span>
+        <span class="waiting-hint">{{ 'fiat.checking_receipt_hint' | translate }}</span>
+      </div>
+    } @else if (overdue()) {
+      <!--
+        The window has closed and the server will refuse a receipt, so the
+        upload is not offered — a button that answers 409 is worse than none.
+        What is left is an appeal: it stops the payout being handed back
+        automatically and puts the top-up in front of an operator, and then the
+        user proves the transfer in the support chat.
+      -->
+      <div class="appeal glass-card">
+        <span class="appeal-title">{{ 'fiat.appeal_title' | translate }}</span>
+        <span class="appeal-hint">{{ 'fiat.appeal_hint' | translate }}</span>
+        <button class="primary-btn" [disabled]="appealing()" (click)="appeal()">
+          @if (appealing()) {
+            <span class="btn-spinner"></span>
+          } @else {
+            {{ 'fiat.appeal_action' | translate }}
+          }
+        </button>
+      </div>
+    } @else {
+      <label class="upload glass-card">
+        <span class="upload-title">{{ 'fiat.upload_receipt' | translate }}</span>
+        <span class="upload-hint">{{ 'fiat.upload_hint' | translate }}</span>
+        <input
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+          (change)="onReceiptPicked($event)"
+        />
+      </label>
+    }
+  } @else if (awaitingConfirmation()) {
+    <div class="waiting glass-card">
+      <span class="btn-spinner"></span>
+      <span class="waiting-title">{{ 'fiat.awaiting_confirmation' | translate }}</span>
+      <span class="waiting-hint">{{ 'fiat.awaiting_confirmation_hint' | translate }}</span>
+    </div>
+
+    <div class="coverage glass-card">
+      <div class="coverage-head">
+        <span>{{ 'fiat.covered' | translate }}</span>
+        <strong>
+          {{ formatUahWhole(order.coveredUah) }} / {{ formatUahWhole(order.amountUah) }}
+          {{ 'common.uah' | translate }}
+        </strong>
+      </div>
+      <div class="coverage-bar"><span [style.width.%]="coveragePercent()"></span></div>
+    </div>
+  } @else {
+    <div class="closed glass-card">
+      <span class="closed-status">{{ 'fiat.status.' + order.status | translate }}</span>
+      @if (order.status === TmaFiatDepositStatus.COMPLETED) {
+        <span class="closed-detail">
+          {{ 'fiat.credited' | translate: { amount: formatUsdt(order.cryptoCents) } }}
+        </span>
+      } @else if (order.status === TmaFiatDepositStatus.REVIEW) {
+        <span class="closed-detail">{{ 'fiat.review_hint' | translate }}</span>
+      }
+    </div>
+  }
+
+  @if (order.receipts.length > 0) {
+    <section class="receipts">
+      <h3 class="receipts-title">{{ 'fiat.receipts' | translate }}</h3>
+      @for (receipt of order.receipts; track receipt.id) {
+        <div class="receipt">
+          <span class="receipt-status" [class]="'receipt-status--' + receipt.status">
+            {{ 'fiat.receipt_status.' + receipt.status | translate }}
+          </span>
+          @if (receipt.amountUah !== null) {
+            <span class="receipt-amount">
+              {{ formatUahWhole(receipt.amountUah) }} {{ 'common.uah' | translate }}
+            </span>
+          }
+          <!--
+            One sentence, whichever way it was refused. The three reasons behind
+            it — unreadable, not attached, recognition timed out — are an
+            operator's business; what the user can act on is that this receipt
+            did not pass, and the top-up is now with a person.
+          -->
+          @if (receipt.rejection !== null) {
+            <span class="receipt-reason">{{ 'fiat.receipt_rejected' | translate }}</span>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  @if (errorMsg()) {
+    <p class="error-msg">{{ errorMsg() }}</p>
+  }
+
+  @if (isPayable() && !hasPaidSomething()) {
+    <button class="link-btn cancel" [disabled]="cancelling()" (click)="askToCancel()">
+      {{ 'fiat.cancel' | translate }}
+    </button>
+  } @else if (!isPayable()) {
+    <button class="primary-btn" (click)="goToDashboard()">{{ 'common.back' | translate }}</button>
+  }
+} @else {
+  <p class="error-msg">{{ errorMsg() }}</p>
+}
+
+<!--
+  Giving the payout back is not undoable and another trader may take it within
+  seconds, so it is confirmed rather than done on a tap — the same courtesy the
+  reservation itself gets.
+-->
+@if (confirmingCancel()) {
+  <app-confirm-fiat-cancel
+    [busy]="cancelling()"
+    (confirmed)="cancel()"
+    (dismissed)="confirmingCancel.set(false)"
+  />
+}

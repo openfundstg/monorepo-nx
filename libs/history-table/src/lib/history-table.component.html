@@ -1,0 +1,61 @@
+@if (loading()) {
+  <div class="loading-state">
+    <div class="spinner-small"></div>
+  </div>
+} @else if (error(); as message) {
+  <div class="error-state">
+    <p>{{ message }}</p>
+  </div>
+} @else if (logs().length === 0) {
+  <div class="empty-state">
+    <p>{{ 'HISTORY.TABLE.NO_HISTORY' | translate }}</p>
+  </div>
+} @else {
+  <div class="history-table-container">
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>{{ 'HISTORY.TABLE.TIME' | translate }}</th>
+          <th>{{ 'HISTORY.TABLE.BALANCE' | translate }}</th>
+          <th>{{ 'HISTORY.TABLE.EXPECTED_BALANCE' | translate }}</th>
+          <th>{{ 'HISTORY.TABLE.UNRECOGNIZED' | translate }}</th>
+          <th>{{ 'HISTORY.TABLE.EVENTS' | translate }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.log._id || row.log.timestamp) {
+          <tr [class.new-row]="row.log.isNew">
+            <td class="time-col">{{ row.log.timestamp | date: 'HH:mm:ss' }}</td>
+            <td class="balance-col">
+              <app-history-amount [value]="row.balance" [delta]="row.balanceDelta" />
+            </td>
+            <td class="expected-col" [class.active]="row.log.expectedBalance > row.balance">
+              <app-history-amount [value]="row.expectedBalance" [delta]="row.expectedDelta" />
+            </td>
+            <td class="unrecognized-col" [class.active]="!row.unrecognized">
+              <app-history-amount [value]="row.unrecognized" [delta]="row.unrecognizedDelta" />
+            </td>
+            <td class="events-col">
+              <div class="badges-container">
+                @for (order of row.log.orderEvents; track order.orderId) {
+                  <div class="event-badge" [class]="getEventBadgeClass(order)">
+                    {{ getEventBadgeText(order) }}
+                  </div>
+                }
+                @for (alert of row.log.alerts; track $index) {
+                  <div
+                    class="event-badge alert-badge"
+                    [class]="getAlertBadgeClass(alert)"
+                    [title]="getAlertTooltip(alert)"
+                  >
+                    {{ getAlertBadgeText(alert) }}
+                  </div>
+                }
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

@@ -1,0 +1,9 @@
+<div class="dashboard-view" [class.full-tab-view]="isFullTab">
+  @if (!isFullTab) {
+    <app-header />
+  }
+
+  <main class="content-area">
+    <router-outlet />
+  </main>
+</div>

@@ -1,0 +1,359 @@
+<div class="sale-create">
+  <h2 class="page-title">{{ 'sale.create' | translate }}</h2>
+
+  @if (rateUnavailable()) {
+    <div class="validation-error">
+      {{ 'common.rate_unavailable' | translate }}
+      <button class="link-btn" (click)="loadConfig()">{{ 'common.retry' | translate }}</button>
+    </div>
+  }
+
+  <!-- Amount Input -->
+  <div class="input-group glass-card">
+    <label class="input-label">{{ 'sale.amount_usdt_label' | translate }}</label>
+    <div class="amount-input-wrap">
+      <input
+        type="number"
+        [placeholder]="'sale.amount_usdt_placeholder' | translate"
+        [(ngModel)]="usdtAmount"
+        (ngModelChange)="rateMoved.set(false)"
+        min="10"
+        step="10"
+        class="amount-input"
+        id="sale-amount-input"
+      />
+      <span class="input-suffix">{{ 'common.usdt' | translate }}</span>
+    </div>
+
+    <!--
+      First of the three, and shown before an amount is typed: it is the rate
+      the other two figures and the whole maths preview below are expressed in,
+      so a user who has not entered anything yet still knows what a USDT buys.
+    -->
+    @if (sellRateKopecks() > 0) {
+      <div class="limits-info">
+        <app-exchange-rate [rate]="sellRateKopecks()" />
+      </div>
+    }
+
+    <!--
+      The floor, stated rather than only enforced. It was enforced by `isValid()`
+      and by the server all along, but nothing named it — so an amount under it
+      produced a dead submit button and no explanation.
+    -->
+    <div class="limits-info">
+      <span class="limit-label">{{ 'sale.min_for_order' | translate }}:</span>
+      <span class="limit-value" [class.error]="belowMinimum()">
+        {{ minOrderUsdt }} {{ 'common.usdt' | translate }}
+      </span>
+    </div>
+
+    <div class="limits-info">
+      <span class="limit-label">{{ 'sale.available_balance' | translate }}:</span>
+      <span class="limit-value" [class.error]="!hasSufficientBalance()">
+        {{ balanceCents() | usdt }} {{ 'common.usdt' | translate }}
+      </span>
+    </div>
+
+    <div class="limits-info">
+      <span class="limit-label">{{ 'sale.parallel_for_level' | translate }}:</span>
+      <span class="limit-value" [class.error]="slotsExhausted()">
+        {{ openOrders() }} / {{ maxParallelOrders() }}
+      </span>
+    </div>
+
+    <!--
+      Which sales are taking the slots, whenever any of them is a finished one.
+      Shown even with slots to spare: a user one sale away from the limit should
+      find out now that a jar is holding a slot, not at the moment the form
+      refuses them.
+    -->
+    @if (awaitingJarClosure().length > 0) {
+      <div class="awaiting-jars" [class.blocking]="blockedByOpenJars()">
+        <h4>{{ 'sale.awaiting_jar_title' | translate }}</h4>
+        <p>{{ 'sale.awaiting_jar_desc' | translate }}</p>
+
+        <ul>
+          @for (sale of awaitingJarClosure(); track sale.publicId) {
+            <li>
+              <button type="button" class="awaiting-jar-row" (click)="openSale(sale.id)">
+                <span class="awaiting-jar-bank">{{ bankNameKey(sale.bankType) | translate }}</span>
+                <span class="awaiting-jar-id">{{ sale.publicId }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+
+    @if (belowMinimum()) {
+      <div class="validation-error">
+        {{ 'sale.min_amount' | translate: { min: minOrderUsdt } }}
+      </div>
+    }
+
+    <!--
+      Two causes, two sentences. Slots held by running sales clear themselves;
+      slots held by finished ones clear only when their owner closes the jar, so
+      "finish the current one" is advice that can never be followed.
+    -->
+    @if (slotsExhausted()) {
+      <div class="validation-error">
+        @if (blockedByOpenJars()) {
+          {{
+            'sale.limit_blocked_by_jars'
+              | translate: { max: maxParallelOrders(), jars: awaitingJarClosure().length }
+          }}
+        } @else {
+          {{ 'sale.parallel_limit_reached' | translate: { max: maxParallelOrders() } }}
+        }
+      </div>
+    }
+
+    @if (!hasSufficientBalance()) {
+      <div class="validation-error">
+        {{ 'sale.insufficient_balance' | translate }}
+      </div>
+    }
+
+    @if ((usdtAmount() ?? 0) > 0 && !rateUnavailable()) {
+      <div class="math-preview">
+        <!--
+          The total, and only the total. The rate is stated once at the top of
+          this screen and repeating it here was two labels for one number —
+          left over from when the form was given a market rate and a markup and
+          had to show what it made of them.
+        -->
+        <div class="math-row total">
+          <span>{{ usdtAmount() }} {{ 'common.usdt' | translate }} =</span>
+          <span class="math-val"
+            >{{ targetKopecks() | uah: true }} {{ 'common.uah' | translate }}</span
+          >
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Bank Selection -->
+  <div class="bank-section glass-card">
+    <label class="input-label">{{ 'sale.select_bank' | translate }}</label>
+    <div class="bank-options">
+      @for (bank of banks; track bank.provider) {
+        <div
+          class="bank-option {{ bank.modifier }}"
+          [class.active]="selectedBank() === bank.provider"
+          [class.recommended]="bank.recommended"
+          [class.unavailable]="!isBankEnabled(bank.provider)"
+          [appTrackTap]="PixelTapEvent.SELECT_BANK"
+          (click)="onSelectBank(bank.provider)"
+        >
+          @if (!isBankEnabled(bank.provider)) {
+            <span class="bank-ribbon muted">{{ 'sale.bank_unavailable' | translate }}</span>
+          } @else if (bank.recommended) {
+            <span class="bank-ribbon">{{ 'sale.bank_recommended' | translate }}</span>
+          }
+          <img [src]="bank.icon" class="bank-icon-img" [alt]="bank.nameKey | translate" />
+          <span class="bank-name">{{ bank.nameKey | translate }}</span>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Drop Link Input -->
+  <div class="link-section glass-card">
+    <label class="input-label">{{ 'sale.instructions' | translate }}</label>
+    <p class="instruction-text">
+      @switch (selectedBank()) {
+        @case (BankProvider.MONO) {
+          {{ 'sale.instructions_mono' | translate }}
+        }
+        @case (BankProvider.PRIVAT) {
+          {{ 'sale.instructions_privat' | translate }}
+        }
+        @case (BankProvider.PUMB) {
+          {{ 'sale.instructions_pumb' | translate }}
+        }
+      }
+    </p>
+
+    <!--
+      The one-liner above is the summary; this is the actual procedure. Keyed on
+      the bank so switching the selection above rebuilds the whole guide, rather
+      than leaving Monobank's steps under a PUMB order.
+    -->
+    <app-bank-instructions [bank]="selectedBank()" [targetAmount]="targetKopecks()" />
+
+    <label class="input-label mt-3">{{ 'sale.paste_link' | translate }}</label>
+    <input
+      type="url"
+      [placeholder]="'sale.link_placeholder' | translate"
+      [(ngModel)]="dropLink"
+      (blur)="onLinkBlur()"
+      class="link-input"
+      id="sale-link-input"
+    />
+
+    <!--
+      One line, three states. The link is checked the moment the field is left,
+      so a PUMB short link is rewritten — and a link pasted under the wrong bank
+      is caught — while the bank app is still open beside the user.
+    -->
+    @if (resolvingLink()) {
+      <p class="link-status checking">{{ 'sale.link_checking' | translate }}</p>
+    } @else if (linkError()) {
+      <p class="link-status error">{{ linkError() }}</p>
+    } @else if (goalMismatch()) {
+      <!--
+        Shown the moment the link resolves, not at submit: the user is still in
+        their bank app and can fix the goal there and then. Both figures are
+        named so there is nothing to work out.
+      -->
+      <p class="link-status error">
+        {{
+          'sale.goal_mismatch'
+            | translate
+              : { actual: (jarGoal() | uah: true), required: (targetKopecks() | uah: true) }
+        }}
+      </p>
+      <!--
+        Naming both figures told the user what was wrong and left them solving
+        for the amount by hand, at a rate they cannot see, with the profit
+        folded in. This is the answer, as a tap.
+      -->
+      @if (suggestedUsdtCents(); as suggested) {
+        <button type="button" class="link-btn goal-fix" (click)="useSuggestedAmount()">
+          {{ 'sale.goal_use_suggested' | translate: { amount: suggested | usdt } }}
+        </button>
+      }
+    } @else if (linkResolved()) {
+      <p class="link-status ok">{{ 'sale.link_resolved' | translate }}</p>
+    }
+
+    <!--
+      Shown when the bank named the drop's owner, so the user can see whose
+      account they are pointing at before they stake anything. Masked by the
+      bank — surname and an initial — so it confirms, it does not identify.
+    -->
+    @if (dropOwner(); as owner) {
+      <div class="drop-owner">
+        {{ 'sale.drop_owner' | translate }}: <strong>{{ owner }}</strong>
+      </div>
+    }
+
+    <label class="input-label mt-3">{{ 'sale.card_number_label' | translate }}</label>
+    <!--
+      Locked for a bank that names the card in its own record. The account is
+      then not a claim the user makes and we check, but a fact the bank stated —
+      and the server uses the bank's answer whatever is submitted, so an
+      editable field could only ever mislead.
+    -->
+    <input
+      type="text"
+      [placeholder]="
+        (cardIsFromBank() ? 'sale.card_from_link_placeholder' : 'sale.card_placeholder')
+          | translate
+      "
+      [(ngModel)]="cardNumber"
+      class="link-input"
+      [class.invalid]="cardMismatch() || cardUnavailable()"
+      [class.readonly]="cardIsFromBank()"
+      [readonly]="cardIsFromBank()"
+      id="sale-card-input"
+      maxlength="19"
+    />
+
+    <!--
+      For a typed card, the same comparison the server makes, shown the moment
+      the card is whole rather than at submit — the user is still in their bank
+      app and can copy the right number there and then.
+    -->
+    @if (cardUnavailable()) {
+      <p class="link-status error">{{ 'sale.card_not_disclosed' | translate }}</p>
+    } @else if (cardMismatch()) {
+      <p class="link-status error">{{ 'sale.card_mismatch' | translate }}</p>
+    } @else if (dropCardNumber() || cardMatchesMask()) {
+      <!--
+        Valid or not, and never *why*. The bank publishes twelve of the card's
+        sixteen digits and printing them would hand a stranger holding the link
+        everything but four — turning a check into a lookup service. The verdict
+        is the same message a disclosed card gets, because to an honest user
+        they are the same fact.
+      -->
+      <p class="link-status ok">{{ 'sale.card_verified' | translate }}</p>
+    } @else if (cardIsFromBank()) {
+      <p class="link-status">{{ 'sale.card_awaiting_link' | translate }}</p>
+    }
+  </div>
+
+  <!--
+    How the order ends when the last stretch is too small to pay for.
+
+    Placed last, immediately above the confirm button: everything above decides
+    what the order *is*, and this decides what happens when it is nearly done.
+    Only the first row is live; the second is greyed out and badged rather than
+    hidden, so the screen answers "can I just wait for the full amount" instead
+    of saying nothing about it.
+  -->
+  <div class="remainder-section glass-card">
+    <label class="input-label">{{ 'sale.remainder_label' | translate }}</label>
+
+    <div class="remainder-options">
+      @for (option of remainderOptions; track option.policy) {
+        <div
+          class="remainder-option"
+          [class.active]="remainderPolicy() === option.policy"
+          [class.coming-soon]="option.comingSoon"
+          (click)="onSelectRemainderPolicy(option.policy)"
+        >
+          <span class="remainder-radio" aria-hidden="true"></span>
+          <div class="remainder-copy">
+            <span class="remainder-title">
+              {{ option.titleKey | translate }}
+              @if (option.comingSoon) {
+                <span class="soon-badge">{{ 'common.in_development' | translate }}</span>
+              }
+            </span>
+            <span class="remainder-desc">
+              {{ option.descriptionKey | translate: { amount: minOrderKopecks() / 100 } }}
+            </span>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <button
+    class="primary-btn"
+    [disabled]="submitting() || !isValid() || !hasSufficientBalance()"
+    (click)="onSubmit()"
+  >
+    <span class="btn-text">
+      @if (submitting()) {
+        <div class="btn-spinner"></div>
+      } @else {
+        {{ 'sale.confirm' | translate }}
+      }
+    </span>
+  </button>
+
+  @if (errorMsg()) {
+    <p class="error-msg">{{ errorMsg() }}</p>
+  }
+
+  <!--
+    The market moved between the quote and the submit, and this is the way out
+    that does not involve the bank: the jar's goal stays exactly as it is and
+    the USDT is recomputed to buy it at the rate that now applies. Changing the
+    goal instead means a minute inside a banking app, which is long enough for
+    the rate to move again — which is the loop this replaces.
+
+    Only offered when the jar published a goal to aim at; without one there is
+    nothing to derive an amount from and the message stands on its own.
+  -->
+  @if (rateMoved() && suggestedUsdtCents(); as suggested) {
+    <button type="button" class="primary-btn rate-fix" (click)="useCurrentRate()">
+      {{ 'sale.rate_use_current' | translate: { amount: suggested | usdt } }}
+    </button>
+  }
+</div>

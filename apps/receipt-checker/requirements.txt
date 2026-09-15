@@ -1,0 +1,15 @@
+# Pinned exactly, for the reason apps/admin pins Angular: this image is rebuilt
+# rarely and unattended, and a floating range turns "the receipt check stopped
+# working" into an archaeology problem about which build it drifted onto.
+#
+# Two of these parse files that arrived from the internet — pypdf and pillow —
+# so they are the ones to keep current rather than merely pinned. They run in
+# the sandboxed child (`extract_worker.py`), never in the service process.
+#
+# `seleniumbase` was here and is gone with the browser it drove. Nothing in this
+# image opens a network connection any more.
+flask==3.1.3
+waitress==3.0.2
+pypdf==6.18.0
+pytesseract==0.3.13
+pillow==12.3.0

@@ -1,0 +1,93 @@
+<div class="backdrop" (click)="onBackdrop()"></div>
+
+<!--
+  `$event.stopPropagation()` so a tap inside the sheet is not also a tap on the
+  backdrop behind it, which would dismiss the form the user is filling in.
+-->
+<div class="sheet glass-card" (click)="$event.stopPropagation()">
+  <h2 class="title">{{ 'fiat.watch.title' | translate }}</h2>
+  <p class="lead">{{ 'fiat.watch.lead' | translate }}</p>
+
+  <div class="range">
+    <label class="field">
+      <span class="field-label">{{ 'fiat.watch.from' | translate }}</span>
+      <input
+        type="number"
+        inputmode="numeric"
+        class="field-input"
+        [value]="minInput()"
+        [disabled]="busy()"
+        (input)="onMinInput($event)"
+      />
+    </label>
+
+    <label class="field">
+      <span class="field-label">{{ 'fiat.watch.to' | translate }}</span>
+      <input
+        type="number"
+        inputmode="numeric"
+        class="field-input"
+        [value]="maxInput()"
+        [disabled]="busy()"
+        (input)="onMaxInput($event)"
+      />
+    </label>
+  </div>
+
+  <!--
+    The choice the user was asked to make rather than one made for them: the two
+    answers suit opposite people, and guessing is wrong for half of them.
+  -->
+  <div class="modes">
+    <button
+      type="button"
+      class="mode"
+      [class.active]="mode() === Mode.ALWAYS"
+      [disabled]="busy()"
+      (click)="mode.set(Mode.ALWAYS)"
+    >
+      <span class="mode-title">{{ 'fiat.watch.mode_always' | translate }}</span>
+      <span class="mode-hint">{{ 'fiat.watch.mode_always_hint' | translate }}</span>
+    </button>
+
+    <button
+      type="button"
+      class="mode"
+      [class.active]="mode() === Mode.ONCE"
+      [disabled]="busy()"
+      (click)="mode.set(Mode.ONCE)"
+    >
+      <span class="mode-title">{{ 'fiat.watch.mode_once' | translate }}</span>
+      <span class="mode-hint">{{ 'fiat.watch.mode_once_hint' | translate }}</span>
+    </button>
+  </div>
+
+  <!--
+    The note follows the mode. A one-off message deliberately carries no
+    unsubscribe key — there is nothing left to cancel by the time it lands — so
+    promising one here would contradict the message the user then receives.
+  -->
+  <p class="note">
+    {{
+      (mode() === Mode.ONCE ? 'fiat.watch.unsubscribe_note_once' : 'fiat.watch.unsubscribe_note')
+        | translate
+    }}
+  </p>
+
+  @if (errorMsg()) {
+    <p class="error-msg">{{ errorMsg() }}</p>
+  }
+
+  <div class="buttons">
+    <button class="primary-btn" [disabled]="busy() || !valid()" (click)="submit()">
+      @if (busy()) {
+        <span class="btn-spinner"></span>
+      } @else {
+        {{ 'fiat.watch.save' | translate }}
+      }
+    </button>
+    <button class="ghost-btn" [disabled]="busy()" (click)="dismissed.emit()">
+      {{ 'common.cancel' | translate }}
+    </button>
+  </div>
+</div>

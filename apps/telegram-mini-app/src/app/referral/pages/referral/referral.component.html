@@ -1,0 +1,163 @@
+<h1 class="page-title">{{ 'referral.title' | translate }}</h1>
+
+@if (loading()) {
+  <div class="loading-container">
+    <div class="spinner"></div>
+    <p>{{ 'common.loading' | translate }}</p>
+  </div>
+} @else if (summary(); as data) {
+  <!-- Earnings -->
+  <section class="glass-card earnings-card">
+    <span class="section-label">{{ 'referral.balance' | translate }}</span>
+    <div class="balance-amount">
+      <span class="balance-value">{{ balance() | usdt }}</span>
+      <span class="balance-currency">{{ 'common.usdt' | translate }}</span>
+    </div>
+    <p class="section-hint">
+      {{ 'referral.total_earned' | translate }}: {{ totalEarned() | usdt }}
+      {{ 'common.usdt' | translate }}
+    </p>
+    <p class="section-hint">
+      {{ 'referral.rate_hint' | translate: { rate: data.ratePercent } }}
+    </p>
+  </section>
+
+  <!-- Transfer to the spendable balance -->
+  <section class="glass-card">
+    <header class="section-header">
+      <h2 class="section-label">{{ 'referral.transfer_title' | translate }}</h2>
+      @if (transferred()) {
+        <span class="saved-badge">{{ 'referral.transferred' | translate }}</span>
+      }
+    </header>
+
+    <p class="section-hint">{{ 'referral.transfer_hint' | translate }}</p>
+
+    <div class="transfer-row">
+      <input
+        type="number"
+        class="amount-input"
+        inputmode="decimal"
+        min="0"
+        step="0.01"
+        [ngModel]="transferUsdt()"
+        (ngModelChange)="transferUsdt.set($event)"
+        [placeholder]="'referral.transfer_placeholder' | translate"
+      />
+      <button type="button" class="ghost-btn" (click)="transferAll()">
+        {{ 'referral.transfer_all' | translate }}
+      </button>
+    </div>
+
+    <button type="button" class="primary-btn" [disabled]="!canTransfer()" (click)="transfer()">
+      @if (transferring()) {
+        {{ 'referral.transferring' | translate }}
+      } @else {
+        {{ 'referral.transfer' | translate }}
+      }
+    </button>
+  </section>
+
+  <!-- Share link -->
+  <section class="glass-card">
+    <header class="section-header">
+      <h2 class="section-label">{{ 'referral.your_link' | translate }}</h2>
+      @if (copied()) {
+        <span class="saved-badge">{{ 'referral.copied' | translate }}</span>
+      }
+      @if (codeCopied()) {
+        <span class="saved-badge">{{ 'referral.code_copied' | translate }}</span>
+      }
+    </header>
+
+    <!--
+      The code is the thing people read out and retype, so it copies on tap —
+      a button rather than a styled <p>, so it is reachable by keyboard and
+      announced as something you can activate.
+    -->
+    <button type="button" class="referral-code" (click)="copyCode()">
+      {{ data.code }}
+      <span class="tap-hint">{{ 'referral.tap_to_copy' | translate }}</span>
+    </button>
+
+    <p class="referral-link">{{ data.link }}</p>
+
+    <button type="button" class="primary-btn" (click)="copyLink()">
+      {{ 'referral.copy_link' | translate }}
+    </button>
+  </section>
+
+  <!-- Redeeming someone else's code -->
+  @if (data.canRedeemCode) {
+    <section class="glass-card">
+      <h2 class="section-label">{{ 'referral.have_a_code' | translate }}</h2>
+      <p class="section-hint">{{ 'referral.have_a_code_hint' | translate }}</p>
+
+      <input
+        type="text"
+        class="code-input"
+        autocapitalize="characters"
+        maxlength="8"
+        [ngModel]="codeInput()"
+        (ngModelChange)="codeInput.set($event)"
+        [placeholder]="'referral.code_placeholder' | translate"
+      />
+
+      <button type="button" class="primary-btn" [disabled]="!canRedeem()" (click)="redeem()">
+        @if (redeeming()) {
+          {{ 'referral.redeeming' | translate }}
+        } @else {
+          {{ 'referral.redeem' | translate }}
+        }
+      </button>
+    </section>
+  } @else if (data.invitedBy; as code) {
+    <section class="glass-card">
+      <h2 class="section-label">{{ 'referral.invited_by' | translate }}</h2>
+      <p class="referral-code">{{ code }}</p>
+    </section>
+  }
+
+  @if (errorMsg()) {
+    <p class="error-msg">{{ errorMsg() }}</p>
+  }
+
+  <!-- Who joined through the link -->
+  <section class="referrals">
+    <header class="section-header">
+      <h2 class="section-label">{{ 'referral.your_referrals' | translate }}</h2>
+      <span class="section-count">{{ referrals().length }}</span>
+    </header>
+
+    @for (referral of referrals(); track referral.maskedId) {
+      <div class="referral-item glass-card">
+        <div class="referral-info">
+          <span class="referral-name">
+            @if (referral.displayName; as name) {
+              {{ name }}
+            } @else {
+              <!--
+                No name: the label is built here from the masked id rather than
+                sent by the server, so it reads in the user's own language.
+              -->
+              {{ 'referral.masked_user' | translate: { id: referral.maskedId } }}
+            }
+          </span>
+          <span class="referral-date">{{ referral.joinedAt | dateTime }}</span>
+          <span class="referral-volume">
+            {{ 'referral.sold' | translate }}: {{ referral.soldVolume | uah: true }}
+            {{ 'common.uah' | translate }}
+          </span>
+        </div>
+
+        <span class="referral-earned" [class.positive]="referral.earned > 0">
+          +{{ referral.earned | usdt }} {{ 'common.usdt' | translate }}
+        </span>
+      </div>
+    } @empty {
+      <p class="no-referrals">{{ 'referral.empty' | translate }}</p>
+    }
+  </section>
+} @else {
+  <p class="error-msg">{{ errorMsg() }}</p>
+}

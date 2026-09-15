@@ -1,0 +1,256 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-title {
+  margin-bottom: 16px;
+}
+
+.pay-card {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  margin-bottom: 12px;
+}
+
+.pay-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Laid out like `.card-row` below it: both are tap-to-copy, both must read so. */
+.amount-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  margin-bottom: 10px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pay-amount {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: inherit;
+  cursor: pointer;
+}
+
+.card-number {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.copy-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.timer {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.timer--out {
+  color: var(--c-warning);
+}
+
+.coverage {
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.coverage-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.coverage-head strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.coverage-bar {
+  height: 6px;
+  margin: 10px 0 8px;
+  border-radius: var(--r-sm);
+  background: var(--surface-nested);
+  overflow: hidden;
+}
+
+.coverage-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: var(--t-fast);
+}
+
+.coverage-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.upload {
+  display: grid;
+  gap: 4px;
+  padding: 18px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.upload input[type='file'] {
+  display: none;
+}
+
+/*
+  The window closed and the receipt has nowhere to go but a person.
+
+  Deliberately not styled as an error: from the user's side this is the ordinary
+  ending of a transfer that took a minute too long, and the button is a way
+  forward rather than an apology.
+*/
+.appeal {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.appeal-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.appeal-hint {
+  margin-bottom: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* Something is happening that the user cannot hurry. */
+.waiting {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 22px 18px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.waiting-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.waiting-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.closed {
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.closed-status {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.closed-detail {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.receipts {
+  margin-top: 18px;
+}
+
+.receipts-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.receipt {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-soft, var(--border-strong));
+  font-size: 13px;
+}
+
+.receipt:last-child {
+  border-bottom: 0;
+}
+
+.receipt-amount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-reason {
+  color: var(--text-muted);
+}
+
+.cancel {
+  display: block;
+  margin: 20px auto 0;
+}
+
+// Quiet on purpose: it is a caveat about a payment, not an instruction for one.
+// Loud enough to be read before the transfer, never competing with the sum and
+// the card above it.
+.fee-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--text-muted);
+}

@@ -1,0 +1,241 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-title {
+  margin-bottom: 20px;
+}
+
+.glass-card {
+  padding: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.info-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.info-value {
+  font-weight: 600;
+}
+
+/* --- Wallet -------------------------------------------------------------- */
+
+.wallet-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.wallet-address-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  overflow: hidden;
+}
+
+.wallet-address {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.copy-btn {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.copy-btn:active {
+  background: var(--c-accent-press);
+}
+
+/* --- Countdown ----------------------------------------------------------- */
+
+.countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.countdown-label {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.countdown-value {
+  color: var(--c-warning);
+}
+
+/* --- Manual entry -------------------------------------------------------- */
+
+.section-divider {
+  position: relative;
+  margin: 8px 0 16px;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 60px);
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.section-divider::before {
+  left: 0;
+}
+
+.section-divider::after {
+  right: 0;
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/*
+  16px is the floor, not a preference. Below it iOS zooms the page in when the
+  field takes focus — and does not zoom back out on blur, so the app is left
+  magnified. That is the same "it zoomed itself" complaint as the task-switcher
+  one, from a different trigger, and `maximum-scale=1` does not reliably stop it.
+*/
+.txid-input {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 16px;
+  outline: none;
+  transition: border-color var(--t-base);
+}
+
+.txid-input:focus {
+  border-color: var(--accent);
+}
+
+.txid-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* --- Outcomes ------------------------------------------------------------ */
+
+.success-card {
+  padding: 32px;
+  text-align: center;
+}
+
+.success-icon {
+  margin-bottom: 12px;
+  font-size: 44px;
+  animation: bounce 0.5s ease;
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .success-icon {
+    animation: none;
+  }
+}
+
+.success-detail {
+  margin: 8px 0 20px;
+  font-size: 16px;
+  color: var(--c-success);
+}
+
+.error-card {
+  background: var(--c-danger-soft);
+  border-color: transparent;
+  color: var(--c-danger);
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.pending {
+  background: var(--c-warning);
+  animation: pulse 1.5s infinite;
+}
+
+.status-dot.completed {
+  background: var(--c-success);
+}
+
+.status-dot.expired {
+  background: var(--c-danger);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.pending {
+    animation: none;
+  }
+}

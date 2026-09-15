@@ -1,0 +1,92 @@
+@use './styles/tokens';
+@use './styles/primitives';
+@use '@angular/material' as mat;
+
+/**
+ * Material, themed from our own tokens rather than the other way round.
+ *
+ * The generated theme supplies component internals — ripples, elevation,
+ * overlay backgrounds — while the palette above stays the single source for
+ * anything we draw ourselves. Wiring it the other way, with components reading
+ * Material's system variables and our cards reading tokens, is how two greys
+ * end up next to each other.
+ */
+html {
+  color-scheme: dark;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$cyan-palette,
+        theme-type: dark,
+      ),
+      typography: (
+        plain-family: var(--font-sans),
+        brand-family: var(--font-sans),
+      ),
+      density: -1,
+    )
+  );
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/**
+ * Material's table draws its own surface and borders; ours has to match the
+ * cards it sits in. Done globally because every list in the app uses the same
+ * table component, so a per-component override would be the same block eleven
+ * times.
+ */
+.mat-mdc-table {
+  background: transparent;
+}
+
+.mat-mdc-header-cell {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-bottom-color: var(--border);
+}
+
+.mat-mdc-cell {
+  color: var(--text-primary);
+  border-bottom-color: var(--border);
+  font-size: 13px;
+}
+
+.mat-mdc-row:hover {
+  background: var(--surface-2);
+}
+
+.mat-mdc-paginator {
+  background: transparent;
+  color: var(--text-secondary);
+}

@@ -1,0 +1,42 @@
+/*
+  Above everything, including the fixed bottom nav at z-index 10 — an overlay
+  that something can be tapped through is not an overlay.
+*/
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* The blur needs something to tint, or it reads as a smudge rather than a
+     deliberate layer. Kept light so the screen underneath stays recognisable. */
+  background: var(--scrim);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+
+  /* Swallows taps, which is what stops a second submit landing on the first. */
+  cursor: progress;
+
+  /* Only the appearance is animated. The overlay is already 300ms late, so
+     fading it in over that would push the feedback past half a second. */
+  animation: overlay-in 0.15s ease-out;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+  The spinner itself is global — see `styles/_primitives.scss`, which also
+  stands it still when the reader has asked for reduced motion.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .overlay {
+    animation: none;
+  }
+}

@@ -1,0 +1,30 @@
+<div class="login-view glass-panel">
+  <div class="logo-container">
+    <div class="logo-icon"></div>
+    <h1>{{ 'AUTH.TITLE' | translate }}</h1>
+  </div>
+  <p class="subtitle">{{ 'AUTH.SUBTITLE' | translate }}</p>
+
+  <div class="input-group">
+    <input
+      type="password"
+      [ngModel]="apiTokenInput()"
+      (ngModelChange)="apiTokenInput.set($event)"
+      [placeholder]="'AUTH.PLACEHOLDER' | translate"
+      [disabled]="isLoggingIn()"
+      (keyup.enter)="onLogin()"
+    />
+  </div>
+
+  <button
+    class="primary-btn"
+    [disabled]="!apiTokenInput() || isLoggingIn()"
+    (click)="onLogin()"
+  >
+    @if (!isLoggingIn()) {
+      <span>{{ 'AUTH.CONNECT_BTN' | translate }}</span>
+    } @else {
+      <span class="spinner-small"></span>
+    }
+  </button>
+</div>

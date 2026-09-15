@@ -1,0 +1,64 @@
+/* Above the page, below the forced-update screen — as every sheet here is. */
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  align-items: end;
+  padding: var(--page-pad);
+  padding-bottom: calc(var(--page-pad) + var(--app-safe-bottom, 0px));
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+
+/*
+  Taller than the other sheets and scrollable inside itself: eight rules do not
+  fit on a small phone, and a sheet that grows past the viewport takes its own
+  button off screen.
+*/
+.sheet {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rules {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.rules li + li {
+  margin-top: 8px;
+}
+
+.warning {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-md);
+  background: var(--c-danger-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.warning-icon {
+  flex-shrink: 0;
+}

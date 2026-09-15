@@ -1,0 +1,42 @@
+:host {
+  display: block;
+}
+
+.back {
+  margin-bottom: var(--gap-md);
+}
+
+.target {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--gap-sm);
+}
+
+.target__name {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Matches the shell's indicator, so "live" means the same thing everywhere. */
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.live__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--neutral);
+}
+
+.live--on {
+  color: var(--positive);
+}
+
+.live--on .live__dot {
+  background: var(--positive);
+}

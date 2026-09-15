@@ -1,0 +1,12 @@
+<div class="gate">
+  <app-logo class="gate__mark" [size]="64" />
+
+  <h1 class="gate__title">{{ 'unavailable.title' | translate }}</h1>
+  <p class="gate__text">{{ 'unavailable.text' | translate }}</p>
+
+  @if (botUrl) {
+    <a class="gate__link" [href]="botUrl" rel="noopener noreferrer">
+      {{ 'unavailable.open' | translate }}
+    </a>
+  }
+</div>

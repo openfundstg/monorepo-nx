@@ -1,0 +1,22 @@
+/*
+  Lives here rather than in the table's stylesheet: with emulated encapsulation
+  the parent's `.balance-col .diff-value` cannot reach into this template, so
+  the component that renders the arrow owns how it looks.
+*/
+:host {
+  display: inline;
+}
+
+.diff-value {
+  margin-left: 8px;
+  font-size: 0.85em;
+  font-weight: 600;
+
+  &.positive {
+    color: #22c55e;
+  }
+
+  &.negative {
+    color: #ef4444;
+  }
+}

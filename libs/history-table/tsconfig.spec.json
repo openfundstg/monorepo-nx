@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": ["vitest/globals"],
+    "customConditions": ["@transacto/source"],
+    "outDir": "./out-tsc/spec"
+  },
+  "include": ["src/**/*.ts"]
+}

@@ -1,0 +1,140 @@
+/* Dashboard specific styles */
+.terminals-section {
+  padding: 1.5rem;
+}
+
+// ── Local filtering ────────────────────────────────────────────────────────
+.terminal-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.search-row {
+  position: relative;
+  display: flex;
+}
+
+.search-input {
+  flex: 1;
+  padding: 7px 28px 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f1f1f1;
+  font-size: 0.78rem;
+  outline: none;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.35);
+  }
+
+  &:focus {
+    border-color: rgba(47, 127, 228, 0.6);
+  }
+
+  // Chrome draws its own clear button; ours is translated and consistent
+  &::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+.clear-search {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+  cursor: pointer;
+
+  &:hover {
+    color: #f1f1f1;
+  }
+}
+
+.filter-row {
+  display: flex;
+  gap: 6px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+
+  &:hover {
+    color: #f1f1f1;
+  }
+
+  &.active {
+    border-color: rgba(47, 127, 228, 0.55);
+    background: rgba(47, 127, 228, 0.18);
+    color: #fff;
+  }
+}
+
+.chip-count {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+// Says what the grid is showing while a search is running: matches only, live
+// and archived together, and whether the server had more than fitted.
+.search-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.search-note-archived,
+.search-note-more {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.search-error {
+  margin: 6px 0 0;
+  font-size: 0.68rem;
+  color: #e8825c;
+}
+
+// Absolutely positioned, like the clear button it sits beside: laying it out in
+// the flex row would resize the input every time a request starts and finishes.
+.search-spinner {
+  position: absolute;
+  top: 50%;
+  right: 24px;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.65);
+  border-radius: 50%;
+  animation: search-spin 0.7s linear infinite;
+}
+
+@keyframes search-spin {
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}

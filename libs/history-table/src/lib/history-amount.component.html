@@ -1,0 +1,10 @@
+@if (value() !== undefined) {
+  {{ value() | kopecks }}
+  @if (delta(); as moved) {
+    <span class="diff-value" [class.positive]="moved > 0" [class.negative]="moved < 0">
+      {{ moved > 0 ? '↑' : '↓' }} {{ moved > 0 ? '+' : '' }}{{ moved | kopecks }}
+    </span>
+  }
+} @else {
+  -
+}

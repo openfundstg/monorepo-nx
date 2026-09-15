@@ -1,0 +1,140 @@
+{
+  "DASHBOARD": {
+    "TITLE": "Tracker Dashboard",
+    "ACTIVE_JARS": "ACTIVE JARS",
+    "RECENT_ALERTS": "RECENT ALERTS",
+    "NO_JARS": "No active Jars found.",
+    "NO_ALERTS": "No recent alerts.",
+    "UPDATED": "Updated:",
+    "PENDING_ORDERS": "Pending: {{sum}}",
+    "CURRENCY": "UAH",
+    "TOOLTIPS": {
+      "POPOUT": "Pop out window",
+      "DEACTIVATE": "DEACTIVATE (Stop all tracking)",
+      "LOGOUT": "Log out (Keep tracking)",
+      "POLLING": "Active background polling",
+      "SYNC": "Manual Sync",
+      "HISTORY": "View History",
+      "OPEN_MONO": "Open in Monobank"
+    },
+    "SOURCE_TMA": "Created via the Telegram Mini App. Waits for the full amount — the last stretch to the goal has to be topped up by hand.",
+    "SEARCH_PLACEHOLDER": "Search by name, bank, ID…",
+    "SEARCH_CLEAR": "Clear search",
+    "FILTER_ALL": "All",
+    "FILTER_TMA": "TG",
+    "FILTER_OTHER": "Other",
+    "NO_MATCHES": "Nothing matches this filter",
+    "SEARCHING": "Searching…",
+    "SEARCH_SCOPE": "Searching every terminal, disabled ones included.",
+    "SEARCH_ARCHIVED_COUNT": "Disabled: {{count}}",
+    "SEARCH_MORE": "{{count}} more matches not shown — narrow the search",
+    "SEARCH_FAILED": "The server search failed. Showing active jars only.",
+    "DISABLED": "disabled",
+    "ARCHIVED_HINT": "This terminal is disabled. Balance as of this time.",
+    "BALANCE_UNKNOWN": "balance unknown",
+    "SOURCE_TMA_REFUND": "Created via the Telegram Mini App. A remainder below the minimum order goes back to the user’s balance — no manual top-up needed.",
+    "REMAINDER_AUTO": "remainder",
+    "CLOSING": "closing",
+    "CLOSING_HINT": "The user stopped this sale. No new payers are routed here, but anyone already holding an order can still pay."
+  },
+  "ALERTS": {
+    "UNRECOGNIZED_DEPOSIT": "Unmatched Deposit",
+    "UNRECOGNIZED_DEPOSIT_DESC": "Mismatch of {{amount}} UAH. No combination of expected orders equals this delta.",
+    "TERMINAL_FULL_WARNING": "Jar Almost Full",
+    "TERMINAL_FULL_WARNING_DESC": "Only {{left}} UAH left to reach the goal of {{goal}} UAH.",
+    "AMBIGUOUS_DEPOSIT": "Ambiguous Deposit",
+    "AMBIGUOUS_DEPOSIT_DESC": "Found {{combinationsCount}} combinations of orders for the sum of {{amount}} UAH. Requires manual resolution.",
+    "SAFE_TRANSFER_DESC": "Moved to safe box. Comment: {{comment}}",
+    "FRAUD": "Fraud Suspicion",
+    "FRAUD_DESC": "Balance suddenly dropped from {{previousBalance}} to {{currentBalance}} UAH. Suspected withdrawal.",
+    "ORDER_CONFIRMATION_FAILED": "Order not confirmed",
+    "ORDER_CONFIRMATION_FAILED_DESC": "Order {{orderStringId}} for {{amount}} UAH was credited, but Transacto refused to confirm it automatically: insufficient trader limit (code {{errorCode}}). The money has arrived — confirm the order manually in the cabinet.",
+    "ACKNOWLEDGE_BTN": "Acknowledge",
+    "MOVE_TO_BOX_BTN": "📦 Move to Box",
+    "FORCE_MATCH_BTN": "🔗 Force Match",
+    "MOVE_TO_BOX_PROMPT": "Enter comment for moving to box (optional):",
+    "FORCE_MATCH_PROMPT": "Enter order ID:",
+    "INVALID_ORDER_ID": "Invalid Order ID",
+    "INVALID_AMOUNT": "Invalid Amount",
+    "ALERT_RESOLVED_DESC": "Alert resolved.",
+    "FRAUD_SUSPICION_DESC": "Balance suddenly dropped from {{previousBalance}} to {{currentBalance}} UAH. Suspected withdrawal.",
+    "FORCE_MATCH_SUBMIT": "Confirm",
+    "FORCE_MATCH_CANCEL": "Cancel",
+    "FORCE_MATCH_ORDER_ID": "Order ID",
+    "FORCE_MATCH_AMOUNT": "Actual amount (UAH)",
+    "SALE_COMPLETED_DESC": "Sale {{publicId}} completed at {{amount}} UAH of a {{target}} UAH target. The terminal has been stopped."
+  },
+  "AUTH": {
+    "TITLE": "Monobank Tracker",
+    "SUBTITLE": "Enter your X-API-TOKEN to connect to the extension gateway.",
+    "PLACEHOLDER": "Paste your API Token here",
+    "CONNECT_BTN": "Connect Tracker",
+    "LOADING": "Loading your dashboard...",
+    "DEACTIVATE": "Are you sure you want to DEACTIVATE your account? This will permanently stop tracking from Monobank and clear your data.",
+    "LOGOUT": "Are you sure you want to log out? This will clear your local credentials but will NOT stop background tracking.",
+    "LOGIN_FAILED": "Login failed. Please check your token.",
+    "DEACTIVATE_FAILED": "Deactivation failed. Try again later."
+  },
+  "HISTORY": {
+    "TITLE": "Terminal History",
+    "BACK_TO_DASHBOARD": "Back to Dashboard",
+    "TABLE": {
+      "TIME": "Time",
+      "BALANCE": "Balance (Actual)",
+      "EXPECTED_BALANCE": "Expected Balance",
+      "UNRECOGNIZED": "Unrecognized (Blind Spot)",
+      "EVENTS": "Events / Status",
+      "NO_HISTORY": "No history found for this terminal."
+    },
+    "TOOLTIPS": {
+      "ORDER": "Order #{{id}} ({{type}})",
+      "ALERT": "⚠️ ALERT"
+    },
+    "ORDER": {
+      "CANCELLED": "❌ Order #{{orderId}} cancelled",
+      "PENDING": "🆕 Order #{{orderId}} created ({{amount}})",
+      "FULL_MATCH": "✅ Order #{{orderId}} fully matched",
+      "FUZZY_MATCH": "≈ Order #{{orderId}} partially matched (expected: {{amount}})",
+      "MANUAL": "⚡ Order #{{orderId}} confirmed manually ({{amount}})",
+      "DEFAULT": "Order #{{orderId}}"
+    },
+    "ALERT": {
+      "SAFE_TRANSFER": "📦 Moved to safe box",
+      "SAFE_TRANSFER_COMMENT": " - comment: {{comment}}",
+      "ALERT_RESOLVED": "✅ Alert resolved",
+      "FRAUD": "🚫 Suspected fraud",
+      "FRAUD_SUSPICION": "🚫 Suspected fraud",
+      "UNRECOGNIZED_DEPOSIT": "⚠️ Unmatched deposit",
+      "FUZZY_LIMIT_EXCEEDED": " (outside fuzzy limit)",
+      "AMBIGUOUS_DEPOSIT": "⚠️ Multiple orders matched",
+      "AMBIGUOUS_COMBINATIONS": " - combinations found: {{combinationsCount}}",
+      "TERMINAL_FULL_WARNING": "⚠️ Jar almost full",
+      "SALE_COMPLETED": "🏁 Sale completed",
+      "ORDER_CONFIRMATION_FAILED": "⚠️ Order not confirmed"
+    }
+  },
+  "SAFE_BOX": {
+    "TITLE": "Safe Box",
+    "BACK_TO_DASHBOARD": "Back to Dashboard",
+    "FILTERS": {
+      "STATUS": "Status",
+      "ALL_STATUSES": "All Statuses",
+      "PLACEHOLDER": "ID (terminal | order) or amount"
+    },
+    "TABLE": {
+      "DATE": "Date",
+      "TERMINAL": "Terminal",
+      "AMOUNT": "Amount",
+      "STATUS": "Status",
+      "COMMENT": "Comment",
+      "NO_DATA": "No records in the Safe Box."
+    },
+    "STATUS": {
+      "HELD": "Held",
+      "IN_APPEAL": "In Appeal",
+      "APPLIED": "Applied",
+      "REFUNDED": "Refunded",
+      "WRITTEN_OFF": "Written Off"
+    }
+  }
+}

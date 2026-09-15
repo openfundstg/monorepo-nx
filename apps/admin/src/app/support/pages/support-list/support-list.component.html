@@ -1,0 +1,57 @@
+<app-page-header title="support.title" subtitle="support.subtitle" />
+
+<mat-tab-group>
+  <mat-tab [label]="'support.tab_topics' | translate">
+    <div class="tab-body">
+      <app-search-field
+        [value]="topics().search"
+        placeholder="support.topics_search_placeholder"
+        (search)="onTopicSearch($event)"
+      />
+
+      <app-collection-table
+        [columns]="topicColumns"
+        [rows]="topics().items"
+        [total]="topics().total"
+        [page]="topics().page"
+        [limit]="topics().limit"
+        [loading]="topics().loading"
+        [error]="topics().error"
+        [sort]="topics().sort"
+        [direction]="topics().direction"
+        [pendingCount]="topics().pendingCount"
+        emptyMessage="support.topics_empty"
+        (pageChange)="onTopicPage($event)"
+        (sortChange)="onTopicSort($event)"
+        (refresh)="onTopicRefresh()"
+      />
+    </div>
+  </mat-tab>
+
+  <mat-tab [label]="'support.tab_users' | translate">
+    <div class="tab-body">
+      <app-search-field
+        [value]="users().search"
+        placeholder="support.users_search_placeholder"
+        (search)="onUserSearch($event)"
+      />
+
+      <app-collection-table
+        [columns]="userColumns"
+        [rows]="users().items"
+        [total]="users().total"
+        [page]="users().page"
+        [limit]="users().limit"
+        [loading]="users().loading"
+        [error]="users().error"
+        [sort]="users().sort"
+        [direction]="users().direction"
+        [pendingCount]="users().pendingCount"
+        emptyMessage="support.users_empty"
+        (pageChange)="onUserPage($event)"
+        (sortChange)="onUserSort($event)"
+        (refresh)="onUserRefresh()"
+      />
+    </div>
+  </mat-tab>
+</mat-tab-group>

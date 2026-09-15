@@ -1,0 +1,286 @@
+<div class="sale-status">
+  <div class="page-head">
+    <h2 class="page-title">{{ 'dashboard.sell' | translate }}</h2>
+    <span class="conn-indicator" [class.online]="ws.connected()">
+      <span class="conn-dot"></span>
+      {{ (ws.connected() ? 'sale.live' : 'sale.offline') | translate }}
+    </span>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-container">
+      <div class="spinner"></div>
+    </div>
+  } @else if (errorMsg()) {
+    <div class="error-card glass-card">
+      <p>{{ errorMsg() }}</p>
+    </div>
+
+    <!--
+      Stopping early. Shown only while the backend says it is actually possible,
+      so a payment in play disables it rather than letting the tap fail.
+    -->
+    @if (canCancel()) {
+      <div class="stop-card glass-card">
+        <p class="stop-hint">{{ 'sale.stop_hint' | translate }}</p>
+
+        <button
+          type="button"
+          class="stop-btn"
+          [class.armed]="cancelArmed()"
+          [disabled]="cancelling()"
+          [appTrackTap]="PixelTapEvent.STOP_SALE"
+          (click)="onCancel()"
+        >
+          @if (cancelling()) {
+            {{ 'sale.stopping' | translate }}
+          } @else if (cancelArmed()) {
+            {{ 'sale.stop_confirm' | translate }}
+          } @else {
+            {{ 'sale.stop' | translate }}
+          }
+        </button>
+
+        @if (cancelError()) {
+          <p class="stop-error">{{ cancelError() }}</p>
+        }
+      </div>
+    }
+
+    @if (refunded(); as amount) {
+      <p class="stop-done">{{ 'sale.stopped' | translate: { amount: (amount | usdt) } }}</p>
+    }
+
+    <!--
+      An instruction, not a status. Nobody but the jar's owner can close it, and
+      until they do their next sale is blocked and a stake they stopped
+      early stays frozen — so the screen has to say what is being waited on and
+      why, or the user is left staring at a page that appears to have stalled.
+    -->
+    @if (awaitingJarClosure()) {
+      <div class="jar-closure-card glass-card">
+        <h4>{{ 'sale.close_jar_title' | translate }}</h4>
+        <p>{{ 'sale.close_jar_desc' | translate }}</p>
+      </div>
+    }
+
+    <button class="primary-btn" (click)="goToDashboard()">
+      {{ 'dashboard.title' | translate }}
+    </button>
+  } @else {
+    <!-- Public ID -->
+    <div class="public-id-card glass-card" (click)="copyPublicId()">
+      <span class="public-id-label">{{ 'sale.public_id' | translate }}</span>
+      <span class="public-id-value">{{ publicId() }}</span>
+      @if (copied()) {
+        <span class="public-id-copied">{{ 'sale.public_id_copied' | translate }}</span>
+      } @else {
+        <span class="public-id-hint">{{ 'deposit.copy' | translate }}</span>
+      }
+    </div>
+
+    @if (order(); as o) {
+      <div class="status-card glass-card">
+        <div class="status-header">
+          <span class="status-badge" [class]="'badge-' + currentStatus().toLowerCase()">
+            {{ 'status.' + currentStatus().toLowerCase() | translate }}
+          </span>
+          <span class="amount">{{ o.fiatAmount | uah: true }} {{ 'common.uah' | translate }}</span>
+        </div>
+
+        <div class="details-grid">
+          <!--
+            The rate this sale was priced at, not today's. Every figure on this
+            screen was worked out from it and the market has moved since, so the
+            live rate would describe a different sale.
+
+            One row, because there is one rate. It used to be stated twice — as
+            "sell rate" here and as "rate" further down — from a time when the
+            order carried a market rate and a markup and the two were different
+            numbers. They are the same number now, and two labels for it read as
+            two prices.
+          -->
+          <div class="detail-item">
+            <span class="detail-label">{{ 'common.exchange_rate' | translate }}</span>
+            <span class="detail-value">
+              1 {{ 'common.usdt' | translate }} = {{ sellRateKopecks() | uah }}
+              {{ 'common.uah' | translate }}
+            </span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">{{ 'sale.bank' | translate }}</span>
+            <span class="detail-value flex-align">
+              <img
+                [src]="'banks/' + o.bankType.toLowerCase() + '.png'"
+                class="bank-icon-sm"
+                [alt]="'sale.bank_' + o.bankType.toLowerCase() | translate"
+              />
+              <span>{{ 'sale.bank_' + o.bankType.toLowerCase() | translate }}</span>
+            </span>
+          </div>
+
+          <div class="detail-item">
+            <span class="detail-label">{{ 'sale.staked' | translate }}</span>
+            <span class="detail-value">
+              {{ o.frozenUsdt | usdt }} {{ 'common.usdt' | translate }}
+            </span>
+          </div>
+
+          <!--
+            The tail a completed order gave back to the balance. Only when
+            there is one: an order that filled its jar, or waited for a
+            top-up, returns nothing, and "0,00" beside the stake would read as
+            something having gone wrong.
+          -->
+          @if (returnedUsdt(); as returned) {
+            <div class="detail-item">
+              <span class="detail-label">{{ 'sale.returned' | translate }}</span>
+              <span class="detail-value">
+                {{ returned | usdt }} {{ 'common.usdt' | translate }}
+              </span>
+            </div>
+          }
+        </div>
+
+        <!--
+          Which way this order ends when the last stretch is too small for any
+          payment to cover. Here rather than only under the progress bar: this
+          card renders from the order itself and so is on screen from the first
+          paint, while the progress card waits for a snapshot.
+        -->
+        <p class="remainder-note">
+          <span class="remainder-note-label">{{ 'sale.remainder_mode' | translate }}:</span>
+          {{
+            (refundsRemainder() ? 'sale.remainder_mode_refund' : 'sale.remainder_mode_wait')
+              | translate
+          }}
+        </p>
+      </div>
+    }
+
+    @if (progress()) {
+      <!-- Live progress -->
+      <div class="progress-card glass-card">
+        <div class="progress-head">
+          <span class="detail-label">{{ 'sale.progress' | translate }}</span>
+          <span class="progress-percent">{{ progressPercentLabel() }}%</span>
+        </div>
+
+        <!--
+          Two stretches, one track. The solid one is money that arrived; the
+          translucent one is money asked for and still on its way, so a jar with
+          three payers mid-transfer reads as busy rather than stalled.
+        -->
+        <div class="progress-track">
+          <div class="progress-fill" [style.width.%]="progressPercent()"></div>
+          @if (pendingPercent() > 0) {
+            <div class="progress-pending" [style.width.%]="pendingPercent()"></div>
+          }
+        </div>
+
+        <!-- The jar balance against the target, which is the only pair of
+             numbers this card needs — it already says what a separate balance
+             row used to repeat. -->
+        <p class="progress-caption">{{ 'sale.received_of' | translate: receivedOfParams() }}</p>
+
+      </div>
+    }
+
+    <!-- Step tracker -->
+    <div class="timeline glass-card">
+      <div
+        class="timeline-step"
+        [class.active]="step() >= SaleStep.Created"
+        [class.completed]="step() > SaleStep.Created"
+      >
+        <div class="step-icon">1</div>
+        <div class="step-content">
+          <h4>{{ 'status.created' | translate }}</h4>
+          <p>{{ 'status.created_desc' | translate }}</p>
+        </div>
+      </div>
+
+      <div
+        class="timeline-step"
+        [class.active]="step() >= SaleStep.TerminalReady"
+        [class.completed]="step() > SaleStep.TerminalReady"
+      >
+        <div class="step-icon">2</div>
+        <div class="step-content">
+          <h4>{{ 'status.' + middleStepKey() | translate }}</h4>
+          <p>{{ 'status.' + middleStepKey() + '_desc' | translate }}</p>
+        </div>
+      </div>
+
+      <div
+        class="timeline-step"
+        [class.active]="step() >= SaleStep.Completed"
+        [class.completed]="step() > SaleStep.Completed"
+      >
+        <div class="step-icon">3</div>
+        <div class="step-content">
+          <h4>{{ 'status.completed' | translate }}</h4>
+          <p>{{ 'status.completed_desc' | translate }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live event feed -->
+    <div class="feed-card glass-card">
+      <h3 class="section-title">{{ 'sale.timeline' | translate }}</h3>
+      @for (entry of timeline(); track entry.trackId) {
+        <div class="feed-row">
+          <span class="feed-text">{{ entry.key | translate: entry.params }}</span>
+          <span class="feed-time">{{ entry.at | dateTime }}</span>
+        </div>
+      } @empty {
+        <p class="feed-empty">{{ 'sale.timeline_empty' | translate }}</p>
+      }
+    </div>
+
+    @if (hasFailed()) {
+      <div class="error-card glass-card">
+        <p>{{ 'status.failed_desc' | translate }}</p>
+      </div>
+    }
+
+    <!--
+      Stopping early. Shown only while the backend says it is actually possible,
+      so a payment in play disables it rather than letting the tap fail.
+    -->
+    @if (canCancel()) {
+      <div class="stop-card glass-card">
+        <p class="stop-hint">{{ 'sale.stop_hint' | translate }}</p>
+
+        <button
+          type="button"
+          class="stop-btn"
+          [class.armed]="cancelArmed()"
+          [disabled]="cancelling()"
+          [appTrackTap]="PixelTapEvent.STOP_SALE"
+          (click)="onCancel()"
+        >
+          @if (cancelling()) {
+            {{ 'sale.stopping' | translate }}
+          } @else if (cancelArmed()) {
+            {{ 'sale.stop_confirm' | translate }}
+          } @else {
+            {{ 'sale.stop' | translate }}
+          }
+        </button>
+
+        @if (cancelError()) {
+          <p class="stop-error">{{ cancelError() }}</p>
+        }
+      </div>
+    }
+
+    @if (refunded(); as amount) {
+      <p class="stop-done">{{ 'sale.stopped' | translate: { amount: (amount | usdt) } }}</p>
+    }
+
+    <button class="primary-btn" (click)="goToDashboard()">
+      {{ 'dashboard.title' | translate }}
+    </button>
+  }
+</div>

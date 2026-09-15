@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Open Funds</title>
+  <base href="/">
+  <!--
+    The scale is pinned shut. Users reported the page zooming itself while they
+    flicked between apps in the task switcher: the WebView picks up stray
+    multi-touch during the transition and treats it as a pinch, and the new
+    scale then sticks because nothing puts it back.
+
+    `user-scalable=no` alone is not enough — WebKit has ignored it since iOS 10 —
+    so this is the declarative half of three; see `styles.scss` and
+    `ZoomLockService` for the other two.
+  -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!--
+    Linked here rather than `@import`-ed from `styles.scss`.
+
+    A plain-CSS `@import` is only honoured when it precedes every other rule in
+    the sheet, and the stylesheet now opens with the design tokens — so the
+    import would be dropped and the app would silently fall back to the system
+    font. A <link> also fetches in parallel with the stylesheet instead of after
+    it, which is one less round trip before first paint.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!--
+    The launch screen, and the reason it is written out here in full rather than
+    built as a component: nothing renders until `tmaGuard` has the server's
+    verdict on the launch, and that is a round trip *after* the bundle has been
+    fetched and parsed. Every one of those seconds was a black rectangle.
+
+    Inline, in the document, for the same reason. The production build emits the
+    stylesheet as `<link media="print" onload="this.media='all'">` so it does not
+    block the first paint — so a splash styled from `styles.scss` would be
+    unstyled during precisely the window it exists to cover. The two colours
+    below are the palette's `--c-bg` and `--c-text`, and they are the only place
+    in the app allowed to repeat a token's value; `styles/_tokens.scss` is the
+    other half of the pair.
+
+    `AppComponent` removes it when the router settles — on a cancelled or failed
+    navigation too, so a splash can never be what a user is left looking at.
+  -->
+  <style>
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: #0e0e0f;
+      transition: opacity 0.25s ease;
+    }
+
+    #splash.is-leaving {
+      opacity: 0;
+    }
+
+    #splash img {
+      width: 84px;
+      height: 84px;
+    }
+
+    #splash span {
+      color: #fff9f1;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #splash {
+        transition: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <app-root></app-root>
+
+  <div id="splash">
+    <img src="logo.png" alt="">
+    <span>Open Funds</span>
+  </div>
+</body>
+</html>

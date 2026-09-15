@@ -1,0 +1,69 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.block {
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.block-label {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.headline {
+  margin: 0 0 14px;
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-success);
+}
+
+/*
+  A sale below what its USDT cost. The spread is built to prevent it, but a page
+  that could only render a gain would be lying by construction.
+*/
+.headline.negative {
+  color: var(--c-danger);
+}
+
+.figures {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.figure {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.figure dt {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.figure dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  The second block carries no headline, and that absence is the design: there is
+  no profit figure here because there is no purchase price to subtract.
+*/
+.own .note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+

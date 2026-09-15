@@ -1,0 +1,151 @@
+import type {
+  FiatDepositWatchMode,
+  TmaDepositStatus,
+  TmaFiatDepositStatus,
+  TmaSaleStatus
+} from '@transacto/contracts'
+
+/**
+ * Internal EventEmitter2 channels announcing that something on a Mini App
+ * user's account moved.
+ *
+ * Emitted by `TmaGateway` alongside each socket push. Deliberately *neutral*
+ * names rather than `admin.*`: the gateway must not know an admin panel exists,
+ * or the dependency would point from the Mini App module at a consumer of it —
+ * the exact direction the module boundaries forbid. A listener subscribes;
+ * nobody publishes to a listener.
+ *
+ * They carry the ids rather than the mapped rows. A consumer that needs a whole
+ * row re-reads it, which costs one indexed lookup and guarantees it sees the
+ * state as stored rather than as the emitter happened to have it in hand.
+ *
+ * The trader-side equivalent is the `ws.emit` channel and {@link TraderWsEvent};
+ * the two are separate because a trader room and a Telegram user room never
+ * carry each other's payloads.
+ */
+export const TMA_DOMAIN_EVENT = {
+  BALANCE_UPDATED: 'tma.balance_updated',
+  REFERRAL_BALANCE_UPDATED: 'tma.referral_balance_updated',
+  DEPOSIT_STATUS_CHANGED: 'tma.deposit_status_changed',
+  SALE_STATUS_CHANGED: 'tma.sale_status_changed',
+  SALE_PROGRESS: 'tma.sale_progress',
+  FIAT_DEPOSIT_STATUS_CHANGED: 'tma.fiat_deposit_status_changed',
+  /**
+   * A hryvnia top-up has been holding a Transacto payout too long and cannot
+   * free itself.
+   *
+   * Only ever the one case that has no automatic ending: a top-up under review
+   * with money already paid into its payout. An empty one is given back on its
+   * own after ninety minutes; this one must not be, because handing back a
+   * payout somebody has transferred to gives a stranger their money.
+   *
+   * Neutral, like its siblings: the reconciler must not know that a Telegram
+   * group exists, or the dependency would point from the Mini App module at a
+   * consumer of it.
+   */
+  FIAT_DEPOSIT_STUCK: 'tma.fiat_deposit_stuck',
+  /**
+   * A sum this user asked to hear about has just reached Transacto's book.
+   *
+   * Neutral for the usual reason and for one more: the announcement pass runs
+   * inside the twenty-second book refresh, and that refresh must not be able to
+   * fail because Telegram is slow. A listener that throws takes nothing with
+   * it; a call would take the offer every other user is reading.
+   *
+   * Carries what the message says rather than an id to re-read, like
+   * {@link FIAT_DEPOSIT_STUCK} and for the same reason: the consumer writes a
+   * sentence, and a consumer that had to go back to the database would go quiet
+   * exactly when the database is the unwell thing.
+   */
+  FIAT_DEPOSIT_AMOUNTS_AVAILABLE: 'tma.fiat_deposit_amounts_available'
+} as const
+
+/** Payload of {@link TMA_DOMAIN_EVENT.BALANCE_UPDATED} and its referral twin. */
+export interface TmaBalanceChangedEvent {
+  readonly telegramId: number
+}
+
+/**
+ * Payload of {@link TMA_DOMAIN_EVENT.FIAT_DEPOSIT_STATUS_CHANGED}.
+ *
+ * Carries `coveredUah` because a fiat top-up moves without changing status:
+ * a receipt accepted against a ₴20 000 payout leaves it PARTIALLY_PAID and
+ * still advances it, and a panel watching only `status` would show a stalled
+ * row while somebody's transfers were landing one after another.
+ */
+export interface TmaFiatDepositChangedEvent {
+  readonly telegramId: number
+  readonly depositId: string
+  readonly status: TmaFiatDepositStatus
+  /** UAH kopecks accepted so far. */
+  readonly coveredUah: number
+}
+
+/** Payload of {@link TMA_DOMAIN_EVENT.DEPOSIT_STATUS_CHANGED}. */
+export interface TmaDepositChangedEvent {
+  readonly telegramId: number
+  readonly depositId: string
+  readonly status: TmaDepositStatus
+}
+
+/**
+ * Payload of {@link TMA_DOMAIN_EVENT.SALE_STATUS_CHANGED} and of
+ * {@link TMA_DOMAIN_EVENT.SALE_PROGRESS}.
+ *
+ * One shape for both because a consumer re-reads the order either way — the
+ * difference between "the status moved" and "the progress moved" is which push
+ * the Mini App received, not which row an observer has to look at.
+ */
+export interface TmaSaleChangedEvent {
+  readonly telegramId: number
+  readonly saleId: string
+  readonly status?: TmaSaleStatus
+}
+
+/**
+ * Payload of {@link TMA_DOMAIN_EVENT.FIAT_DEPOSIT_STUCK}.
+ *
+ * Carries the figures rather than only the id, unlike its siblings: the
+ * consumer writes a sentence a person reads on a phone at two in the morning,
+ * and a listener that had to re-read the row would be a listener that says
+ * nothing when the database is the thing that is unwell.
+ *
+ * Nothing here is a credential. The recipient card and the receipt links stay
+ * on the record.
+ */
+export interface TmaFiatDepositStuckEvent {
+  readonly depositId: string
+  readonly payoutId: number
+  readonly telegramId: number
+  /** UAH kopecks the top-up was for. */
+  readonly amountUah: number
+  /** UAH kopecks Transacto reports as paid into the payout. Always above zero. */
+  readonly coveredUah: number
+  /** How long the payout has been ours, in whole minutes. */
+  readonly heldForMinutes: number
+}
+
+/**
+ * Payload of {@link TMA_DOMAIN_EVENT.FIAT_DEPOSIT_AMOUNTS_AVAILABLE}.
+ *
+ * **The consumer settles the request, not the emitter.** `watchId` is here so
+ * that whoever sends the message can delete a {@link FiatDepositWatchMode.ONCE}
+ * request or stamp an `ALWAYS` one *after* Telegram has accepted it — recording
+ * a notification the emitter merely attempted would retire a request nobody was
+ * ever told about, which is the one outcome this feature must not produce.
+ *
+ * `amountsUah` are the amounts that actually fell inside the range on this
+ * tick, cheapest first — never the whole book, and never a single one, because
+ * two payouts can appear between two refreshes and the user picking between
+ * them is the point.
+ */
+export interface TmaFiatDepositAmountsAvailableEvent {
+  readonly watchId: string
+  readonly telegramId: number
+  /** UAH kopecks, cheapest first. Never empty. */
+  readonly amountsUah: readonly number[]
+  /** The range as the user wrote it, so the message can quote it back. */
+  readonly minAmountUah: number
+  readonly maxAmountUah: number
+  readonly mode: FiatDepositWatchMode
+}

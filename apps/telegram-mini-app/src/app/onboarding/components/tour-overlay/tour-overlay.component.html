@@ -1,0 +1,81 @@
+@if (tour.active()) {
+  <div #overlay class="overlay">
+    <!--
+      The safe viewport, measured rather than parsed. `--app-safe-top` is a
+      `calc()` in `styles.scss` whenever the JS API reports nothing, and
+      `getComputedStyle` hands that calc back as a string — so the insets are
+      applied here in CSS and read back with one `getBoundingClientRect()`.
+      Everything below is positioned relative to this box.
+    -->
+    <div #frame class="frame">
+      @if (placement().highlight; as box) {
+        <!--
+          The cut-out. Its shadow IS the scrim: one element, no SVG mask, and
+          the anchor stays visible but not tappable — the overlay root owns
+          every tap, so no step can navigate the user away mid-tour.
+        -->
+        <div
+          class="highlight"
+          aria-hidden="true"
+          [style.--tour-pad]="HIGHLIGHT_PAD_PX + 'px'"
+          [style.top.px]="box.top"
+          [style.left.px]="box.left"
+          [style.width.px]="box.width"
+          [style.height.px]="box.height"
+        ></div>
+      } @else {
+        <div class="scrim" aria-hidden="true"></div>
+      }
+
+      <!--
+        Tapping the scrim does nothing on purpose: a tour dismissed by a stray
+        touch is a tour nobody finishes. Skip is in the header, away from the
+        primary button, and Back is hidden on the first step rather than greyed.
+      -->
+      <section
+        #card
+        class="card"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+        [attr.aria-labelledby]="TITLE_ID"
+        [class.card-center]="placement().side === TourCardSide.CENTER"
+        [class.card-sheet]="placement().side === TourCardSide.SHEET"
+        [style.top.px]="placement().top"
+        [style.bottom.px]="placement().bottom"
+      >
+        <header class="card-header">
+          <span class="card-progress">
+            {{ 'tour.progress' | translate: { current: tour.stepNumber(), total: tour.total } }}
+          </span>
+          <button type="button" class="link-btn card-skip" (click)="onSkip()">
+            {{ 'tour.skip' | translate }}
+          </button>
+        </header>
+
+        <!--
+          The brand reaches the screen through the mark, never through a
+          dictionary: `i18n.spec.ts` keeps the operator's name out of the three
+          files, and the product's own mark is a component, not a string.
+        -->
+        @if (!tour.step().anchored) {
+          <div class="card-brand"><app-logo [size]="40" /></div>
+        }
+
+        <h2 class="card-title" [id]="TITLE_ID">{{ tour.step().titleKey | translate }}</h2>
+        <p class="card-text">{{ tour.step().textKey | translate }}</p>
+
+        <footer class="card-actions" [class.card-actions-pair]="!tour.isFirst()">
+          @if (!tour.isFirst()) {
+            <button type="button" class="ghost-btn" (click)="onBack()">
+              {{ 'common.back' | translate }}
+            </button>
+          }
+          <button type="button" class="primary-btn" (click)="onNext()">
+            {{ (tour.isLast() ? 'tour.done' : 'tour.next') | translate }}
+          </button>
+        </footer>
+      </section>
+    </div>
+  </div>
+}

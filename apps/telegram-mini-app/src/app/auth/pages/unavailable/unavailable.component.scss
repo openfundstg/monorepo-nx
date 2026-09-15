@@ -1,0 +1,49 @@
+/*
+ * Self-contained on purpose. This screen is reachable without a session, so it
+ * must not depend on anything the rest of the app sets up — and it must not
+ * look like the product, because looking like the product is the thing being
+ * hidden.
+ */
+.gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 100vh;
+  padding: 24px;
+  text-align: center;
+}
+
+/*
+  Held back from full strength: this is the screen's ornament, not its message,
+  and at full cream it outweighs the sentence underneath it.
+*/
+.gate__mark {
+  opacity: 0.85;
+}
+
+.gate__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.gate__text {
+  margin: 0;
+  max-width: 280px;
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+
+.gate__link {
+  margin-top: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}

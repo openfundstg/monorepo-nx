@@ -1,0 +1,249 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+/* The title, and the way to the rules that do not fit beside it. */
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.page-title {
+  margin-bottom: 0;
+}
+
+.rules-btn {
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/*
+  Which banks are accepted, in red at the top of the screen.
+
+  The only rule here that decides whether a transfer is accepted at all rather
+  than how it goes — a payment from any other bank is refused however carefully
+  the rest was followed — so it is stated before an amount is picked, not in the
+  sheet that lists the other eight.
+*/
+.bank-rule {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-md);
+  background: var(--c-danger-soft);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.page-lead,
+.rate {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.rate strong {
+  color: var(--text-primary);
+}
+
+.amounts {
+  display: grid;
+  gap: 10px;
+}
+
+.amount-card {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--t-fast);
+}
+
+.amount-card:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.amount-uah {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.amount-usdt {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+
+
+/*
+  The automatic re-read, made visible.
+
+  Deliberately quiet — muted text and a hairline — because it reports something
+  the user did not ask for and must not compete with the sums underneath it.
+*/
+.refresh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.refresh-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.refresh-track {
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  overflow: hidden;
+}
+
+.refresh-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: refresh-fill linear forwards;
+}
+
+/* Full, and waiting on the answer rather than on the clock. */
+.refresh-fill.busy {
+  animation: none;
+  transform: none;
+  opacity: 0.5;
+}
+
+@keyframes refresh-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/*
+  The fill is progress, not decoration, so it keeps running here — what goes is
+  the only part that was motion for its own sake.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .refresh-fill.busy {
+    opacity: 0.7;
+  }
+}
+
+/*
+  The apology, and it has to look unlike the empty list it replaced. An empty
+  list said "come back in a minute" in the app's ordinary muted grey; this says
+  something went wrong at our end, which is a different sentence and has to read
+  as one.
+*/
+.our-fault {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 18px 16px;
+  border-color: var(--c-danger);
+  text-align: center;
+}
+
+.our-fault-icon {
+  font-size: 22px;
+}
+
+.our-fault-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/*
+  The one thing on this screen that promises rather than takes. Accent-framed
+  because on the nights it matters most — an empty book, an unreachable panel —
+  it is the only control on the page, and a muted card in that position reads as
+  a footnote.
+*/
+.watch {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.watch.prompt {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.watch-icon {
+  font-size: 20px;
+}
+
+.watch-text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.watch-hint,
+.watch-mode {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.watch-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.watch-actions .link-btn {
+  margin-left: 0;
+  color: var(--accent-text);
+}
+
+.watch-actions .link-btn.danger {
+  color: var(--c-danger);
+}
+
+.watch-actions .link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

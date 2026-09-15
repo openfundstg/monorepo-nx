@@ -1,0 +1,27 @@
+<app-page-header
+  title="fiat_deposit_watches.title"
+  subtitle="fiat_deposit_watches.subtitle"
+>
+  <app-search-field
+    [value]="state().search"
+    placeholder="fiat_deposit_watches.search_placeholder"
+    (search)="onSearch($event)"
+  />
+</app-page-header>
+
+<app-collection-table
+  [columns]="columns"
+  [rows]="state().items"
+  [total]="state().total"
+  [page]="state().page"
+  [limit]="state().limit"
+  [loading]="state().loading"
+  [error]="state().error"
+  [sort]="state().sort"
+  [direction]="state().direction"
+  [pendingCount]="state().pendingCount"
+  emptyMessage="fiat_deposit_watches.empty"
+  (pageChange)="onPage($event)"
+  (sortChange)="onSort($event)"
+  (refresh)="onRefresh()"
+/>

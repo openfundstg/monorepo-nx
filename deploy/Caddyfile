@@ -1,0 +1,80 @@
+# The production edge for openfunds.top.
+#
+# Copy to /etc/caddy/Caddyfile on the host, then:
+#
+#   caddy fmt --overwrite /etc/caddy/Caddyfile
+#   caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Kept in the repository because it is the only piece of routing that decides
+# which of three containers answers a request, and it used to exist nowhere but
+# on the server — so a change to it left no trace and could not be reviewed.
+#
+# Everything here is `handle`, deliberately. `handle` blocks are mutually
+# exclusive and evaluated **in the order written**, whereas bare directives are
+# sorted by Caddy's own fixed precedence — which is how a `respond` for
+# /robots.txt ends up running after the catch-all `reverse_proxy` and never
+# firing at all.
+
+openfunds.top {
+	encode gzip zstd
+
+	# ------------------------------------------------------------------
+	# Keep the whole site out of search results.
+	#
+	# Both halves are needed and they do different jobs. `robots.txt` asks a
+	# crawler not to *fetch*; `X-Robots-Tag` tells it not to *index* what it
+	# fetched anyway — which is what happens when somebody links to a page,
+	# because a disallowed URL can still be indexed from the link alone.
+	#
+	# The header is set outside the handlers so it rides on every response,
+	# including the ones proxied from the three containers.
+	# ------------------------------------------------------------------
+	header X-Robots-Tag "noindex, nofollow, noarchive, nosnippet, noimageindex"
+
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond "User-agent: *
+Disallow: /
+" 200
+	}
+
+	# ------------------------------------------------------------------
+	# 1. API and WebSockets.
+	#
+	# First, so nothing below can shadow them. The Mini App and the admin
+	# panel both call `/api/*` on this origin, and the admin session cookie
+	# only works because they do — see the CORS note in apps/api/src/main.ts.
+	# ------------------------------------------------------------------
+	handle /api/* {
+		reverse_proxy localhost:8000
+	}
+
+	handle /socket.io* {
+		reverse_proxy localhost:8000
+	}
+
+	# ------------------------------------------------------------------
+	# 2. Admin dashboard.
+	#
+	# `/admin` **and** `/admin/*`. This was `/admin/*` alone, which does not
+	# match a bare `/admin` — so typing the address without a trailing slash
+	# fell through to the catch-all below and served the Mini App instead.
+	# The admin container answers `/admin` with a 308 to `/admin/`, but only
+	# if the request reaches it.
+	#
+	# The prefix is passed through unstripped: the container's own Caddyfile
+	# strips it, and its `baseHref` is `/admin/`.
+	# ------------------------------------------------------------------
+	@admin path /admin /admin/*
+	handle @admin {
+		reverse_proxy localhost:8090
+	}
+
+	# ------------------------------------------------------------------
+	# 3. Everything else — the Telegram Mini App.
+	# ------------------------------------------------------------------
+	handle {
+		reverse_proxy localhost:8080
+	}
+}

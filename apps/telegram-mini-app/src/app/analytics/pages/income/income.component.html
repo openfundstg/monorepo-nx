@@ -1,0 +1,76 @@
+<h2 class="page-title">{{ 'income.title' | translate }}</h2>
+
+@if (loading()) {
+  <div class="spinner"></div>
+} @else if (errorMsg(); as message) {
+  <p class="error-msg">
+    {{ message }}
+    <button class="link-btn" (click)="load()">{{ 'common.retry' | translate }}</button>
+  </p>
+} @else if (income(); as data) {
+  <!--
+    Nobody who has never sold has a figure to read, and a page of zeroes would
+    read as a verdict on them rather than as an empty history.
+  -->
+  @if (data.fromFiat.soldUsdtCents === 0 && data.fromOwnUsdt.soldUsdtCents === 0) {
+    <p class="empty">{{ 'income.empty' | translate }}</p>
+  }
+
+  <!--
+    The headline, and it covers only the sales whose cost we watched the user
+    pay. Both ends of this number are payments; nothing in it is estimated.
+  -->
+  @if (data.fromFiat.soldUsdtCents > 0) {
+    <section class="block glass-card">
+      <p class="block-label">{{ 'income.profit_label' | translate }}</p>
+      <p class="headline" [class.negative]="data.fromFiat.profitUah < 0">
+        {{ data.fromFiat.profitUah > 0 ? '+' : '' }}{{ data.fromFiat.profitUah | uah }}
+        {{ 'common.uah' | translate }}
+      </p>
+
+      <dl class="figures">
+        <div class="figure">
+          <dt>{{ 'income.sold' | translate }}</dt>
+          <dd>{{ data.fromFiat.soldUsdtCents | usdt }} USDT</dd>
+        </div>
+        <div class="figure">
+          <dt>{{ 'income.spent' | translate }}</dt>
+          <dd>{{ data.fromFiat.spentUah | uah }} {{ 'common.uah' | translate }}</dd>
+        </div>
+        <div class="figure">
+          <dt>{{ 'income.received' | translate }}</dt>
+          <dd>{{ data.fromFiat.receivedUah | uah }} {{ 'common.uah' | translate }}</dd>
+        </div>
+      </dl>
+    </section>
+  }
+
+  <!--
+    The second block, and it deliberately states no profit. What this USDT cost
+    was settled on an exchange we cannot see, so the honest thing to hand the
+    user is what it fetched — and the rate, which is the number they can compare
+    against whatever they actually paid.
+  -->
+  @if (data.fromOwnUsdt.soldUsdtCents > 0) {
+    <section class="block glass-card own">
+      <p class="block-label">{{ 'income.own_label' | translate }}</p>
+
+      <dl class="figures">
+        <div class="figure">
+          <dt>{{ 'income.sold' | translate }}</dt>
+          <dd>{{ data.fromOwnUsdt.soldUsdtCents | usdt }} USDT</dd>
+        </div>
+        <div class="figure">
+          <dt>{{ 'income.received' | translate }}</dt>
+          <dd>{{ data.fromOwnUsdt.receivedUah | uah }} {{ 'common.uah' | translate }}</dd>
+        </div>
+        <div class="figure">
+          <dt>{{ 'income.avg_rate' | translate }}</dt>
+          <dd>{{ data.fromOwnUsdt.averageSellRate | uah }} {{ 'common.uah' | translate }}</dd>
+        </div>
+      </dl>
+
+      <p class="note">{{ 'income.own_note' | translate }}</p>
+    </section>
+  }
+}

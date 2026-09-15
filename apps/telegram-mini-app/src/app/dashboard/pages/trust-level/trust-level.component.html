@@ -1,0 +1,65 @@
+<div class="trust-page">
+  <h1 class="page-title">{{ 'trust_page.title' | translate }}</h1>
+  <p class="page-intro">{{ 'trust_page.intro' | translate }}</p>
+
+  @if (loading()) {
+    <div class="loading-container"><div class="spinner"></div></div>
+  } @else {
+    <div class="summary glass-card">
+      <span class="summary-label">{{ 'dashboard.turnover' | translate }}</span>
+      <span class="summary-value">
+        {{ turnover() | uah: true }} {{ 'common.uah' | translate }}
+      </span>
+      @if (nextRung(); as next) {
+        <span class="summary-hint">
+          {{
+            'trust_page.remaining'
+              | translate
+                : {
+                    amount: (remaining() | uah: true),
+                    level: 'trust.' + next.level | translate
+                  }
+          }}
+        </span>
+      } @else {
+        <span class="summary-hint">{{ 'trust_page.at_top' | translate }}</span>
+      }
+    </div>
+
+    @for (row of rows(); track row.rung.level) {
+      <div
+        class="level-card glass-card"
+        [class.current]="row.isCurrent"
+        [class.reached]="row.isReached"
+      >
+        <div class="level-header">
+          <span class="level-name" [class]="'badge-' + row.rung.level.toLowerCase()">
+            {{ 'trust.' + row.rung.level | translate }}
+          </span>
+          @if (row.isCurrent) {
+            <span class="level-you">{{ 'trust_page.you_are_here' | translate }}</span>
+          }
+        </div>
+
+        <dl class="level-facts">
+          <div class="fact">
+            <dt>{{ 'trust_page.requires' | translate }}</dt>
+            <dd>
+              @if (row.rung.minTurnover > 0) {
+                {{ row.rung.minTurnover | uah: true }} {{ 'common.uah' | translate }}
+              } @else {
+                {{ 'trust_page.no_requirement' | translate }}
+              }
+            </dd>
+          </div>
+          <div class="fact">
+            <dt>{{ 'trust_page.parallel_orders' | translate }}</dt>
+            <dd>{{ row.rung.maxParallelOrders }}</dd>
+          </div>
+        </dl>
+      </div>
+    } @empty {
+      <p class="empty">{{ 'trust_page.unavailable' | translate }}</p>
+    }
+  }
+</div>

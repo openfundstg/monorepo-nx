@@ -1,0 +1,143 @@
+<div class="table-card card">
+  @if (pendingCount() > 0) {
+    <!--
+      Rows arrived over the socket that do not belong to what is on screen —
+      another page, or excluded by the current filter. Offered as a refresh
+      rather than inserted, because where they would go is a question only the
+      server can answer. See `CollectionState.pendingCount`.
+    -->
+    <button type="button" class="pending" (click)="refresh.emit()">
+      <mat-icon>refresh</mat-icon>
+      {{ 'common.pending_rows' | translate: { count: pendingCount() } }}
+    </button>
+  }
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <div class="scroll-x">
+    <table mat-table [dataSource]="rows()" [trackBy]="trackRow">
+      @for (column of columns(); track column.key) {
+        <ng-container [matColumnDef]="column.key">
+          <th
+            mat-header-cell
+            *matHeaderCellDef
+            [style.width]="column.width"
+            [class.sortable]="column.sortable"
+            (click)="onSort(column)"
+          >
+            <span class="header">
+              {{ column.header | translate }}
+              @if (sortIcon(column); as icon) {
+                <mat-icon class="sort-icon">{{ icon }}</mat-icon>
+              }
+            </span>
+          </th>
+
+          <td
+            mat-cell
+            *matCellDef="let row"
+            [class.numeric]="
+              column.type === ColumnType.UAH ||
+              column.type === ColumnType.USDT ||
+              column.type === ColumnType.USDT_WHOLE ||
+              column.type === ColumnType.NUMBER
+            "
+          >
+            @switch (column.type) {
+              @case (ColumnType.CHIP) {
+                <app-status-chip
+                  [value]="'' + column.value(row)"
+                  [tone]="chipTone(column, row)"
+                  [translatePrefix]="column.translatePrefix ?? null"
+                />
+              }
+              @case (ColumnType.BOOL) {
+                <app-status-chip [value]="boolLabel(column, row)" [tone]="boolTone(column, row)" />
+              }
+              @case (ColumnType.MONO) {
+                <span class="mono" [matTooltip]="cell(column, row)">{{ cell(column, row) }}</span>
+              }
+              @case (ColumnType.LINK) {
+                @if (column.value(row); as href) {
+                  <!--
+                    `noopener` matters more here than usual: these are drop links
+                    a stranger supplied, and `window.opener` would hand the
+                    destination a handle on the panel.
+                  -->
+                  <a [href]="href" target="_blank" rel="noopener noreferrer" class="mono">
+                    {{ cell(column, row) }}
+                  </a>
+                } @else {
+                  <span class="muted">—</span>
+                }
+              }
+              @default {
+                {{ cell(column, row) }}
+              }
+            }
+          </td>
+        </ng-container>
+      }
+
+      @if (actions().length > 0) {
+        <ng-container [matColumnDef]="actionsColumn">
+          <th mat-header-cell *matHeaderCellDef class="actions-header"></th>
+          <td mat-cell *matCellDef="let row" class="actions-cell">
+            @if (visibleActions(row).length > 0) {
+              <button
+                mat-icon-button
+                type="button"
+                [matMenuTriggerFor]="rowMenu"
+                [attr.aria-label]="'common.row_actions' | translate"
+              >
+                <mat-icon>more_vert</mat-icon>
+              </button>
+              <mat-menu #rowMenu="matMenu">
+                @for (action of visibleActions(row); track action.id) {
+                  <button
+                    mat-menu-item
+                    type="button"
+                    [class.destructive]="action.destructive"
+                    (click)="rowAction.emit({ actionId: action.id, row })"
+                  >
+                    <mat-icon>{{ action.icon }}</mat-icon>
+                    <span>{{ action.label | translate }}</span>
+                  </button>
+                }
+              </mat-menu>
+            }
+          </td>
+        </ng-container>
+      }
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns()"></tr>
+    </table>
+  </div>
+
+  @if (!loading() && rows().length === 0) {
+    <p class="empty">
+      @if (error(); as failure) {
+        <!--
+          The code, not the message. `message` is developer-facing English from
+          the backend's `ERROR` constant and must never be shown to a person —
+          so an unmapped code shows as its key, which is what gets the copy
+          written.
+        -->
+        {{ 'errors.' + failure.code | translate }}
+      } @else {
+        {{ emptyMessage() | translate }}
+      }
+    </p>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageSize]="limit()"
+    [pageIndex]="pageIndex()"
+    [pageSizeOptions]="[25, 50, 100]"
+    (page)="onPage($event)"
+  />
+</div>

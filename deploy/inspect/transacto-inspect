@@ -1,0 +1,413 @@
+#!/usr/bin/env bash
+#
+# The only thing an inspector SSH key can run.
+#
+# Installed at /usr/local/bin/transacto-inspect and named as the forced command
+# in ~inspector/.ssh/authorized_keys, so the key cannot open a shell, cannot run
+# docker, and cannot run anything not written below. Setup: deploy/inspect/README.md.
+#
+# Three rules hold this together and none of them is optional:
+#
+#   1. Nothing here writes. Every subcommand is a read, and the Mongo and Redis
+#      credentials it uses are read-only accounts — so a mistake in this file
+#      still cannot change production.
+#   2. No argument ever reaches a shell or a query as text. The client sends
+#      each argument base64-encoded, and user data goes into mongosh through
+#      the environment, never spliced into the script it evaluates.
+#   3. Credentials never leave the box. Documents are scrubbed of the fields
+#      that carry them *here*, before anything is printed.
+set -euo pipefail
+
+readonly CONFIG_FILE=/etc/transacto-inspect.env
+readonly PROTOCOL=v1
+
+# Ceilings, not defaults. They exist because the caller is usually an agent
+# reading into a context window: an unbounded `find` on a live collection is a
+# denial of service against the person reading it.
+readonly MAX_LIMIT=200
+readonly MAX_TAIL=2000
+readonly DEFAULT_LIMIT=20
+readonly DEFAULT_TAIL=200
+
+# Every field in this repo that holds a payment credential or an auth secret.
+# `cred1..cred3` are the terminal's bank credentials, `recipientCard` and
+# `dropLink` name a card and the jar it belongs to, `receipts` are payer
+# documents, `checkUrl` is a receipt anybody with the link can read.
+readonly REDACTED_FIELDS='cred1,cred2,cred3,apiToken,recipientCard,cardNumber,card,pan,iban,recipientCode,dropLink,checkUrl,receipts,initData,password,pass,secret,token,hash,phone,taxpayerId'
+
+die() {
+  echo "transacto-inspect: $*" >&2
+  exit 2
+}
+
+usage() {
+  cat <<'USAGE'
+transacto-inspect — read-only access to production.
+
+  ps                                   containers, status and health
+  logs <service> [opts]                --since 30m  --tail 200  --grep REGEX
+  mongo collections                    every collection with its document count
+  mongo count <coll> [filter]          matching documents
+  mongo find <coll> [filter] [opts]    --limit 20  --sort JSON  --fields a,b,c
+  mongo aggregate <coll> <pipeline>    read stages only
+  mongo indexes <coll>
+  redis scan <pattern> [--count N]     never KEYS — it blocks the server
+  redis get <key>                      reads whatever type the key is
+  redis ttl <key>
+  redis dbsize
+  redis info [section]
+
+Services: api, telegram-mini-app, admin, mongodb, redis, receipt-checker
+Filters and pipelines are extended JSON: {"_id":{"$oid":"..."}} works.
+
+Everything is read-only, by the credentials it uses and not only by this list.
+Payment credentials are stripped from every document before it is printed.
+USAGE
+}
+
+# --- the wire ---------------------------------------------------------------
+#
+# Arguments arrive base64-encoded and space-separated in SSH_ORIGINAL_COMMAND,
+# which removes quoting from the problem entirely: a filter containing spaces,
+# quotes or a `$` is one opaque token until this function has decoded it into an
+# array element. Nothing is ever re-split afterwards.
+decode_arguments() {
+  local raw="${SSH_ORIGINAL_COMMAND:-}"
+  [ -n "$raw" ] || { usage; exit 0; }
+
+  local -a tokens
+  read -r -a tokens <<<"$raw"
+
+  [ "${tokens[0]:-}" = "$PROTOCOL" ] ||
+    die "unexpected protocol '${tokens[0]:-}' — the client and this script are different versions"
+
+  ARGS=()
+  local token
+  for token in "${tokens[@]:1}"; do
+    [[ "$token" =~ ^[A-Za-z0-9+/=]+$ ]] || die 'malformed argument'
+    ARGS+=("$(printf '%s' "$token" | base64 -d)")
+  done
+}
+
+require_config() {
+  [ -r "$CONFIG_FILE" ] || die "$CONFIG_FILE is missing or unreadable"
+  # shellcheck source=/dev/null
+  set -a && . "$CONFIG_FILE" && set +a
+
+  : "${TRANSACTO_DIR:?TRANSACTO_DIR is not set in $CONFIG_FILE}"
+  cd "$TRANSACTO_DIR" || die "cannot enter $TRANSACTO_DIR"
+}
+
+# A whole number within a ceiling, or a refusal. Used for every numeric option,
+# so `--limit 1e9` and `--limit ../../etc` fail here rather than downstream.
+bounded_number() {
+  local value="$1" ceiling="$2" label="$3"
+  [[ "$value" =~ ^[0-9]+$ ]] || die "$label must be a whole number"
+  [ "$value" -ge 1 ] || die "$label must be at least 1"
+  [ "$value" -le "$ceiling" ] || die "$label is capped at $ceiling"
+  printf '%s' "$value"
+}
+
+# --- logs -------------------------------------------------------------------
+
+readonly SERVICES='api telegram-mini-app admin mongodb redis receipt-checker tor'
+
+cmd_logs() {
+  local service="${1:-}"
+  [ -n "$service" ] || die "logs needs a service — one of: $SERVICES"
+  shift
+  [[ " $SERVICES " == *" $service "* ]] || die "unknown service '$service' — one of: $SERVICES"
+
+  local since='30m' tail="$DEFAULT_TAIL" pattern=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --since)
+        [[ "${2:-}" =~ ^[0-9]+[smhd]$ ]] || die '--since looks like 30m, 2h or 1d'
+        since="$2" && shift 2 ;;
+      --tail) tail="$(bounded_number "${2:-}" "$MAX_TAIL" '--tail')" && shift 2 ;;
+      --grep)
+        [ -n "${2:-}" ] || die '--grep needs a pattern'
+        pattern="$2" && shift 2 ;;
+      *) die "unknown option for logs: $1" ;;
+    esac
+  done
+
+  # **`--tail` is not passed when there is a pattern, and that is the point.**
+  #
+  # Docker applies `--tail` *before* anything downstream sees a line, so a
+  # capped read followed by a grep searches only the last N lines of the
+  # window — not the window. With a busy service that is the last few minutes,
+  # whatever `--since` said. Asking for ten hours of `FRAUD` returned nothing
+  # while a FRAUD alert sat four hours back in the log.
+  #
+  # So `--since` bounds the read and the cap moves to the output, where it
+  # belongs: the search covers the period asked for, and only the answer is
+  # trimmed. The grep runs on the server, so the volume never crosses the wire.
+  #
+  # `|| true` on both: grep exits 1 when nothing matched, and "no lines matched"
+  # is an answer, not a failure. Under `set -e` it would be one.
+  if [ -n "$pattern" ]; then
+    docker compose logs --no-color --no-log-prefix --since "$since" "$service" |
+      grep -E -- "$pattern" | tail -n "$tail" | scrub_stream || true
+  else
+    docker compose logs --no-color --no-log-prefix --since "$since" --tail "$tail" "$service" |
+      scrub_stream || true
+  fi
+}
+
+# Card numbers in a log line, grouped or not.
+#
+# Nothing should ever log one — `bank-api.interface.ts` and the panel's rules
+# both say so — but this is the path that carries a log line off the server to
+# somebody's screen, and "should" is not a control.
+scrub_stream() {
+  sed -E \
+    -e 's/([0-9]{4}[ -]){3}[0-9]{4}/[redacted-card]/g' \
+    -e 's/[0-9]{16,19}/[redacted-card]/g'
+}
+
+# --- mongo ------------------------------------------------------------------
+
+# The one place a Mongo query is built, and it never builds one from text.
+#
+# `--eval` receives a script written here, in full, with no interpolation of
+# anything the caller sent. What the caller sent arrives as environment
+# variables that the script reads with `process.env` and parses as EJSON —
+# data, at every step, and never syntax.
+run_mongo() {
+  local operation="$1" collection="$2" payload="$3" limit="$4" sort="$5" fields="$6"
+
+  : "${MONGO_DB_NAME:?MONGO_DB_NAME is not set in $CONFIG_FILE}"
+  : "${MONGO_INSPECT_USER:?MONGO_INSPECT_USER is not set in $CONFIG_FILE}"
+  : "${MONGO_INSPECT_PASS:?MONGO_INSPECT_PASS is not set in $CONFIG_FILE}"
+
+  docker compose exec -T \
+    -e "Q_OP=$operation" \
+    -e "Q_COLL=$collection" \
+    -e "Q_PAYLOAD=$payload" \
+    -e "Q_LIMIT=$limit" \
+    -e "Q_SORT=$sort" \
+    -e "Q_FIELDS=$fields" \
+    -e "Q_REDACT=$REDACTED_FIELDS" \
+    mongodb mongosh --quiet \
+    --username "$MONGO_INSPECT_USER" \
+    --password "$MONGO_INSPECT_PASS" \
+    --authenticationDatabase "$MONGO_DB_NAME" \
+    "$MONGO_DB_NAME" \
+    --eval "$MONGO_SCRIPT"
+}
+
+read -r -d '' MONGO_SCRIPT <<'JS' || true
+const env = process.env
+const redacted = new Set(env.Q_REDACT.split(','))
+
+// Depth-first, and deliberately blind to what a value means: any key whose name
+// is on the list goes, wherever it sits. A credential nested inside `metadata`
+// is the same credential.
+const scrub = (value) => {
+  if (Array.isArray(value)) return value.map(scrub)
+  if (value === null || typeof value !== 'object') return value
+  // BSON values (ObjectId, Timestamp, Binary) and Dates are leaves — walking
+  // into one would take it apart and print its internals instead of itself.
+  if (value._bsontype !== undefined || value instanceof Date) return value
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, inner]) =>
+      redacted.has(key) ? [key, '[redacted]'] : [key, scrub(inner)]
+    )
+  )
+}
+
+const parse = (raw, label) => {
+  if (!raw) return null
+  try {
+    return EJSON.parse(raw)
+  } catch (error) {
+    print(`${label} is not valid JSON: ${error.message}`)
+    quit(2)
+  }
+}
+
+const show = (value) => print(EJSON.stringify(value, null, 2))
+
+// Read stages only. The inspector account cannot write, so `$out` would be
+// refused by the server anyway — this refuses it by name, so the answer is
+// "that is not allowed here" rather than an authorisation error that reads like
+// something is broken. `$function`, `$where` and `$accumulator` run arbitrary
+// JavaScript inside the database and have no business in an inspection tool.
+const FORBIDDEN = ['$out', '$merge', '$function', '$where', '$accumulator', '$listLocalSessions']
+
+const rejectWrites = (pipeline) => {
+  const found = FORBIDDEN.filter((stage) => JSON.stringify(pipeline).includes(`"${stage}"`))
+  if (found.length > 0) {
+    print(`refused: ${found.join(', ')} — this tool reads and does not write`)
+    quit(2)
+  }
+}
+
+const projection = env.Q_FIELDS
+  ? Object.fromEntries(env.Q_FIELDS.split(',').map((field) => [field.trim(), 1]))
+  : null
+
+const limit = Number(env.Q_LIMIT)
+
+switch (env.Q_OP) {
+  case 'collections': {
+    const rows = db
+      .getCollectionNames()
+      .sort()
+      .map((name) => ({ collection: name, documents: db.getCollection(name).estimatedDocumentCount() }))
+    show(rows)
+    break
+  }
+  case 'count': {
+    const filter = parse(env.Q_PAYLOAD, 'filter') ?? {}
+    show({ collection: env.Q_COLL, filter, count: db.getCollection(env.Q_COLL).countDocuments(filter) })
+    break
+  }
+  case 'find': {
+    const filter = parse(env.Q_PAYLOAD, 'filter') ?? {}
+    const sort = parse(env.Q_SORT, 'sort')
+    let cursor = db.getCollection(env.Q_COLL).find(filter, projection ?? undefined)
+    if (sort) cursor = cursor.sort(sort)
+    show(cursor.limit(limit).toArray().map(scrub))
+    break
+  }
+  case 'aggregate': {
+    const pipeline = parse(env.Q_PAYLOAD, 'pipeline')
+    if (!Array.isArray(pipeline)) {
+      print('a pipeline is a JSON array of stages')
+      quit(2)
+    }
+    rejectWrites(pipeline)
+    show(db.getCollection(env.Q_COLL).aggregate(pipeline).toArray().slice(0, limit).map(scrub))
+    break
+  }
+  case 'indexes': {
+    show(db.getCollection(env.Q_COLL).getIndexes())
+    break
+  }
+  default:
+    print(`unknown operation ${env.Q_OP}`)
+    quit(2)
+}
+JS
+
+cmd_mongo() {
+  local operation="${1:-}"
+  [ -n "$operation" ] || die 'mongo needs one of: collections, count, find, aggregate, indexes'
+  shift
+
+  if [ "$operation" = 'collections' ]; then
+    run_mongo collections '' '' 0 '' ''
+    return
+  fi
+
+  local collection="${1:-}"
+  [ -n "$collection" ] || die "mongo $operation needs a collection"
+  [[ "$collection" =~ ^[A-Za-z0-9_.-]+$ ]] || die 'collection names are letters, digits, dot, dash and underscore'
+  shift
+
+  local payload='' limit="$DEFAULT_LIMIT" sort='' fields=''
+
+  # The first bare argument is the filter or pipeline; everything else is named.
+  if [ "$#" -gt 0 ] && [[ "$1" != --* ]]; then
+    payload="$1"
+    shift
+  fi
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --limit) limit="$(bounded_number "${2:-}" "$MAX_LIMIT" '--limit')" && shift 2 ;;
+      --sort) sort="${2:-}" && shift 2 ;;
+      --fields)
+        [[ "${2:-}" =~ ^[A-Za-z0-9_.,\ -]+$ ]] || die '--fields is a comma-separated list of field names'
+        fields="$2" && shift 2 ;;
+      *) die "unknown option for mongo: $1" ;;
+    esac
+  done
+
+  case "$operation" in
+    count | find | aggregate | indexes) ;;
+    *) die "unknown mongo operation '$operation'" ;;
+  esac
+
+  [ "$operation" != 'aggregate' ] || [ -n "$payload" ] || die 'aggregate needs a pipeline'
+
+  run_mongo "$operation" "$collection" "$payload" "$limit" "$sort" "$fields"
+}
+
+# --- redis ------------------------------------------------------------------
+
+redis_cli() {
+  : "${REDIS_INSPECT_PASS:?REDIS_INSPECT_PASS is not set in $CONFIG_FILE}"
+
+  # `--no-auth-warning` because redis-cli otherwise prints a warning about the
+  # password on the command line to stderr on every single call, and the caller
+  # here reads stderr as "something went wrong".
+  docker compose exec -T redis redis-cli \
+    --user "${REDIS_INSPECT_USER:-inspector}" \
+    --pass "$REDIS_INSPECT_PASS" \
+    --no-auth-warning "$@"
+}
+
+cmd_redis() {
+  local operation="${1:-}"
+  [ -n "$operation" ] || die 'redis needs one of: scan, get, ttl, dbsize, info'
+  shift
+
+  case "$operation" in
+    dbsize) redis_cli DBSIZE ;;
+    info)
+      local section="${1:-default}"
+      [[ "$section" =~ ^[a-z]+$ ]] || die 'info takes a section name like memory, clients, stats'
+      redis_cli INFO "$section" ;;
+    ttl)
+      [ -n "${1:-}" ] || die 'ttl needs a key'
+      redis_cli TTL "$1" ;;
+    scan)
+      local pattern="${1:-*}" count=1000
+      shift || true
+      if [ "${1:-}" = '--count' ]; then count="$(bounded_number "${2:-}" 10000 '--count')"; fi
+      # SCAN, never KEYS: KEYS walks the whole keyspace in one blocking call, and
+      # this database is in the request path of every scrape.
+      redis_cli --scan --pattern "$pattern" --count "$count" ;;
+    get)
+      local key="${1:-}"
+      [ -n "$key" ] || die 'get needs a key'
+      # Read whichever type the key actually is, rather than making the caller
+      # ask twice. GET on a hash is an error, not an empty answer.
+      local type
+      type="$(redis_cli TYPE "$key" | tr -d '\r')"
+      case "$type" in
+        string) redis_cli GET "$key" ;;
+        hash) redis_cli HGETALL "$key" ;;
+        list) redis_cli LRANGE "$key" 0 -1 ;;
+        set) redis_cli SMEMBERS "$key" ;;
+        zset) redis_cli ZRANGE "$key" 0 -1 WITHSCORES ;;
+        none) echo "no such key: $key" ;;
+        *) die "cannot read a key of type '$type'" ;;
+      esac ;;
+    *) die "unknown redis operation '$operation'" ;;
+  esac
+}
+
+# --- dispatch ---------------------------------------------------------------
+
+main() {
+  decode_arguments
+
+  local command="${ARGS[0]:-help}"
+  local rest=("${ARGS[@]:1}")
+
+  case "$command" in
+    help | '') usage ;;
+    ps) require_config && docker compose ps ;;
+    logs) require_config && cmd_logs "${rest[@]}" ;;
+    mongo) require_config && cmd_mongo "${rest[@]}" ;;
+    redis) require_config && cmd_redis "${rest[@]}" ;;
+    *) die "unknown command '$command' — run 'help' for the list" ;;
+  esac
+}
+
+main

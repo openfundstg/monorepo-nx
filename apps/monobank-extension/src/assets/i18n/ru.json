@@ -1,0 +1,140 @@
+{
+  "DASHBOARD": {
+    "TITLE": "Tracker Dashboard",
+    "ACTIVE_JARS": "АКТИВНЫЕ БАНКИ",
+    "RECENT_ALERTS": "ПОСЛЕДНИЕ УВЕДОМЛЕНИЯ",
+    "NO_JARS": "Активные банки не найдены.",
+    "NO_ALERTS": "Нет новых уведомлений.",
+    "UPDATED": "Обновлено:",
+    "CURRENCY": "грн",
+    "PENDING_ORDERS": "Ожидает: {{sum}}",
+    "TOOLTIPS": {
+      "POPOUT": "Открыть в новом окне",
+      "DEACTIVATE": "ДЕАКТИВИРОВАТЬ (Остановить трекинг)",
+      "LOGOUT": "Выйти (Продолжить трекинг)",
+      "POLLING": "Активный фоновый опрос",
+      "SYNC": "Синхронизировать",
+      "HISTORY": "История",
+      "OPEN_MONO": "Открыть в Monobank"
+    },
+    "SOURCE_TMA": "Создано через Telegram Mini App. Ждёт полную сумму — последние деньги до цели придётся долить вручную.",
+    "SEARCH_PLACEHOLDER": "Поиск по названию, банку, ID…",
+    "SEARCH_CLEAR": "Очистить поиск",
+    "FILTER_ALL": "Все",
+    "FILTER_TMA": "TG",
+    "FILTER_OTHER": "Другие",
+    "NO_MATCHES": "Ничего не найдено по этому фильтру",
+    "SEARCHING": "Ищем…",
+    "SEARCH_SCOPE": "Поиск по всем терминалам, включая выключенные.",
+    "SEARCH_ARCHIVED_COUNT": "Выключенных: {{count}}",
+    "SEARCH_MORE": "Ещё {{count}} совпадений не показано — уточните запрос",
+    "SEARCH_FAILED": "Не удалось выполнить поиск на сервере. Показаны только активные банки.",
+    "DISABLED": "выключен",
+    "ARCHIVED_HINT": "Терминал выключен. Баланс на это время.",
+    "BALANCE_UNKNOWN": "баланс неизвестен",
+    "SOURCE_TMA_REFUND": "Создано через Telegram Mini App. Остаток меньше минимальной заявки возвращается юзеру на баланс — доливать вручную не нужно.",
+    "REMAINDER_AUTO": "остаток",
+    "CLOSING": "завершается",
+    "CLOSING_HINT": "Пользователь остановил продажу. Новых плательщиков сюда не направляют, но те, кто уже получил реквизиты, ещё могут заплатить."
+  },
+  "ALERTS": {
+    "UNRECOGNIZED_DEPOSIT": "Неизвестное пополнение",
+    "UNRECOGNIZED_DEPOSIT_DESC": "Несовпадение суммы на {{amount}} грн. Нет комбинации ожидаемых ордеров для этой дельты.",
+    "TERMINAL_FULL_WARNING": "Банка почти полная",
+    "TERMINAL_FULL_WARNING_DESC": "Осталось всего {{left}} грн до цели в {{goal}} грн.",
+    "AMBIGUOUS_DEPOSIT": "Неоднозначное пополнение",
+    "AMBIGUOUS_DEPOSIT_DESC": "Найдено {{combinationsCount}} комбинаций ордеров для суммы {{amount}} грн. Требует ручного подтверждения.",
+    "SAFE_TRANSFER_DESC": "Перемещено в сейф. Комментарий: {{comment}}",
+    "FRAUD": "Подозрение на мошенничество",
+    "FRAUD_DESC": "Баланс внезапно упал с {{previousBalance}} до {{currentBalance}} грн. Подозрение на вывод средств.",
+    "ORDER_CONFIRMATION_FAILED": "Ордер не подтверждён",
+    "ORDER_CONFIRMATION_FAILED_DESC": "Ордер {{orderStringId}} на {{amount}} грн зачислен, но Transacto отклонил автоподтверждение: недостаточный лимит трейдера (код {{errorCode}}). Деньги уже в банке — подтвердите ордер вручную в кабинете.",
+    "ACKNOWLEDGE_BTN": "Свести баланс",
+    "MOVE_TO_BOX_BTN": "📦 В Коробку",
+    "FORCE_MATCH_BTN": "🔗 Привязать к ордеру",
+    "MOVE_TO_BOX_PROMPT": "Введите комментарий для перемещения в коробку (необязательно):",
+    "FORCE_MATCH_PROMPT": "Введите ID ордера:",
+    "FORCE_MATCH_SUBMIT": "Подтвердить",
+    "FORCE_MATCH_CANCEL": "Отменить",
+    "FORCE_MATCH_ORDER_ID": "ID ордера",
+    "FORCE_MATCH_AMOUNT": "Сумма (грн)",
+    "INVALID_ORDER_ID": "Некорректный ID заказа",
+    "INVALID_AMOUNT": "Некорректная сумма",
+    "ALERT_RESOLVED_DESC": "Алерт решён.",
+    "FRAUD_SUSPICION_DESC": "Баланс внезапно упал с {{previousBalance}} до {{currentBalance}} грн. Подозрение на вывод средств.",
+    "SALE_COMPLETED_DESC": "Продажа {{publicId}} завершена на {{amount}} грн из цели {{target}} грн. Терминал остановлен."
+  },
+  "AUTH": {
+    "TITLE": "Monobank Tracker",
+    "SUBTITLE": "Введите ваш X-API-TOKEN для подключения к шлюзу.",
+    "PLACEHOLDER": "Вставьте ваш API Token сюда",
+    "CONNECT_BTN": "Подключить Tracker",
+    "LOADING": "Загрузка дашборда...",
+    "DEACTIVATE": "Вы уверены, что хотите ДЕАКТИВИРОВАТЬ аккаунт? Это навсегда остановит трекинг из Монобанка и очистит ваши данные.",
+    "LOGOUT": "Вы уверены, что хотите выйти? Это очистит локальные данные, но НЕ остановит трекинг на сервере.",
+    "LOGIN_FAILED": "Ошибка входа. Проверьте ваш токен.",
+    "DEACTIVATE_FAILED": "Ошибка деактивации. Попробуйте позже."
+  },
+  "HISTORY": {
+    "TITLE": "История терминала",
+    "BACK_TO_DASHBOARD": "Вернуться на Dashboard",
+    "TABLE": {
+      "TIME": "Время",
+      "BALANCE": "Баланс (Фактический)",
+      "EXPECTED_BALANCE": "Ожидаемый баланс",
+      "UNRECOGNIZED": "Нераспознано",
+      "EVENTS": "События / Статус",
+      "NO_HISTORY": "История для этой банки не найдена."
+    },
+    "TOOLTIPS": {
+      "ORDER": "Ордер #{{id}} ({{type}})",
+      "ALERT": "⚠️ УВЕДОМЛЕНИЕ"
+    },
+    "ORDER": {
+      "CANCELLED": "❌ Ордер #{{orderId}} отменён",
+      "PENDING": "🆕 Ордер #{{orderId}} создан ({{amount}})",
+      "FULL_MATCH": "✅ Полное совпадение Ордер #{{orderId}}",
+      "FUZZY_MATCH": "≈ Частичное совпадение Ордер #{{orderId}} (Ожидалось: {{amount}})",
+      "MANUAL": "⚡ Ручное подтверждение Ордер #{{orderId}} ({{amount}})",
+      "DEFAULT": "Ордер #{{orderId}}"
+    },
+    "ALERT": {
+      "SAFE_TRANSFER": "📦 Перемещено в Сейф",
+      "SAFE_TRANSFER_COMMENT": " - Комментарий: {{comment}}",
+      "ALERT_RESOLVED": "✅ Алерт решён",
+      "FRAUD": "🚫 Подозрение на мошенничество",
+      "FRAUD_SUSPICION": "🚫 Подозрение на мошенничество",
+      "UNRECOGNIZED_DEPOSIT": "⚠️ Нераспознанный депозит",
+      "FUZZY_LIMIT_EXCEEDED": " (Вне лимита Fuzzy)",
+      "AMBIGUOUS_DEPOSIT": "⚠️ Совпадение нескольких ордеров",
+      "AMBIGUOUS_COMBINATIONS": " - Найдено комбинаций: {{combinationsCount}}",
+      "TERMINAL_FULL_WARNING": "⚠️ Банка почти заполнена",
+      "SALE_COMPLETED": "🏁 Продажа завершена",
+      "ORDER_CONFIRMATION_FAILED": "⚠️ Ордер не подтверждён"
+    }
+  },
+  "SAFE_BOX": {
+    "TITLE": "Сейф",
+    "BACK_TO_DASHBOARD": "Вернуться на Dashboard",
+    "FILTERS": {
+      "STATUS": "Статус",
+      "ALL_STATUSES": "Все статусы",
+      "PLACEHOLDER": "ID (terminal | order) or amount"
+    },
+    "TABLE": {
+      "DATE": "Дата",
+      "TERMINAL": "Терминал",
+      "AMOUNT": "Сумма",
+      "STATUS": "Статус",
+      "COMMENT": "Комментарий",
+      "NO_DATA": "Нет записей в сейфе."
+    },
+    "STATUS": {
+      "HELD": "Удержано",
+      "IN_APPEAL": "В апелляции",
+      "APPLIED": "Применено",
+      "REFUNDED": "Возвращено",
+      "WRITTEN_OFF": "Списано"
+    }
+  }
+}

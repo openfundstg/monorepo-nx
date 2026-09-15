@@ -1,0 +1,12 @@
+<a class="method glass-card" [class.coming-soon]="comingSoon()" [routerLink]="target()">
+  <span class="method-icon" aria-hidden="true"><ng-content /></span>
+  <span class="method-body">
+    <span class="method-title">
+      {{ titleKey() | translate }}
+      @if (comingSoon()) {
+        <span class="soon-badge">{{ 'common.in_development' | translate }}</span>
+      }
+    </span>
+    <span class="method-hint">{{ hintKey() | translate }}</span>
+  </span>
+</a>

@@ -1,0 +1,105 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+node_modules
+
+# ---------------------------------------------------------------------------
+# Build output
+# Unanchored so they match at any depth (apps/*/dist, libs/*/dist, …)
+# ---------------------------------------------------------------------------
+dist
+tmp
+out-tsc
+build
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# Secrets / environment
+# `.env` files are never committed. Note src/environments/*.ts ARE tracked —
+# they hold non-secret config; only the .env holding credentials is ignored.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.env
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Tooling caches
+# ---------------------------------------------------------------------------
+.angular
+.nx/cache
+.nx/workspace-data
+.nx/installation
+.nx/polygraph
+.nx/self-healing
+.nx/migrate-runs
+.eslintcache
+.cache
+.sass-cache
+
+# ---------------------------------------------------------------------------
+# Test / coverage output
+# ---------------------------------------------------------------------------
+coverage
+test-output
+testem.log
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------------------------------------------------------------------------
+# IDEs and editors
+# ---------------------------------------------------------------------------
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+/typings
+
+# VSCode — keep shared workspace config, ignore personal state
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Claude Code — keep shared rules, ignore local state
+.claude/worktrees
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# System files
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+docker-compose.override.yml
+# ---------------------------------------------------------------------------
+# Captured third-party traffic
+# ---------------------------------------------------------------------------
+# Browser dumps of the Transacto panel — the only way to learn its contract, and
+# never committable: they carry a live PHPSESSID and CSRF token, recipients'
+# unmasked card numbers, and the payer's own name and IBAN off a receipt. Keep
+# them outside the repository entirely; what belongs in the repo is the
+# *interface* they taught us, in transacto-panel.interface.ts.
+happy_flow.txt
+payouts_example.html
+*.har
+
+# Proxy list exports. They carry account tokens and pool credentials, and the
+# panel's "link" export is itself an authenticated URL — none of it belongs in
+# the repository. The pool the app actually reads lives in
+# apps/api/src/environments/.env, which is already ignored.
+proxies.txt
+proxies*.list
+proxies*.csv

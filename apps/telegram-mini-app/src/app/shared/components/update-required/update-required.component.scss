@@ -1,0 +1,38 @@
+/*
+ * Above everything, including the bottom nav and the loading overlay: this is
+ * the one thing in the app that must not be worked around.
+ */
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--page-pad);
+  background: var(--bg);
+}
+
+.sheet {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 320px;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.text {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.primary-btn {
+  width: 100%;
+}

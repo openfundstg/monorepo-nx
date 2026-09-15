@@ -1,0 +1,115 @@
+:80 {
+    encode gzip zstd
+
+    # ----------------------------------------------------------------------
+    # Everything arrives under /admin, and `handle_path` strips it.
+    #
+    # The host proxy forwards `/admin*` here without rewriting, so a request for
+    # `/admin/main-ABC123.js` reaches this container with that whole path. The
+    # files on disk are at the root of the site directory — `baseHref: /admin/`
+    # only changes the URLs the page *asks for*, not where the build writes
+    # them — so the prefix has to come off before the file server sees it.
+    #
+    # `handle_path` rather than `handle` for exactly that: it strips the matched
+    # prefix, `handle` does not.
+    #
+    # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
+    # The API, on this same origin.
+    #
+    # In production these never fire: the host proxy matches `/api/*` and
+    # `/socket.io*` before `/admin*`, so the backend is reached directly and
+    # this container only ever sees `/admin`. They are here so the container is
+    # self-sufficient — `docker compose up` alone gives a working panel at
+    # `:8090/admin`, and the panel can later be moved to its own hostname
+    # without a second piece of routing having to be invented.
+    #
+    # Same-origin is not a preference. The session is a cookie and the API
+    # deliberately does not send `Access-Control-Allow-Credentials`, so a panel
+    # calling an API on another origin arrives unauthenticated. Proxying here
+    # keeps the page and the API on one origin, which is exactly what that
+    # requires — it does not weaken it.
+    # ----------------------------------------------------------------------
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    # The admin WebSocket handshake. It carries the session cookie by itself,
+    # which is why that cookie is scoped to `/` rather than to `/api/admin`.
+    handle /socket.io* {
+        reverse_proxy api:8000
+    }
+
+    # The container's own root sends you to the panel.
+    #
+    # Inert in production — the host proxy's catch-all routes `/` to the Mini
+    # App and only ever forwards `/admin*` here — so this exists for the two
+    # cases where someone reaches this container directly: `docker compose up`
+    # on a laptop, and the day the panel moves to its own hostname. Landing on
+    # a bare 404 there is a papercut with no upside.
+    redir / /admin/ 308
+
+    # A bare `/admin` redirects to `/admin/`. Without the trailing slash the
+    # browser resolves the page's own relative URLs against `/`, so a reload on
+    # that exact path asks the wrong origin path for its assets.
+    redir /admin /admin/ 308
+
+    # `/admin/*`, not `/admin*` — the latter also matches `/administrator` and
+    # would strip the prefix off a path that has nothing to do with the panel.
+    handle_path /admin/* {
+        root * /usr/share/caddy
+
+        # ------------------------------------------------------------------
+        # Caching, split the same way the Mini App's is — and for the same
+        # reason. Without an explicit `Cache-Control`, HTTP lets a client invent
+        # its own freshness from `Last-Modified` (RFC 9111 §4.2.2), so a bundle
+        # built two weeks ago is "fresh" for over a day with no request made at
+        # all, and a deploy is simply not seen.
+        # ------------------------------------------------------------------
+
+        # `outputHashing: "all"` puts a content hash in every bundle name, so
+        # these names never survive a change to their contents.
+        @bundle path_regexp ^/(main|styles|chunk|polyfills)-[A-Za-z0-9_-]+\.(js|css)$
+
+        # `immutable` may only be promised for a bundle that is actually here. A
+        # hash names its contents, so a name that 404s today can legitimately
+        # come back in a later deploy that rebuilds the same chunk — and a
+        # year-long cached 404 would break that browser permanently.
+        @bundle_present {
+            path_regexp ^/(main|styles|chunk|polyfills)-[A-Za-z0-9_-]+\.(js|css)$
+            file
+        }
+        @bundle_missing {
+            path_regexp ^/(main|styles|chunk|polyfills)-[A-Za-z0-9_-]+\.(js|css)$
+            not file
+        }
+
+        handle @bundle {
+            header @bundle_present Cache-Control "public, max-age=31536000, immutable"
+            header @bundle_missing Cache-Control "no-store"
+            file_server
+        }
+
+        # Everything else keeps a stable name across deploys and has to be
+        # revalidated every time. `no-cache` still stores the file — it only
+        # forbids serving it without asking — so the usual answer is a 304.
+        #
+        # `index.html` matters most: it names the hashed bundles above, so
+        # caching it pins the whole app to the deploy that produced it.
+        # `assets/i18n/uk.json` is the other one that bites — ngx-translate
+        # fetches it at runtime, so a stale copy is missing every key added
+        # since, and the panel renders raw translation keys.
+        handle {
+            header Cache-Control "no-cache"
+            try_files {path} {path}/ /index.html
+            file_server
+        }
+    }
+
+    # Anything that is neither the API nor the panel. A request here without the
+    # /admin prefix is a misconfigured proxy, not a page — say so rather than
+    # serving the panel from a path its own base href does not match.
+    handle {
+        respond "Not found" 404
+    }
+}

@@ -1,0 +1,12 @@
+<header>
+  <div>
+    <h1 class="page-title">{{ title() | translate }}</h1>
+    @if (subtitle(); as subtitleKey) {
+      <p class="page-subtitle">{{ subtitleKey | translate }}</p>
+    }
+  </div>
+  <!-- Actions the screen wants beside its title — a refresh, a filter, a button. -->
+  <div class="actions">
+    <ng-content />
+  </div>
+</header>

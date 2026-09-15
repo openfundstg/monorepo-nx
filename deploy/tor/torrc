@@ -1,0 +1,41 @@
+# Tor as a plain HTTP CONNECT proxy, for one caller: PrivatBank's document
+# service. See PrivatbankProxyService for why that one path needs a route of
+# its own, and why nothing else is on it.
+
+# No SOCKS listener. Nothing here speaks SOCKS — the API's agent is
+# `https-proxy-agent`, which speaks HTTP CONNECT — and a port nobody uses is a
+# port nobody has to reason about.
+SocksPort 0
+
+# The tunnel, reachable only from the compose network this container is on: no
+# host port is published for it, exactly as none is for the database. It has no
+# authentication of its own and needs none for the same reason Mongo and Redis
+# do not have one inside the network — but it is an open proxy to anything that
+# can reach it, so that segment is the whole of its protection.
+#
+# `IsolateSOCKSAuth` is what makes the pool work, and it applies to the
+# credentials presented to this tunnel too. Each distinct proxy username gets a
+# circuit of its own, and the same username keeps the one it has. So the
+# entries in PRIVATBANK_PROXY_URLS differ only in their username: rotating an
+# entry rotates the exit node, and a lookup with the download after it stays on
+# a single address, which is what PrivatBank's session cookie requires.
+#
+# Verified against a live daemon: four usernames, four distinct exit IPs, and
+# the same username twice giving the same one.
+HTTPTunnelPort 0.0.0.0:9080 IsolateSOCKSAuth
+
+# A client and never a relay. Without this a misread option is the difference
+# between using the network and carrying other people's traffic on our address.
+ClientOnly 1
+
+# Persisted in a volume so the guard relays survive a restart. Guards are meant
+# to be sticky — picking three fresh entry points on every deploy is the
+# behaviour Tor's design specifically avoids.
+DataDirectory /var/lib/tor
+
+Log notice stdout
+
+# Deliberately not set: ExitNodes. Pinning Ukrainian exits would look more
+# natural to a Ukrainian bank, but there are few of them, and with StrictNodes
+# a bad night for those few is an outage for receipts. PrivatBank answered
+# normally from ordinary exits when this was measured.

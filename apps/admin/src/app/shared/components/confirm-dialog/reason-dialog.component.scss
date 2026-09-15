@@ -1,0 +1,12 @@
+.message {
+  margin: 0 0 var(--gap-md);
+  color: var(--text-secondary);
+}
+
+.full {
+  width: 100%;
+}
+
+mat-dialog-content {
+  min-width: 380px;
+}

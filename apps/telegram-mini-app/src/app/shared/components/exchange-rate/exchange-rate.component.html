@@ -1,0 +1,9 @@
+@if (rate(); as value) {
+  <span class="rate-line">
+    @if (labelKey(); as key) {
+      {{ key | translate }}:
+    }
+    1 {{ 'common.usdt' | translate }} =
+    <strong>{{ value | uah }} {{ 'common.uah' | translate }}</strong>
+  </span>
+}

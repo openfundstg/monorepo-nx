@@ -1,0 +1,91 @@
+/**
+ * The shapes every screen draws, defined once.
+ *
+ * Global styles reach into components, so a component that needs a variant
+ * overrides the class locally — its own stylesheet is injected later and wins.
+ */
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--gap-lg);
+}
+
+.page-title {
+  margin: 0 0 var(--gap-xs);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/**
+ * A status pill.
+ *
+ * The tone classes are the only place a status colour is chosen. Everything
+ * that shows a state — order status, alert status, an active flag — resolves to
+ * one of the four, so two screens cannot disagree about whether `BLOCKED` is
+ * amber or red.
+ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.chip--positive {
+  background: var(--positive-dim);
+  color: var(--positive);
+}
+.chip--warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+.chip--danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.chip--neutral {
+  background: var(--neutral-dim);
+  color: var(--neutral);
+}
+
+/** Ids, hashes and links — anything meant to be compared character by character. */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/**
+ * Every wide table lives in one of these.
+ *
+ * The page body must never scroll sideways — a horizontal scrollbar on the
+ * document moves the navigation off screen along with the table.
+ */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}

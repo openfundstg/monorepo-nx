@@ -1,0 +1,77 @@
+<section class="guide">
+  <button
+    type="button"
+    class="guide-toggle"
+    [attr.aria-expanded]="expanded()"
+    (click)="toggle()"
+  >
+    <span class="guide-title">{{ 'sale.guide.title' | translate }}</span>
+    <span class="guide-chevron" [class.open]="expanded()" aria-hidden="true">▾</span>
+  </button>
+
+  @if (expanded()) {
+    <!--
+      Above the steps, not inside them. The jar target is the one value the
+      backend blocks the order over, so the exact figure to type is stated
+      before the user starts rather than as step four of seven.
+    -->
+    <div class="goal-callout">
+      <span class="goal-label">{{ 'sale.guide.goal_rule' | translate }}</span>
+      <!--
+        Whole hryvnia: this is the figure typed into a bank's goal field, which
+        has no kopecks. It is already rounded upstream — `| uah: true` keeps the
+        display from re-introducing a ",00" that suggests otherwise.
+      -->
+      <span class="goal-value">
+        {{ targetAmount() | uah: true }} {{ 'common.uah' | translate }}
+      </span>
+    </div>
+
+    <ol class="steps">
+      @for (step of guide().steps; track step.textKey) {
+        <li class="step">
+          <span class="step-text">{{ step.textKey | translate }}</span>
+
+          @if (step.image; as image) {
+            @if (isMissing(image)) {
+              <!--
+                The file is not in `public/guide/` yet. A labelled box keeps the
+                layout honest instead of showing a broken-image icon.
+              -->
+              <div class="shot-placeholder">
+                <span class="shot-placeholder-icon" aria-hidden="true">🖼️</span>
+                <span>{{ 'sale.guide.screenshot_pending' | translate }}</span>
+              </div>
+            } @else {
+              <img
+                class="shot"
+                [src]="image"
+                [alt]="step.textKey | translate"
+                loading="lazy"
+                (error)="onImageError(image)"
+              />
+            }
+          }
+        </li>
+      }
+    </ol>
+
+    <p class="guide-warning">
+      <span class="warning-icon" aria-hidden="true">⚠️</span>
+      {{ guide().warningKey | translate }}
+    </p>
+
+    @if (guide().fallbackKey; as fallbackKey) {
+      <p class="guide-fallback">{{ fallbackKey | translate }}</p>
+    }
+
+    <div class="link-hint">
+      <span class="hint-label">{{ 'sale.guide.link_example' | translate }}</span>
+      <!-- A URL, not a sentence — shown verbatim in every language. -->
+      <code class="hint-value">{{ guide().linkExample }}</code>
+      <span class="hint-label">
+        {{ 'sale.guide.required_host' | translate: { host: requiredHost() } }}
+      </span>
+    </div>
+  }
+</section>

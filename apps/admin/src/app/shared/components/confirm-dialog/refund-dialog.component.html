@@ -1,0 +1,50 @@
+<h2 mat-dialog-title>{{ data.title | translate }}</h2>
+
+<mat-dialog-content>
+  <p class="message">{{ data.message | translate: data.messageParams }}</p>
+
+  <div class="figures">
+    <div class="figures__item">
+      <span class="figures__label">{{ 'sales.stake' | translate }}</span>
+      <span class="figures__value">{{ stake }}</span>
+    </div>
+    <div class="figures__item">
+      <span class="figures__label">{{ 'sales.received' | translate }}</span>
+      <span class="figures__value">{{ received }}</span>
+    </div>
+  </div>
+
+  <form [formGroup]="form">
+    <mat-form-field appearance="outline" class="full">
+      <mat-label>{{ 'sales.refund_amount' | translate }}</mat-label>
+      <input matInput type="number" step="0.01" min="0" formControlName="refund" cdkFocusInitial />
+      <span matTextSuffix>USDT</span>
+      @if (exceedsStake()) {
+        <mat-error>{{ 'sales.refund_exceeds_stake' | translate }}</mat-error>
+      }
+      <mat-hint>
+        @if (isOverridden()) {
+          {{ 'sales.refund_suggested' | translate: { value: suggested } }}
+        } @else {
+          {{ 'sales.refund_is_suggested' | translate }}
+        }
+      </mat-hint>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="full">
+      <mat-label>{{ 'common.reason' | translate }}</mat-label>
+      <textarea matInput rows="2" formControlName="reason"></textarea>
+      <mat-hint>{{ 'common.reason_hint' | translate }}</mat-hint>
+      @if (form.controls.reason.touched && form.controls.reason.invalid) {
+        <mat-error>{{ 'common.reason_required' | translate }}</mat-error>
+      }
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" mat-dialog-close>{{ 'common.cancel' | translate }}</button>
+  <button mat-flat-button type="button" color="warn" (click)="submit()">
+    {{ data.confirmLabel | translate }}
+  </button>
+</mat-dialog-actions>

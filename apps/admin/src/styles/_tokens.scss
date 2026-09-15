@@ -1,0 +1,59 @@
+/**
+ * The palette and the shape vocabulary, as CSS custom properties.
+ *
+ * A colour, radius or transition in a component stylesheet must be a `var(--…)`.
+ * A raw hex there is the duplication that lets six cards disagree about which
+ * grey they are — add a token rather than a literal.
+ *
+ * One dark palette, deliberately. This is an operator's tool looked at for hours
+ * at a time, and a light variant would be a second set of contrast decisions to
+ * keep in step for no user who asked for it.
+ */
+:root {
+  // Surfaces, darkest first — the page, the cards on it, the rows inside those.
+  --surface-0: #0e1116;
+  --surface-1: #151a21;
+  --surface-2: #1c222b;
+  --surface-3: #242c37;
+
+  --border: #2b3441;
+  --border-strong: #3a4653;
+
+  --text-primary: #e8edf4;
+  --text-secondary: #9aa7b8;
+  --text-muted: #6b7889;
+
+  --accent: #4c8dff;
+  --accent-dim: rgba(76, 141, 255, 0.14);
+
+  // Status colours. `positive` is money arriving and things working; `warning`
+  // is something waiting for a person; `danger` is money at risk or a rule
+  // broken. Every chip in the app picks one of these three and nothing else.
+  --positive: #37d399;
+  --positive-dim: rgba(55, 211, 153, 0.14);
+  --warning: #f5b544;
+  --warning-dim: rgba(245, 181, 68, 0.14);
+  --danger: #ff6b6b;
+  --danger-dim: rgba(255, 107, 107, 0.14);
+  --neutral: #8b97a8;
+  --neutral-dim: rgba(139, 151, 168, 0.14);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 16px;
+  --gap-lg: 24px;
+  --gap-xl: 32px;
+
+  --shell-nav-width: 232px;
+  --shell-header-height: 56px;
+
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms ease;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SFMono-Regular', ui-monospace, 'JetBrains Mono', Menlo, monospace;
+}

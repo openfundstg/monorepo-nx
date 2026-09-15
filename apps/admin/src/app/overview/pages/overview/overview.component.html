@@ -1,0 +1,79 @@
+<app-page-header title="overview.title" subtitle="overview.subtitle">
+  <button mat-stroked-button type="button" (click)="refresh()">
+    <mat-icon>refresh</mat-icon>
+    {{ 'common.refresh' | translate }}
+  </button>
+</app-page-header>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (overview(); as data) {
+  <section class="grid">
+    <app-stat-card
+      label="overview.users_total"
+      [value]="formatNumber(data.users.total)"
+      hint="overview.users_hint"
+      [hintParams]="{ active: data.users.active, today: data.users.newToday }"
+    />
+    <app-stat-card
+      label="overview.balance_spendable"
+      [value]="formatUsdt(data.balances.spendable)"
+      hint="overview.balance_frozen_hint"
+      [hintParams]="{ frozen: formatUsdt(data.balances.frozen) }"
+    />
+    <app-stat-card label="overview.balance_referral" [value]="formatUsdt(data.balances.referral)" />
+    <app-stat-card label="overview.alerts_pending" [value]="formatNumber(data.alerts.pending)" />
+  </section>
+
+  <section class="grid">
+    <app-stat-card label="overview.orders_open" [value]="formatNumber(data.sales.open)" />
+    <app-stat-card
+      label="overview.orders_completed_today"
+      [value]="formatNumber(data.sales.completedToday)"
+      hint="overview.volume_today_hint"
+      [hintParams]="{ volume: formatUah(data.sales.volumeToday) }"
+    />
+    <app-stat-card
+      label="overview.deposits_pending"
+      [value]="formatNumber(data.deposits.pending)"
+    />
+    <app-stat-card
+      label="overview.deposits_today"
+      [value]="formatNumber(data.deposits.completedToday)"
+      hint="overview.credited_today_hint"
+      [hintParams]="{ credited: formatUsdtWhole(data.deposits.creditedToday) }"
+    />
+  </section>
+
+  <section class="grid">
+    <app-stat-card
+      label="overview.terminals_total"
+      [value]="formatNumber(data.terminals.total)"
+      hint="overview.terminals_hint"
+      [hintParams]="{
+        enabled: data.terminals.enabled,
+        accepting: data.terminals.acceptingOrders,
+      }"
+    />
+  </section>
+
+  <section class="card breakdown">
+    <h2>{{ 'overview.orders_by_status' | translate }}</h2>
+    <div class="breakdown__row">
+      @for (entry of statusCounts(); track entry.status) {
+        <a class="breakdown__item" [routerLink]="['/sales']">
+          <app-status-chip
+            [value]="entry.status"
+            [tone]="saleTone(entry.status)"
+            translatePrefix="SALE_STATUS"
+          />
+          <span class="breakdown__count">{{ entry.count }}</span>
+        </a>
+      } @empty {
+        <p class="muted">{{ 'overview.no_orders' | translate }}</p>
+      }
+    </div>
+  </section>
+}

@@ -1,0 +1,47 @@
+<div class="backdrop" (click)="onBackdrop()"></div>
+
+<!--
+  `$event.stopPropagation()` so a tap inside the sheet is not also a tap on the
+  backdrop behind it, which would dismiss the dialog the user is reading.
+-->
+<div class="sheet glass-card" (click)="$event.stopPropagation()">
+  <h2 class="title">{{ 'fiat.confirm_title' | translate }}</h2>
+
+  <div class="amount">
+    <span class="amount-uah">{{ amountUah() | uah: true }} {{ 'common.uah' | translate }}</span>
+    <span class="amount-usdt">
+      {{ 'fiat.confirm_you_get' | translate }}
+      <strong>{{ cryptoCents() | usdt }} {{ 'common.usdt' | translate }}</strong>
+    </span>
+  </div>
+
+  <app-exchange-rate class="rate" [rate]="exchangeRate()" />
+
+  <!--
+    The four rules, in the one place a user cannot skip past them: they are
+    agreeing to them with the next tap. Framed in red rather than written as
+    prose because every one of them costs money — the last one says so.
+  -->
+  <div class="rules">
+    <span class="rules-title">{{ 'fiat.rules_title' | translate }}</span>
+    <ul class="rules-list">
+      <li>{{ 'fiat.rule_exact' | translate }}</li>
+      <li>{{ 'fiat.rule_window' | translate: { minutes: payWindowMinutes() } }}</li>
+      <li>{{ 'fiat.rule_receipt' | translate }}</li>
+      <li>{{ 'fiat.rule_penalty' | translate }}</li>
+    </ul>
+  </div>
+
+  <div class="buttons">
+    <button class="primary-btn" [disabled]="busy()" (click)="confirmed.emit()">
+      @if (busy()) {
+        <span class="btn-spinner"></span>
+      } @else {
+        {{ 'fiat.confirm_action' | translate }}
+      }
+    </button>
+    <button class="ghost-btn" [disabled]="busy()" (click)="dismissed.emit()">
+      {{ 'common.cancel' | translate }}
+    </button>
+  </div>
+</div>

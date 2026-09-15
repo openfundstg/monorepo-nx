@@ -1,0 +1,179 @@
+:host {
+  display: block;
+  /* The shell already pushed us down by the top inset; asking for a full
+     viewport on top of that would overflow by exactly that much. */
+  min-height: calc(100vh - var(--app-safe-top, 0px));
+  /* Reserves the fixed nav and the gesture bar under it. */
+  padding: var(--page-pad) var(--page-pad) var(--nav-reserve);
+}
+
+.lang-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lang-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--t-base),
+    border-color var(--t-base),
+    transform var(--t-fast);
+}
+
+.lang-item:active {
+  transform: scale(0.98);
+}
+
+.lang-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.lang-flag {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.lang-name {
+  flex: 1;
+}
+
+.lang-check {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+/* --- Privacy ------------------------------------------------------------- */
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 16px;
+  cursor: pointer;
+}
+
+.toggle-input {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toggle-input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toggle-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.toggle-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* --- Brand --------------------------------------------------------------- */
+
+/*
+  Dimmed rather than drawn at full strength. It is a signature, not a control,
+  and the page's last real row should still be the last thing that reads as
+  something to act on.
+*/
+.brand {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+  opacity: 0.45;
+}
+
+
+/*
+  The standing request for a hryvnia amount. Stated rather than editable: the
+  range is chosen against the amounts actually on offer, and this screen shows
+  none of them — so what belongs here is the fact and the way out of it.
+*/
+.watch-row {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.watch-row.muted {
+  color: var(--text-muted);
+}
+
+.watch-mode {
+  margin: 4px 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* --- Tour ---------------------------------------------------------------- */
+
+/*
+  The way back into the tour. A row rather than a primary button: it leads
+  somewhere — home, with the walkthrough up — and should read as a destination,
+  not as an action on the settings above it.
+*/
+.row-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 0 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.row-text {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.row-chevron {
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-muted);
+}

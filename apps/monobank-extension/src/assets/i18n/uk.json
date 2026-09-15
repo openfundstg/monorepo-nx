@@ -1,0 +1,140 @@
+{
+  "DASHBOARD": {
+    "TITLE": "Tracker Dashboard",
+    "ACTIVE_JARS": "АКТИВНІ БАНКИ",
+    "RECENT_ALERTS": "ОСТАННІ СПОВІЩЕННЯ",
+    "NO_JARS": "Активних банок не знайдено.",
+    "NO_ALERTS": "Немає нових сповіщень.",
+    "UPDATED": "Оновлено:",
+    "CURRENCY": "грн",
+    "PENDING_ORDERS": "Очікує: {{sum}}",
+    "TOOLTIPS": {
+      "POPOUT": "Відкрити в новому вікні",
+      "DEACTIVATE": "ДЕАКТИВУВАТИ (Зупинити трекінг)",
+      "LOGOUT": "Вийти (Продовжити трекінг)",
+      "POLLING": "Активне фонове опитування",
+      "SYNC": "Синхронізувати",
+      "HISTORY": "Історія",
+      "OPEN_MONO": "Відкрити в Monobank"
+    },
+    "SOURCE_TMA": "Створено через Telegram Mini App. Чекає на повну суму — останні гроші до цілі доведеться долити вручну.",
+    "SEARCH_PLACEHOLDER": "Пошук за назвою, банком, ID…",
+    "SEARCH_CLEAR": "Очистити пошук",
+    "FILTER_ALL": "Усі",
+    "FILTER_TMA": "TG",
+    "FILTER_OTHER": "Інші",
+    "NO_MATCHES": "Нічого не знайдено за цим фільтром",
+    "SEARCHING": "Шукаємо…",
+    "SEARCH_SCOPE": "Пошук по всіх терміналах, включно з вимкненими.",
+    "SEARCH_ARCHIVED_COUNT": "Вимкнених: {{count}}",
+    "SEARCH_MORE": "Ще {{count}} збігів не показано — уточніть запит",
+    "SEARCH_FAILED": "Не вдалося виконати пошук на сервері. Показано лише активні банки.",
+    "DISABLED": "вимкнено",
+    "ARCHIVED_HINT": "Термінал вимкнено. Баланс станом на цей час.",
+    "BALANCE_UNKNOWN": "баланс невідомий",
+    "SOURCE_TMA_REFUND": "Створено через Telegram Mini App. Залишок менший за мінімальну заявку повертається юзеру на баланс — доливати вручну не треба.",
+    "REMAINDER_AUTO": "решта",
+    "CLOSING": "завершується",
+    "CLOSING_HINT": "Користувач зупинив продаж. Нових платників сюди не направляють, але ті, що вже отримали реквізити, ще можуть заплатити."
+  },
+  "ALERTS": {
+    "UNRECOGNIZED_DEPOSIT": "Невідоме поповнення",
+    "UNRECOGNIZED_DEPOSIT_DESC": "Незбіг суми на {{amount}} грн. Немає комбінації очікуваних ордерів для цієї дельти.",
+    "TERMINAL_FULL_WARNING": "Банка майже повна",
+    "TERMINAL_FULL_WARNING_DESC": "Залишилось всього {{left}} грн до цілі у {{goal}} грн.",
+    "AMBIGUOUS_DEPOSIT": "Неоднозначне поповнення",
+    "AMBIGUOUS_DEPOSIT_DESC": "Знайдено {{combinationsCount}} комбінацій ордерів для суми {{amount}} грн. Потребує ручного підтвердження.",
+    "SAFE_TRANSFER_DESC": "Переміщено в сейф. Коментар: {{comment}}",
+    "FRAUD": "Підозра на шахрайство",
+    "FRAUD_DESC": "Баланс раптово впав з {{previousBalance}} до {{currentBalance}} грн. Підозра на виведення коштів.",
+    "ORDER_CONFIRMATION_FAILED": "Ордер не підтверджено",
+    "ORDER_CONFIRMATION_FAILED_DESC": "Ордер {{orderStringId}} на {{amount}} грн зараховано, але Transacto відхилив автопідтвердження: недостатній ліміт трейдера (код {{errorCode}}). Гроші вже в банці — підтвердьте ордер вручну в кабінеті.",
+    "ACKNOWLEDGE_BTN": "Звести баланс",
+    "MOVE_TO_BOX_BTN": "📦 В Коробку",
+    "FORCE_MATCH_BTN": "🔗 Прив'язати до ордера",
+    "MOVE_TO_BOX_PROMPT": "Введіть коментар для переміщення в коробку (необов'язково):",
+    "FORCE_MATCH_PROMPT": "Введіть ID ордера:",
+    "FORCE_MATCH_SUBMIT": "Підтвердити",
+    "FORCE_MATCH_CANCEL": "Скасувати",
+    "FORCE_MATCH_ORDER_ID": "ID ордера",
+    "FORCE_MATCH_AMOUNT": "Сума (грн)",
+    "INVALID_ORDER_ID": "Некоректний ID замовлення",
+    "INVALID_AMOUNT": "Некоректна сума",
+    "ALERT_RESOLVED_DESC": "Алерт вирішено.",
+    "FRAUD_SUSPICION_DESC": "Баланс раптово впав з {{previousBalance}} до {{currentBalance}} грн. Підозра на виведення коштів.",
+    "SALE_COMPLETED_DESC": "Продаж {{publicId}} завершено на {{amount}} грн із цілі {{target}} грн. Термінал зупинено."
+  },
+  "AUTH": {
+    "TITLE": "Monobank Tracker",
+    "SUBTITLE": "Введіть ваш X-API-TOKEN для підключення до шлюзу.",
+    "PLACEHOLDER": "Вставте ваш API Token сюди",
+    "CONNECT_BTN": "Підключити Tracker",
+    "LOADING": "Завантаження дашборду...",
+    "DEACTIVATE": "Ви впевнені, що хочете ДЕАКТИВУВАТИ акаунт? Це назавжди зупинить трекінг з Монобанку та очистить ваші дані.",
+    "LOGOUT": "Ви впевнені, що хочете вийти? Це очистить локальні дані, але НЕ зупинить трекінг на сервері.",
+    "LOGIN_FAILED": "Помилка входу. Перевірте ваш токен.",
+    "DEACTIVATE_FAILED": "Помилка деактивації. Спробуйте пізніше."
+  },
+  "HISTORY": {
+    "TITLE": "Історія термінала",
+    "BACK_TO_DASHBOARD": "Повернутися на Dashboard",
+    "TABLE": {
+      "TIME": "Час",
+      "BALANCE": "Баланс (Фактичний)",
+      "EXPECTED_BALANCE": "Очікуваний баланс",
+      "UNRECOGNIZED": "Нерозпізнано",
+      "EVENTS": "Події / Статус",
+      "NO_HISTORY": "Історію для цієї банки не знайдено."
+    },
+    "TOOLTIPS": {
+      "ORDER": "Ордер #{{id}} ({{type}})",
+      "ALERT": "⚠️ СПОВІЩЕННЯ"
+    },
+    "ORDER": {
+      "CANCELLED": "❌ Відмінено Ордер #{{orderId}}",
+      "PENDING": "🆕 Створено Ордер #{{orderId}} ({{amount}})",
+      "FULL_MATCH": "✅ Повний збіг Ордер #{{orderId}}",
+      "FUZZY_MATCH": "≈ Частковий збіг Ордер #{{orderId}} (Очікувалось: {{amount}})",
+      "MANUAL": "⚡ Ручне підтвердження Ордер #{{orderId}} ({{amount}})",
+      "DEFAULT": "Ордер #{{orderId}}"
+    },
+    "ALERT": {
+      "SAFE_TRANSFER": "📦 Переміщено в Сейф",
+      "SAFE_TRANSFER_COMMENT": " - Коментар: {{comment}}",
+      "ALERT_RESOLVED": "✅ Алерт вирішено",
+      "FRAUD": "🚫 Підозра на шахрайство",
+      "FRAUD_SUSPICION": "🚫 Підозра на шахрайство",
+      "UNRECOGNIZED_DEPOSIT": "⚠️ Нерозпізнаний депозит",
+      "FUZZY_LIMIT_EXCEEDED": " (Поза лімітом Fuzzy)",
+      "AMBIGUOUS_DEPOSIT": "⚠️ Збіг кількох ордерів",
+      "AMBIGUOUS_COMBINATIONS": " - Знайдено комбінацій: {{combinationsCount}}",
+      "TERMINAL_FULL_WARNING": "⚠️ Банка майже заповнена",
+      "SALE_COMPLETED": "🏁 Продаж завершено",
+      "ORDER_CONFIRMATION_FAILED": "⚠️ Ордер не підтверджено"
+    }
+  },
+  "SAFE_BOX": {
+    "TITLE": "Сейф",
+    "BACK_TO_DASHBOARD": "Повернутися на Dashboard",
+    "FILTERS": {
+      "STATUS": "Статус",
+      "ALL_STATUSES": "Всі статуси",
+      "PLACEHOLDER": "ID (terminal | order) or amount"
+    },
+    "TABLE": {
+      "DATE": "Дата",
+      "TERMINAL": "Термінал",
+      "AMOUNT": "Сума",
+      "STATUS": "Статус",
+      "COMMENT": "Коментар",
+      "NO_DATA": "Немає записів у сейфі."
+    },
+    "STATUS": {
+      "HELD": "Утримано",
+      "IN_APPEAL": "В апеляції",
+      "APPLIED": "Застосовано",
+      "REFUNDED": "Повернуто",
+      "WRITTEN_OFF": "Списано"
+    }
+  }
+}

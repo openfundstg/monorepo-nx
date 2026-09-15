@@ -1,0 +1,9 @@
+@if (visible()) {
+  <!--
+    `status` rather than `alert`: this is a state, not an announcement, so a
+    screen reader mentions it without interrupting whatever it was reading.
+  -->
+  <div class="overlay" role="status" aria-live="polite" aria-busy="true">
+    <div class="spinner" aria-hidden="true"></div>
+  </div>
+}

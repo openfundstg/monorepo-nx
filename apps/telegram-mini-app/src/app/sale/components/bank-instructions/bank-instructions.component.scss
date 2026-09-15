@@ -1,0 +1,182 @@
+.guide {
+  margin-top: 4px;
+}
+
+.guide-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.guide-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.guide-chevron {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform var(--t-base);
+}
+
+.guide-chevron.open {
+  transform: rotate(180deg);
+}
+
+/* The figure that decides whether the order survives — styled to be read. */
+.goal-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 16px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+}
+
+.goal-label {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.goal-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+/* --- Steps --------------------------------------------------------------- */
+
+.steps {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  counter-reset: step;
+}
+
+.step {
+  counter-increment: step;
+  position: relative;
+  padding-left: 32px;
+  margin-bottom: 16px;
+}
+
+/* The number is drawn rather than rendered by the list so it can sit in a
+   circle and stay aligned with a multi-line step. */
+.step::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.step-text {
+  display: block;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* --- Screenshots --------------------------------------------------------- */
+
+.shot,
+.shot-placeholder {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin-top: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+
+.shot {
+  height: auto;
+}
+
+.shot-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 120px;
+  padding: 16px;
+  border-style: dashed;
+  background: var(--surface-nested);
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.shot-placeholder-icon {
+  font-size: 22px;
+}
+
+/* --- Warning & link hint ------------------------------------------------- */
+
+.guide-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--c-warning-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.warning-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Quieter than the warning: it only matters if the automatic step failed. */
+.guide-fallback {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.link-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.hint-label {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.hint-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  /* A long URL must wrap rather than widen the card and scroll the page. */
+  word-break: break-all;
+  color: var(--accent-text);
+}

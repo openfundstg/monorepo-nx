@@ -1,0 +1,41 @@
+.message {
+  margin: 0 0 var(--gap-md);
+  color: var(--text-secondary);
+}
+
+.figures {
+  display: flex;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-md);
+}
+
+.figures__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--gap-sm) var(--gap-md);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+}
+
+.figures__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.figures__value {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.full {
+  width: 100%;
+}
+
+mat-dialog-content {
+  min-width: 420px;
+}

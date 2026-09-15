@@ -1,0 +1,108 @@
+// Uses global styles
+
+// Corner flag marking a terminal the Telegram Mini App created for itself,
+// rather than one the trader added in the Transacto admin panel.
+.tma-badge {
+  position: absolute;
+  width: 3.5rem;
+  height: 0.8rem;
+  background: #2f7fe4;
+  color: #fff;
+  top: 0.4rem;
+  left: -1rem;
+  transform: rotate(-45deg);
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+
+  // A jar that hands its remainder back and closes itself, against one that
+  // will ask the trader to pay the last stretch in by hand.
+  //
+  // Violet rather than green on purpose. This card already spends green and red
+  // on health — the progress gradient, the alert border, the pending badge — so
+  // a green flag here would read as "this jar is fine" rather than "this jar is
+  // a different kind". A hue that means nothing else on the card can only mean
+  // the thing it is labelling.
+  &.refunds-remainder {
+    background: #7c5cd6;
+  }
+}
+
+// Names what the violet flag means, for the one kind that needs naming.
+//
+// Muted on purpose: it is a standing property of the jar, not an event, and it
+// must not compete with the pending badge two elements to its right — that one
+// pulses because it is money in flight.
+/*
+ * A jar winding down. Amber rather than the remainder chip's violet: this one
+ * is a temporary state a trader may want to keep half an eye on, not a
+ * permanent property of the jar.
+ */
+.closing-chip {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid rgba(214, 158, 92, 0.55);
+  border-radius: 7px;
+  background: rgba(214, 158, 92, 0.16);
+  color: #f2ddbc;
+  font-size: 0.6rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.remainder-chip {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid rgba(124, 92, 214, 0.55);
+  border-radius: 7px;
+  background: rgba(124, 92, 214, 0.16);
+  color: #cbbcf2;
+  font-size: 0.6rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.last-updated-text {
+  position: absolute;
+  right: 0;
+  top: -10px;
+  font-size: 0.65rem;
+  color: #f1f1f1;
+  font-weight: 400;
+  vertical-align: baseline;
+}
+
+// A switched-off jar, surfaced by the search rather than by the live list.
+//
+// Dimmed on purpose: nothing on this card is being updated, and it sits in the
+// same grid as cards that are. The border is what tells the two apart at a
+// glance once the whole grid is search results and there is no live card left
+// to compare against.
+.terminal-card.archived {
+  opacity: 0.62;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+
+  &:hover {
+    opacity: 0.85;
+  }
+}
+
+.archived-badge {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+// Dated rather than clocked, so an old figure cannot read as a current one.
+.archived-stamp {
+  color: rgba(255, 255, 255, 0.6);
+  font-style: italic;
+}

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Monobank Tracker",
+  "version": "1.0.0",
+  "description": "Dashboard for P2P traders to track Monobank in real-time.",
+  "icons": {
+    "16": "favicon.png",
+    "32": "favicon.png",
+    "48": "favicon.png",
+    "128": "favicon.png"
+  },
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Open Tracker",
+    "default_icon": {
+      "16": "favicon.png",
+      "32": "favicon.png",
+      "48": "favicon.png",
+      "128": "favicon.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "alarms", "notifications"],
+  "host_permissions": ["http://localhost:8000/*"]
+}

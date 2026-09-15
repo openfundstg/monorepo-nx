@@ -1,0 +1,11 @@
+<div class="app-container" [class.initializing]="authService.isInitializing()">
+  @if (authService.isInitializing()) {
+    <!-- Loading State -->
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p>{{ 'AUTH.LOADING' | translate }}</p>
+    </div>
+  } @else {
+    <router-outlet></router-outlet>
+  }
+</div>

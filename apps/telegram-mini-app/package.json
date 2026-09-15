@@ -1,0 +1,145 @@
+{
+  "name": "@transacto/telegram-mini-app",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "name": "telegram-mini-app",
+    "tags": [
+      "type:app",
+      "scope:tma"
+    ],
+    "targets": {
+      "build": {
+        "executor": "@angular/build:application",
+        "outputs": [
+          "{projectRoot}/dist"
+        ],
+        "dependsOn": [
+          "^build"
+        ],
+        "options": {
+          "browser": "apps/telegram-mini-app/src/main.ts",
+          "outputPath": {
+            "base": "apps/telegram-mini-app/dist"
+          },
+          "index": "apps/telegram-mini-app/src/index.html",
+          "tsConfig": "apps/telegram-mini-app/tsconfig.app.json",
+          "inlineStyleLanguage": "scss",
+          "assets": [
+            {
+              "glob": "**/*",
+              "input": "apps/telegram-mini-app/public",
+              "ignore": [
+                "**/*.md"
+              ]
+            },
+            {
+              "glob": "**/*",
+              "input": "apps/telegram-mini-app/src/assets",
+              "output": "assets"
+            }
+          ],
+          "styles": [
+            "apps/telegram-mini-app/src/styles.scss"
+          ]
+        },
+        "configurations": {
+          "production": {
+            "budgets": [
+              {
+                "type": "initial",
+                "maximumWarning": "500kB",
+                "maximumError": "1MB"
+              },
+              {
+                "type": "anyComponentStyle",
+                "maximumWarning": "8kB",
+                "maximumError": "16kB"
+              }
+            ],
+            "outputHashing": "all",
+            "fileReplacements": [
+              {
+                "replace": "apps/telegram-mini-app/src/environments/environment.ts",
+                "with": "apps/telegram-mini-app/src/environments/environment.prod.ts"
+              }
+            ]
+          },
+          "development": {
+            "optimization": false,
+            "extractLicenses": false,
+            "sourceMap": true
+          }
+        },
+        "defaultConfiguration": "production"
+      },
+      "serve": {
+        "continuous": true,
+        "executor": "@angular/build:dev-server",
+        "options": {
+          "allowedHosts": [
+            ".ngrok-free.dev",
+            ".ngrok.io",
+            ".ngrok.app"
+          ],
+          "proxyConfig": "apps/telegram-mini-app/proxy.conf.json"
+        },
+        "configurations": {
+          "production": {
+            "buildTarget": "telegram-mini-app:build:production"
+          },
+          "development": {
+            "buildTarget": "telegram-mini-app:build:development"
+          }
+        },
+        "defaultConfiguration": "development"
+      },
+      "typecheck": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "dependsOn": [
+          "^build"
+        ],
+        "options": {
+          "command": "tsc -p tsconfig.app.json --noEmit",
+          "cwd": "apps/telegram-mini-app"
+        }
+      },
+      "test": {
+        "executor": "@angular/build:unit-test",
+        "options": {
+          "tsConfig": "apps/telegram-mini-app/tsconfig.spec.json",
+          "buildTarget": "telegram-mini-app:build",
+          "runner": "vitest",
+          "setupFiles": [
+            "apps/telegram-mini-app/src/test-setup.ts"
+          ]
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@angular/common": "^22.1.1",
+    "@angular/compiler": "^22.1.1",
+    "@angular/core": "^22.1.1",
+    "@angular/forms": "^22.1.1",
+    "@angular/platform-browser": "^22.1.1",
+    "@angular/router": "^22.1.1",
+    "@ngrx/effects": "^22.0.0",
+    "@ngrx/operators": "^22.0.0",
+    "@ngrx/store": "^22.0.0",
+    "@ngx-translate/core": "^18.0.0",
+    "@ngx-translate/http-loader": "^18.0.0",
+    "@transacto/contracts": "*",
+    "rxjs": "~7.8.2",
+    "socket.io-client": "^4.8.3",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.1.3",
+    "@angular/cli": "^22.1.3",
+    "@angular/compiler-cli": "^22.1.1",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
+  }
+}

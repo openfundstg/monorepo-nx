@@ -1,0 +1,97 @@
+<div class="safe-box-view">
+  <div class="history-header">
+    <h2>{{ 'SAFE_BOX.TITLE' | translate }}</h2>
+  </div>
+
+  <div class="filters-bar">
+    <div class="filter-group">
+      <label>{{ 'SAFE_BOX.FILTERS.STATUS' | translate }}</label>
+      <select
+        [ngModel]="statusFilter()"
+        (ngModelChange)="statusFilter.set($event); onFilterChange()"
+      >
+        <option value="">{{ 'SAFE_BOX.FILTERS.ALL_STATUSES' | translate }}</option>
+        <option value="HELD">{{ 'SAFE_BOX.STATUS.HELD' | translate }}</option>
+        <option value="IN_APPEAL">{{ 'SAFE_BOX.STATUS.IN_APPEAL' | translate }}</option>
+        <option value="APPLIED">{{ 'SAFE_BOX.STATUS.APPLIED' | translate }}</option>
+        <option value="REFUNDED">{{ 'SAFE_BOX.STATUS.REFUNDED' | translate }}</option>
+        <option value="WRITTEN_OFF">{{ 'SAFE_BOX.STATUS.WRITTEN_OFF' | translate }}</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <input
+        type="text"
+        [ngModel]="termFilter()"
+        (ngModelChange)="termFilter.set($event)"
+        (keydown.enter)="onFilterChange()"
+        [placeholder]="'SAFE_BOX.FILTERS.PLACEHOLDER' | translate"
+      />
+      <button class="secondary-btn small-btn" (click)="onFilterChange()">Search</button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner-small"></div>
+    </div>
+  } @else if (error()) {
+    <div class="error-state">
+      <p>{{ error() }}</p>
+    </div>
+  } @else if (data().length === 0) {
+    <div class="empty-state">
+      <p>{{ 'SAFE_BOX.TABLE.NO_DATA' | translate }}</p>
+    </div>
+  } @else {
+    <div class="history-table-container">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>{{ 'SAFE_BOX.TABLE.DATE' | translate }}</th>
+            <th>{{ 'SAFE_BOX.TABLE.TERMINAL' | translate }}</th>
+            <th>{{ 'SAFE_BOX.TABLE.AMOUNT' | translate }}</th>
+            <th>{{ 'SAFE_BOX.TABLE.STATUS' | translate }}</th>
+            <th>{{ 'SAFE_BOX.TABLE.COMMENT' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of data(); track item._id) {
+            <tr>
+              <td class="time-col">{{ item.alertCreatedAt | date: 'medium' }}</td>
+              <td>
+                <span class="provider-badge" [ngClass]="'provider-' + item.bankProvider">
+                  {{ item.terminalName }}
+                </span>
+              </td>
+              <td class="balance-col">{{ item.amount | kopecks }}</td>
+              <td>
+                <span class="status-badge" [ngClass]="'status-' + item.status.toLowerCase()">
+                  {{ 'SAFE_BOX.STATUS.' + item.status | translate }}
+                </span>
+              </td>
+              <td class="comment-col">{{ item.comment || '-' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    @if (meta().totalPages > 1) {
+      <div class="pagination-controls">
+        <button class="secondary-btn small-btn" (click)="prevPage()" [disabled]="meta().page <= 1">
+          Previous
+        </button>
+        <span class="page-info">Page {{ meta().page }} of {{ meta().totalPages }}</span>
+        <button
+          class="secondary-btn small-btn"
+          (click)="nextPage()"
+          [disabled]="meta().page >= meta().totalPages"
+        >
+          Next
+        </button>
+      </div>
+    }
+  }
+</div>

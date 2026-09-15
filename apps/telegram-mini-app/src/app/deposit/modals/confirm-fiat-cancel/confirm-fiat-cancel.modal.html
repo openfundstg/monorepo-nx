@@ -1,0 +1,24 @@
+<div class="backdrop" (click)="onBackdrop()"></div>
+
+<!-- `stopPropagation` so a tap inside the sheet is not also a tap on the backdrop. -->
+<div class="sheet glass-card" (click)="$event.stopPropagation()">
+  <h2 class="title">{{ 'fiat.cancel_title' | translate }}</h2>
+  <p class="text">{{ 'fiat.cancel_text' | translate }}</p>
+
+  <div class="buttons">
+    <!--
+      Destructive, and drawn as such: the affirmative button here gives away a
+      payout, so it must not look like the one that confirmed the reservation.
+    -->
+    <button class="primary-btn danger" [disabled]="busy()" (click)="confirmed.emit()">
+      @if (busy()) {
+        <span class="btn-spinner"></span>
+      } @else {
+        {{ 'fiat.cancel_action' | translate }}
+      }
+    </button>
+    <button class="ghost-btn" [disabled]="busy()" (click)="dismissed.emit()">
+      {{ 'fiat.cancel_keep' | translate }}
+    </button>
+  </div>
+</div>

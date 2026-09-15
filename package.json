@@ -1,0 +1,64 @@
+{
+  "name": "@transacto/source",
+  "version": "0.0.0",
+  "license": "MIT",
+  "packageManager": "npm@11.18.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {},
+  "private": true,
+  "devDependencies": {
+    "@eslint/js": "^9.8.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.0",
+    "@nx/angular": "^23.1.1",
+    "@nx/eslint": "^23.1.1",
+    "@nx/eslint-plugin": "23.1.1",
+    "@nx/jest": "23.1.1",
+    "@nx/js": "^23.1.1",
+    "@nx/nest": "^23.1.1",
+    "@nx/node": "23.1.1",
+    "@nx/web": "23.1.1",
+    "@nx/webpack": "23.1.1",
+    "@swc-node/register": "1.11.1",
+    "@swc/core": "1.15.8",
+    "@swc/helpers": "0.5.18",
+    "@swc/jest": "~0.2.38",
+    "@types/jest": "~30.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.8.0",
+    "eslint-config-prettier": "^10.0.0",
+    "jest": "~30.3.0",
+    "jest-environment-node": "~30.3.0",
+    "jest-util": "~30.3.0",
+    "jsonc-eslint-parser": "^2.1.0",
+    "nx": "^23.1.1",
+    "prettier": "^3.8.1",
+    "ts-jest": "^29.4.7",
+    "ts-node": "10.9.1",
+    "tslib": "^2.3.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.58.0",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^7.0.0",
+    "webpack-dev-server": "^5.2.1"
+  },
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "overridesComment": "@ngrx/signals 21.x peers @angular/core ^21 and has no stable Angular 22 release. It is used in exactly one file (monobank-extension core/state/terminal.store.ts), which the planned refactor replaces with a signal-based service — delete this override then. Preferred over workspace-wide legacy-peer-deps so other peer conflicts stay visible.",
+  "overrides": {
+    "@ngrx/signals": {
+      "@angular/core": "^22.1.1"
+    }
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
+  }
+}

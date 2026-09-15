@@ -1,0 +1,355 @@
+import { ConflictException, NotFoundException } from '@nestjs/common'
+import { TmaSaleStatus } from '@transacto/contracts'
+import { SaleCancelService } from './sale-cancel.service'
+import type { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
+import type { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
+import { OrderStatus, type OrderDbService } from 'src/modules/repositories/order-db'
+import type { SaleTerminalService } from './sale-terminal.service'
+import type { SaleProgressService } from './sale-progress.service'
+import type { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
+import type { BalanceLedgerService } from './balance-ledger.service'
+
+const TELEGRAM_ID = 885140
+const CARD_ID = 100
+
+/** 150 USDT staked against a ₴7 118 target at ₴46.52 — the live figures. */
+const FROZEN_CENTS = 15_000
+const RATE = 4_652
+
+const storedOrder = (overrides: Record<string, unknown> = {}) => ({
+  _id: { toString: () => 'order-1' },
+  publicId: '4W3QASK2',
+  telegramId: TELEGRAM_ID,
+  status: TmaSaleStatus.AWAITING_FIAT,
+  fiatAmount: 711_800,
+  frozenUsdt: FROZEN_CENTS,
+  receivedAmount: 0,
+  exchangeRate: RATE,
+  cardId: CARD_ID,
+  traderId: 346,
+  transactoTerminalId: 23_892,
+  ...overrides,
+})
+
+const order = (status: OrderStatus) => ({ status })
+
+describe('SaleCancelService', () => {
+  let db: {
+    findById: jest.Mock
+    cancelIfOpen: jest.Mock
+    appendEvent: jest.Mock
+    markClosing: jest.Mock
+  }
+  let users: {
+    findByTelegramId: jest.Mock
+    commitFrozenBalance: jest.Mock
+  }
+  /** Refunding goes through the book, so the movement leaves a row behind. */
+  let ledger: { refund: jest.Mock }
+  let orders: { findUnsettledByCard: jest.Mock }
+  let terminals: { disable: jest.Mock; stopRouting: jest.Mock }
+  let gateway: { emitSaleStatusChange: jest.Mock; emitBalanceUpdated: jest.Mock }
+  let service: SaleCancelService
+
+  beforeEach(() => {
+    db = {
+      findById: jest.fn().mockResolvedValue(storedOrder()),
+      cancelIfOpen: jest
+        .fn()
+        .mockResolvedValue(storedOrder({ status: TmaSaleStatus.CANCELLED })),
+      appendEvent: jest.fn().mockResolvedValue(storedOrder()),
+      markClosing: jest
+        .fn()
+        .mockResolvedValue(storedOrder({ status: TmaSaleStatus.CLOSING })),
+    }
+    users = {
+      findByTelegramId: jest.fn().mockResolvedValue({ balance: 35_000 }),
+      commitFrozenBalance: jest.fn().mockResolvedValue(undefined),
+    }
+    ledger = { refund: jest.fn().mockResolvedValue(undefined) }
+    orders = { findUnsettledByCard: jest.fn().mockResolvedValue([]) }
+    terminals = {
+      disable: jest.fn().mockResolvedValue(undefined),
+      stopRouting: jest.fn().mockResolvedValue(undefined),
+    }
+    gateway = { emitSaleStatusChange: jest.fn(), emitBalanceUpdated: jest.fn() }
+
+    service = new SaleCancelService(
+      db as unknown as TmaSaleDbService,
+      users as unknown as TmaUserDbService,
+      orders as unknown as OrderDbService,
+      terminals as unknown as SaleTerminalService,
+      { emit: jest.fn().mockResolvedValue(undefined) } as unknown as SaleProgressService,
+      gateway as unknown as TmaGateway,
+      ledger as unknown as BalanceLedgerService,
+    )
+  })
+
+  describe('an untouched order', () => {
+    it('refunds the whole stake', async () => {
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(result).toMatchObject({
+        status: TmaSaleStatus.CANCELLED,
+        refunded: FROZEN_CENTS,
+        consumed: 0,
+      })
+      expect(ledger.refund).toHaveBeenCalledWith(TELEGRAM_ID, FROZEN_CENTS, 'order-1')
+      expect(users.commitFrozenBalance).not.toHaveBeenCalled()
+    })
+
+    it('takes the terminal down as well', async () => {
+      await service.cancel('order-1', TELEGRAM_ID)
+
+      // What disabling actually does is `SaleTerminalService`'s own
+      // spec; all this path owes is asking for it, on this order.
+      expect(terminals.disable).toHaveBeenCalledWith(
+        expect.objectContaining({ cardId: CARD_ID, traderId: 346 }),
+        'Cancelled',
+      )
+    })
+  })
+
+  describe('an order that has already taken money', () => {
+    /**
+     * The hryvnia already in the jar is the user's — it is in their own bank.
+     * Refunding the USDT that paid for it too would let anyone collect fiat for
+     * free by cancelling one order at a time.
+     */
+    it('keeps back the USDT the received hryvnia paid for', async () => {
+      db.findById.mockResolvedValue(storedOrder({ receivedAmount: 8_700 })) // ₴87
+
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      // 8 700 / 4 652 * 100 = 187 cents = 1.87 USDT
+      expect(result.consumed).toBe(187)
+      expect(result.refunded).toBe(FROZEN_CENTS - 187)
+      expect(users.commitFrozenBalance).toHaveBeenCalledWith(TELEGRAM_ID, 187)
+      expect(ledger.refund).toHaveBeenCalledWith(TELEGRAM_ID, FROZEN_CENTS - 187, 'order-1')
+    })
+
+    it('always splits the stake exactly, never creating or losing cents', async () => {
+      for (const received of [0, 1, 8_700, 355_900, 711_800]) {
+        db.findById.mockResolvedValue(storedOrder({ receivedAmount: received }))
+
+        const { refunded, consumed } = await service.cancel('order-1', TELEGRAM_ID)
+
+        expect(refunded + consumed).toBe(FROZEN_CENTS)
+        expect(refunded).toBeGreaterThanOrEqual(0)
+      }
+    })
+
+    /** A jar reporting more than the order was for must not owe the user money. */
+    it('never refunds a negative amount', async () => {
+      db.findById.mockResolvedValue(storedOrder({ receivedAmount: 99_999_999 }))
+
+      const { refunded, consumed } = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(refunded).toBe(0)
+      expect(consumed).toBe(FROZEN_CENTS)
+    })
+  })
+
+  /**
+   * The reported bug. `receivedAmount` counts only money matched to a settled
+   * Transacto order, and the matcher cannot always attribute what lands in the
+   * jar — an unrecognised or ambiguous deposit, or a payment with no order
+   * behind it. Reading it directly refunded the whole stake to a user who was
+   * sitting on the hryvnia.
+   */
+  describe('money in the jar that no order accounts for', () => {
+    it('keeps back the USDT that jar growth paid for', async () => {
+      // ₴87 in the jar, none of it matched to an order.
+      db.findById.mockResolvedValue(
+        storedOrder({ receivedAmount: 0, openingJarBalance: 0, jarBalance: 8_700 }),
+      )
+
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(result.consumed).toBe(187)
+      expect(result.refunded).toBe(FROZEN_CENTS - 187)
+    })
+
+    /**
+     * A jar the user already had money in. That hryvnia was theirs before the
+     * order existed, so it may not be charged for — only the growth counts.
+     */
+    it('charges only the growth, never a balance the jar started with', async () => {
+      db.findById.mockResolvedValue(
+        storedOrder({ receivedAmount: 0, openingJarBalance: 50_000, jarBalance: 58_700 }),
+      )
+
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(result.consumed).toBe(187)
+      expect(result.refunded).toBe(FROZEN_CENTS - 187)
+    })
+
+    /** An unknown baseline may not become a charge. */
+    it('ignores the jar entirely when it was never scraped before', async () => {
+      db.findById.mockResolvedValue(
+        storedOrder({ receivedAmount: 0, openingJarBalance: null, jarBalance: 8_700 }),
+      )
+
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(result.consumed).toBe(0)
+      expect(result.refunded).toBe(FROZEN_CENTS)
+    })
+
+    /** The two measures are routes to the same figure; the larger is the truth. */
+    it('takes matched orders when they exceed the jar growth', async () => {
+      db.findById.mockResolvedValue(
+        storedOrder({ receivedAmount: 8_700, openingJarBalance: 0, jarBalance: 1_000 }),
+      )
+
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(result.consumed).toBe(187)
+    })
+
+    /** A jar the user drained mid-order must not produce a negative charge. */
+    it('never charges a negative amount when the jar shrank', async () => {
+      db.findById.mockResolvedValue(
+        storedOrder({ receivedAmount: 0, openingJarBalance: 10_000, jarBalance: 0 }),
+      )
+
+      const result = await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(result.consumed).toBe(0)
+      expect(result.refunded).toBe(FROZEN_CENTS)
+    })
+  })
+
+  describe('what blocks stopping early', () => {
+    /**
+     * The rule that matters, and the reason winding down exists at all.
+     * Releasing the stake while a payer can still complete would hand the user
+     * their USDT *and* the hryvnia that arrives afterwards.
+     */
+    it.each([OrderStatus.PENDING, OrderStatus.PAUSED, OrderStatus.APPEAL])(
+      'refunds nothing yet while an order is %s',
+      async (status) => {
+        orders.findUnsettledByCard.mockResolvedValue([order(status)])
+
+        const result = await service.cancel('order-1', TELEGRAM_ID)
+
+        expect(result.status).toBe(TmaSaleStatus.CLOSING)
+        expect(result.refunded).toBe(0)
+        // Nothing moved: not the ending, not the ledger.
+        expect(db.cancelIfOpen).not.toHaveBeenCalled()
+        expect(ledger.refund).not.toHaveBeenCalled()
+        expect(users.commitFrozenBalance).not.toHaveBeenCalled()
+      },
+    )
+
+    /**
+     * The terminal is stood down for *routing* only. Switching it off would
+     * stop the scrape, and a payer holding one of those outstanding orders can
+     * still pay — into a jar nobody would then be watching.
+     */
+    it('stops routing without taking the terminal out of service', async () => {
+      orders.findUnsettledByCard.mockResolvedValue([order(OrderStatus.PENDING)])
+
+      await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(terminals.stopRouting).toHaveBeenCalled()
+      expect(terminals.disable).not.toHaveBeenCalled()
+    })
+
+    it('marks the order as closing exactly once', async () => {
+      orders.findUnsettledByCard.mockResolvedValue([order(OrderStatus.PENDING)])
+
+      await service.cancel('order-1', TELEGRAM_ID)
+
+      expect(db.markClosing).toHaveBeenCalledWith('order-1')
+    })
+
+    /** A second tap must not stand the terminal down twice. */
+    it('refuses a second stop once the flip is lost to a race', async () => {
+      orders.findUnsettledByCard.mockResolvedValue([order(OrderStatus.PENDING)])
+      db.markClosing.mockResolvedValue(null)
+
+      await expect(service.cancel('order-1', TELEGRAM_ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      )
+      expect(terminals.stopRouting).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      TmaSaleStatus.COMPLETED,
+      TmaSaleStatus.CANCELLED,
+      TmaSaleStatus.FAILED,
+      TmaSaleStatus.BLOCKED,
+    ])('refuses an order that is already %s', async (status) => {
+      db.findById.mockResolvedValue(storedOrder({ status }))
+
+      await expect(service.cancel('order-1', TELEGRAM_ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      )
+      expect(ledger.refund).not.toHaveBeenCalled()
+    })
+
+    /** Two taps arriving together must produce one refund, not two. */
+    it('refunds once when the status flip is lost to a race', async () => {
+      db.cancelIfOpen.mockResolvedValue(null)
+
+      await expect(service.cancel('order-1', TELEGRAM_ID)).rejects.toBeInstanceOf(
+        ConflictException,
+      )
+      expect(ledger.refund).not.toHaveBeenCalled()
+    })
+
+    it('will not stop somebody else order', async () => {
+      db.findById.mockResolvedValue(storedOrder({ telegramId: 999 }))
+
+      await expect(service.cancel('order-1', TELEGRAM_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      )
+    })
+  })
+
+  describe('canCancel', () => {
+    it.each([
+      TmaSaleStatus.CREATED,
+      TmaSaleStatus.TERMINAL_READY,
+      TmaSaleStatus.AWAITING_FIAT,
+    ])('is true for an open order: %s', (status) => {
+      expect(service.canCancel({ status })).toBe(true)
+    })
+
+    /**
+     * Outstanding orders no longer decide *whether* a stop may be asked for,
+     * only how it happens — so the button stays live.
+     */
+    it('stays true while an order is unsettled', () => {
+      orders.findUnsettledByCard.mockResolvedValue([order(OrderStatus.APPEAL)])
+
+      expect(service.canCancel({ status: TmaSaleStatus.AWAITING_FIAT })).toBe(true)
+    })
+
+    /** An order already winding down offers no second button. */
+    it.each([
+      TmaSaleStatus.CLOSING,
+      TmaSaleStatus.COMPLETED,
+      TmaSaleStatus.CANCELLED,
+      TmaSaleStatus.BLOCKED,
+    ])('is false for %s', (status) => {
+      expect(service.canCancel({ status })).toBe(false)
+    })
+  })
+
+  /**
+   * The refund is already in the ledger by the time the terminal is torn down,
+   * so a failure there must not cost the user money they are owed. The real
+   * teardown swallows its own errors, but the ordering is what guarantees this
+   * — so the refund is asserted against a teardown that does throw.
+   */
+  it('still refunds when the terminal cannot be disabled', async () => {
+    terminals.disable.mockRejectedValue(new Error('502'))
+
+    await service.cancel('order-1', TELEGRAM_ID).catch(() => undefined)
+
+    expect(ledger.refund).toHaveBeenCalledWith(TELEGRAM_ID, FROZEN_CENTS, 'order-1')
+  })
+})

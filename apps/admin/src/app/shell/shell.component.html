@@ -1,0 +1,53 @@
+<div class="shell">
+  <nav class="nav">
+    <div class="nav__brand">
+      <app-brand-mark [size]="22" />
+      <span>Transacto</span>
+    </div>
+
+    @for (section of sections; track section.label) {
+      <div class="nav__section">
+        <span class="nav__section-label">{{ section.label | translate }}</span>
+        @for (item of section.items; track item.path) {
+          <a
+            class="nav__link"
+            [routerLink]="['/', item.path]"
+            routerLinkActive="nav__link--active"
+            [routerLinkActiveOptions]="{ exact: item.exact ?? false }"
+          >
+            <mat-icon>{{ item.icon }}</mat-icon>
+            <span>{{ item.label | translate }}</span>
+          </a>
+        }
+      </div>
+    }
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <span
+        class="live"
+        [class.live--on]="connected()"
+        [matTooltip]="(connected() ? 'shell.live_on' : 'shell.live_off') | translate"
+      >
+        <span class="live__dot"></span>
+        {{ (connected() ? 'shell.live_on' : 'shell.live_off') | translate }}
+      </span>
+
+      <button mat-button type="button" [matMenuTriggerFor]="userMenu">
+        <mat-icon>account_circle</mat-icon>
+        {{ username() }}
+      </button>
+      <mat-menu #userMenu="matMenu">
+        <button mat-menu-item type="button" (click)="logout()">
+          <mat-icon>logout</mat-icon>
+          <span>{{ 'shell.logout' | translate }}</span>
+        </button>
+      </mat-menu>
+    </header>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

@@ -1,0 +1,99 @@
+<div class="deposit-verify">
+  <h2 class="page-title">{{ 'deposit.send_crypto' | translate }}</h2>
+
+  <!-- Amount Info -->
+  <div class="info-card glass-card">
+    <div class="info-row">
+      <span class="info-label">{{ 'deposit.amount' | translate }}:</span>
+      <span class="info-value">{{ deposit()?.cryptoAmount }} USDT (TRC-20)</span>
+    </div>
+  </div>
+
+  <!-- Wallet Address -->
+  <div class="wallet-card glass-card">
+    <span class="wallet-label">{{ 'deposit.wallet_address' | translate }}:</span>
+    <div class="wallet-address-box">
+      <span class="wallet-address" id="wallet-address">{{ walletAddress() }}</span>
+      <button class="copy-btn" (click)="copyAddress()" id="copy-address-btn">
+        @if (copied()) { ✅ {{ 'deposit.copied' | translate }} } @else { 📋 {{ 'deposit.copy' | translate }} }
+      </button>
+    </div>
+  </div>
+
+  <!-- Countdown Timer -->
+  @if (timeRemaining() > 0 && !isVerified()) {
+    <div class="countdown glass-card">
+      <span class="countdown-icon">⏳</span>
+      <span class="countdown-label">{{ 'deposit.time_remaining' | translate }}:</span>
+      <span class="countdown-value">{{ formattedTime() }}</span>
+    </div>
+  }
+
+  <!-- TxID Input -->
+  @if (!isVerified()) {
+    <div class="txid-section glass-card">
+      <div class="section-divider">
+        <span>{{ 'deposit.after_payment' | translate }}</span>
+      </div>
+
+      <label class="input-label">{{ 'deposit.paste_txid' | translate }}:</label>
+      <input
+        type="text"
+        [placeholder]="'deposit.txid_placeholder' | translate"
+        [(ngModel)]="txId"
+        class="txid-input"
+        id="txid-input"
+        maxlength="64"
+      />
+      <button
+        class="primary-btn verify-btn"
+        [disabled]="txId().length !== 64 || verifying()"
+        (click)="onVerify()"
+        id="verify-btn"
+      >
+        @if (verifying()) {
+          <span class="btn-spinner"></span>
+          {{ 'deposit.verifying' | translate }}
+        } @else {
+          ✅ {{ 'deposit.verify' | translate }}
+        }
+      </button>
+    </div>
+  }
+
+  <!-- Success State -->
+  @if (isVerified()) {
+    <div class="success-card glass-card">
+      <div class="success-icon">🎉</div>
+      <h3>{{ 'deposit.success' | translate }}</h3>
+      <p class="success-detail">
+        {{ 'deposit.success_detail' | translate }}: 
+        @if (balanceCredited() > 0) {
+          {{ formatUsdt(balanceCredited()) }} USDT
+        } @else {
+          {{ deposit()?.cryptoAmount }} USDT
+        }
+      </p>
+      <button class="primary-btn" (click)="goToDashboard()">
+        {{ 'dashboard.title' | translate }}
+      </button>
+    </div>
+  }
+
+  <!-- Error -->
+  @if (errorMsg()) {
+    <div class="error-card glass-card">
+      <p>{{ errorMsg() }}</p>
+    </div>
+  }
+
+  <!-- Status -->
+  <div class="status-line">
+    @switch (currentStatus()) {
+      @case ('PENDING') { <span class="status-dot pending"></span> {{ 'deposit.status_pending' | translate }} }
+      @case ('COMPLETED') { <span class="status-dot completed"></span> {{ 'deposit.status_completed' | translate }} }
+      @case ('EXPIRED') { <span class="status-dot expired"></span> {{ 'deposit.status_expired' | translate }} }
+      @case ('PAID_LATE') { <span class="status-dot completed"></span> {{ 'deposit.status_paid_late' | translate }} }
+    }
+  </div>
+</div>

@@ -1,0 +1,86 @@
+:80 {
+    encode gzip zstd
+
+    handle /api/* {
+        reverse_proxy api:8000
+    }
+
+    handle /socket.io/* {
+        reverse_proxy api:8000
+    }
+
+    handle {
+        root * /usr/share/caddy
+
+        # ------------------------------------------------------------------
+        # Caching. The build splits cleanly in two, and the two halves need
+        # opposite answers — sending neither is what leaves a phone on an old
+        # UI for days.
+        #
+        # Without an explicit `Cache-Control`, HTTP lets a client invent its
+        # own freshness from `Last-Modified` (RFC 9111 §4.2.2), and the usual
+        # guess is a tenth of the file's age. A bundle built two weeks ago is
+        # therefore "fresh" for well over a day, with no request made at all —
+        # so a deploy is simply not seen. Telegram's in-app WebView leans on
+        # that heuristic harder than a normal browser.
+        #
+        # The split is two `handle` blocks rather than two `header` lines
+        # because the halves also need opposite answers about a MISSING file,
+        # and only a `handle` can give them one. See below.
+        # ------------------------------------------------------------------
+
+        # `outputHashing: "all"` puts a content hash in every bundle name, so
+        # these names never survive a change to their contents. They can be
+        # cached forever, and `immutable` stops even a reload revalidating them.
+        #
+        # What they must NOT do is fall through to `index.html`. A phone holding
+        # an open app from the previous deploy still names that deploy's lazy
+        # chunks, and a release deletes them — so this is exactly the request an
+        # in-flight navigation makes. Answering it with the SPA fallback returns
+        # `200 text/html` to an `import()`, which then fails on parse rather
+        # than on a status code, and the `immutable` promise caches that HTML
+        # under the bundle's URL for a year: every later attempt fails from
+        # cache without even a request. A plain 404 is the honest answer, and it
+        # is what `withNavigationErrorHandler` in `app.config.ts` recovers from.
+        @bundle path_regexp ^/(main|styles|chunk)-[A-Za-z0-9_-]+\.(js|css)$
+
+        # `immutable` may only be promised for a bundle that is actually here.
+        # A hash names its contents, so a name that 404s today can legitimately
+        # come back in a later deploy that rebuilds the same chunk — and a
+        # year-long cached 404 would then break that phone permanently, which is
+        # the same trap as above with the roles reversed.
+        @bundle_present {
+            path_regexp ^/(main|styles|chunk)-[A-Za-z0-9_-]+\.(js|css)$
+            file
+        }
+        @bundle_missing {
+            path_regexp ^/(main|styles|chunk)-[A-Za-z0-9_-]+\.(js|css)$
+            not file
+        }
+
+        handle @bundle {
+            header @bundle_present Cache-Control "public, max-age=31536000, immutable"
+            header @bundle_missing Cache-Control "no-store"
+            file_server
+        }
+
+        # Everything else keeps a stable name across deploys, so it has to be
+        # revalidated every time. `no-cache` still stores the file — it only
+        # forbids serving it without asking — so the usual answer is a 304 off
+        # the ETag rather than a re-download.
+        #
+        # `index.html` is the one that matters most: it names the hashed
+        # bundles above, so caching it pins the whole app to the deploy that
+        # produced it. The rest are assets Angular copies verbatim rather than
+        # hashing — `assets/i18n/*.json` above all, which ngx-translate fetches
+        # at runtime, so a stale copy is missing every key added since.
+        #
+        # The SPA fallback belongs here and only here: an unknown path in this
+        # half is a client-side route, so serving the shell is correct.
+        handle {
+            header Cache-Control "no-cache"
+            try_files {path} {path}/ /index.html
+            file_server
+        }
+    }
+}

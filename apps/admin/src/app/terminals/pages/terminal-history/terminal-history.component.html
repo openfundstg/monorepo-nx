@@ -1,0 +1,31 @@
+<div class="back">
+  <a mat-button [routerLink]="['/terminals']">
+    <mat-icon>arrow_back</mat-icon>
+    {{ 'nav.terminals' | translate }}
+  </a>
+</div>
+
+<app-page-header title="terminals.history_title" subtitle="terminals.history_subtitle">
+  <span class="target">
+    <!--
+      The card id always, the name when the list happens to hold it. An operator
+      arrives here from a list of everybody's terminals, so the screen has to
+      say which one it is showing — the extension needs no such thing, because a
+      trader only ever sees their own.
+    -->
+    <span class="mono">{{ cardId() }}</span>
+    @if (terminal(); as found) {
+      <span class="target__name">{{ found.terminalName }}</span>
+    }
+  </span>
+
+  <span class="live" [class.live--on]="connected()">
+    <span class="live__dot"></span>
+    {{ (connected() ? 'shell.live_on' : 'shell.live_off') | translate }}
+  </span>
+</app-page-header>
+
+<!--
+  The shared table. Identical to the extension's, because it is the extension's.
+-->
+<lib-history-table [logs]="logs()" [loading]="loading()" />

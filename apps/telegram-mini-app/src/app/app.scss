@@ -1,0 +1,11 @@
+/*
+  One place clears Telegram's overlaid UI for every routed page.
+
+  Each page sets its own `padding: 16px`, so pushing the shell down is what
+  keeps the fix from being repeated — and forgotten — on the next page added.
+  The fixed bottom nav is unaffected by this padding and handles its own inset.
+*/
+:host {
+  display: block;
+  padding-top: var(--app-safe-top, 0px);
+}

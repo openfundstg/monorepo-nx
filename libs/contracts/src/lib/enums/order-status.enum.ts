@@ -1,0 +1,14 @@
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  EXECUTED = 'EXECUTED',
+  PAUSED = 'PAUSED',
+  CANCELLED = 'CANCELLED',
+  APPEAL = 'APPEAL',
+}
+
+export enum OrderExecutionReason {
+  FULL_MATCH = 'FULL_MATCH',
+  FUZZY_MATCH = 'FUZZY_MATCH',
+  EXTENSION = 'EXTENSION',
+  ADMIN_PANEL = 'ADMIN_PANEL',
+}

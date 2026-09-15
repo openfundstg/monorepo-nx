@@ -1,0 +1,977 @@
+import { ERROR, SaleEventType, SaleRemainderPolicy } from '@transacto/contracts'
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException
+} from '@nestjs/common'
+import { InjectModel } from '@nestjs/mongoose'
+import { QueryFilter, Model, Types } from 'mongoose'
+import {
+  TmaSale,
+  TmaSaleDocument,
+  TmaSaleStatus,
+  SaleBlockReason
+} from 'src/modules/repositories/tma-sale-db/schemas'
+import { ensure, generatePublicId, isDuplicateKeyOn } from 'src/shared/utils'
+import type { Page, PageQuery } from 'src/modules/repositories/interfaces'
+
+/**
+ * Attempts allowed when a generated public id collides.
+ *
+ * At 36^8 the first attempt fails with probability ~1e-7 per million existing
+ * orders, so five retries is a formality — but a unique index without a retry
+ * would surface that formality as a user-visible 500.
+ */
+const PUBLIC_ID_ATTEMPTS = 5
+
+/**
+ * Statuses in which a sale is still watching its terminal for money.
+ *
+ * `CLOSING` belongs here, and that is the whole design of a user-requested
+ * stop: the terminal has been told to take no new payers, but a payer already
+ * holding an order can still pay, so the order must keep matching, keep
+ * counting toward its user's parallel allowance, and stay completable.
+ */
+const OPEN_STATUSES = [
+  TmaSaleStatus.CREATED,
+  TmaSaleStatus.TERMINAL_READY,
+  TmaSaleStatus.AWAITING_FIAT,
+  TmaSaleStatus.CLOSING
+] as const
+
+/**
+ * Statuses that occupy one of a user's parallel-order slots.
+ *
+ * Deliberately **not** {@link OPEN_STATUSES}, and the difference is `BLOCKED`.
+ * That one is not open — its terminal is stopped and nothing is watching it any
+ * more — but its stake stays frozen and it was stopped for breaking a rule of
+ * the scheme. Freeing the slot the moment an order is blocked would let a user
+ * start a fresh one immediately, which makes being blocked cost nothing.
+ *
+ * The two lists are separate rather than one widened list because
+ * `OPEN_STATUSES` is the guard on `blockIfOpen`, `cancelIfOpen` and
+ * `completeIfOpen` — adding `BLOCKED` there would let a blocked order be
+ * completed or cancelled afterwards.
+ */
+const SLOT_HOLDING_STATUSES = [...OPEN_STATUSES, TmaSaleStatus.BLOCKED] as const
+
+/**
+ * Endings after which the jar can still be open, and still take money.
+ *
+ * An order stops; the jar does not. Both of these leave a terminal whose jar
+ * has to be closed by its owner before the user's slot comes back — see
+ * `jarClosedAt`. `FAILED` is absent because it never got a terminal, and
+ * `BLOCKED` because it holds a slot outright.
+ */
+const JAR_OUTLIVES_ORDER_STATUSES = [
+  TmaSaleStatus.COMPLETED,
+  TmaSaleStatus.CANCELLED
+] as const
+
+/**
+ * What this collection was called while the product called a sale a scroll
+ * order.
+ *
+ * Named here rather than passed in from the migration, for the reason
+ * {@link TmaSaleDbService.findPricedAtMarketRate} gives about the legacy field
+ * names it reads: this is the layer that knows what is on disk, and a caller
+ * that had to supply the old name would be a caller that could supply a wrong
+ * one.
+ */
+const LEGACY_SALE_COLLECTION = 'tma_scroll_orders'
+
+@Injectable()
+export class TmaSaleDbService {
+  private readonly logger = new Logger(TmaSaleDbService.name)
+
+  constructor(
+    @InjectModel(TmaSale.name)
+    private readonly saleModel: Model<TmaSaleDocument>
+  ) {}
+
+  /**
+   * Creates a sale, allocating its public id here rather than in the
+   * caller.
+   *
+   * A pre-check for an unused id would still race two concurrent creates, so
+   * the unique index is the authority and a duplicate key simply means "draw
+   * again". This is the only place in the codebase that handles E11000, and it
+   * is deliberately narrow: any other duplicate-key error rethrows untouched.
+   */
+  async create(data: {
+    telegramId: number
+    fiatAmount: number
+    exchangeRate: number
+    frozenUsdt: number
+    bankType: string
+    dropLink: string
+    remainderPolicy: SaleRemainderPolicy
+    receiverName: string
+    /** Whether the bank itself named the card this order pays into. */
+    cardVerifiedByBank: boolean
+  }): Promise<TmaSale & { _id: Types.ObjectId }> {
+    for (let attempt = 1; attempt <= PUBLIC_ID_ATTEMPTS; attempt++) {
+      const publicId = generatePublicId()
+
+      try {
+        const order = await this.saleModel.create({ ...data, publicId })
+        return order.toObject()
+      } catch (error: unknown) {
+        if (!isDuplicateKeyOn(error, 'publicId')) throw error
+
+        this.logger.warn(
+          `Public id ${publicId} collided (attempt ${attempt}/${PUBLIC_ID_ATTEMPTS}), regenerating`
+        )
+      }
+    }
+
+    throw new InternalServerErrorException(ERROR.SALE.PUBLIC_ID_GENERATION_FAILED)
+  }
+
+  /**
+   * `Model.findById` throws a CastError — surfacing as a 500 — for anything that
+   * is not a 24-character hex string, so the shape is checked before the query
+   * and a bad id is simply "not found".
+   */
+  async findById(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    if (!Types.ObjectId.isValid(id)) return null
+
+    return this.saleModel.findById(id).lean()
+  }
+
+  async findByPublicId(
+    publicId: string
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel.findOne({ publicId }).lean()
+  }
+
+  /**
+   * One user's orders, newest first.
+   *
+   * `limit` is optional because two callers want opposite things: the timeline
+   * shows a page and nothing more, while the orders screen lists them all. Left
+   * off, the query is unbounded — which is the reading it had when it was the
+   * only one.
+   */
+  async findByTelegramId(
+    telegramId: number,
+    limit?: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    const query = this.saleModel.find({ telegramId }).sort({ createdAt: -1 })
+
+    return (limit === undefined ? query : query.limit(limit)).lean()
+  }
+
+  /**
+   * How many orders this user has actually sold through.
+   *
+   * Read by the referral programme, which only lets a code be redeemed by
+   * someone who has not completed anything yet — so an established user cannot
+   * be back-dated onto a link.
+   */
+  /**
+   * How many parallel-order slots this user is holding right now.
+   *
+   * The figure the trust level is checked against. Counted rather than tracked:
+   * a stored counter would drift the first time an order ended by a path that
+   * forgot to decrement it, and the failure mode of drift is a user locked out
+   * of creating anything with no visible reason.
+   */
+  /**
+   * Moves an open order to CLOSING exactly once.
+   *
+   * The status guard is the idempotency key: a second tap on "finish", or two
+   * requests in the same instant, must not stand the terminal down twice or put
+   * a second entry on the timeline. `CLOSING` is excluded from the filter for
+   * the same reason, even though it is an open status — an order already
+   * winding down has nothing to move to.
+   */
+  async markClosing(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: {
+            $in: [
+              TmaSaleStatus.CREATED,
+              TmaSaleStatus.TERMINAL_READY,
+              TmaSaleStatus.AWAITING_FIAT
+            ]
+          }
+        },
+        { $set: { status: TmaSaleStatus.CLOSING } },
+        { new: true }
+      )
+      .lean()
+  }
+
+  /**
+   * Every order waiting for its last outstanding payments to resolve.
+   *
+   * Read by the cron that settles them. Polled rather than driven by whichever
+   * signal happens to close the final order — a scrape, an `order.cancelled`
+   * webhook, the 30-second `orders_list` sync — because a poll needs none of
+   * them to be reliable and picks up again by itself after a restart.
+   */
+  async findClosing(): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    return this.saleModel.find({ status: TmaSaleStatus.CLOSING }).lean()
+  }
+
+  async countSlotsHeldByTelegramId(telegramId: number): Promise<number> {
+    return this.saleModel.countDocuments({
+      telegramId,
+      $or: this.slotHoldingConditions()
+    })
+  }
+
+  /**
+   * Every order currently holding a slot, whichever reason it holds one for.
+   *
+   * Read by the reconciliation sweep, which has to answer a question this
+   * collection cannot: whether the jar is still there. It shares
+   * {@link slotHoldingConditions} with the count rather than restating it —
+   * a sweep looking at a different set from the one being counted would leave
+   * exactly the orders that are stuck.
+   */
+  async findHoldingSlots(): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    return this.saleModel.find({ $or: this.slotHoldingConditions() }).lean()
+  }
+
+  /** The two reasons an order takes up one of its user's slots. */
+  private slotHoldingConditions(): Record<string, unknown>[] {
+    return [
+      { status: { $in: SLOT_HOLDING_STATUSES } },
+      // An order that ended and left its jar open, for as long as it stays
+      // open. The jar can still take money that nothing will ever match, and
+      // the only person who can stop that is the one who owns it.
+      //
+      // **Unbounded on purpose, and this is the second time it has been.** A
+      // time limit was tried — an hour — because the rule had locked a NEWBIE
+      // out at "4/1 running" with no way to bring the count down. But the limit
+      // treated the symptom: the count came down while the jars stayed open, so
+      // the risk the rule exists for simply went unaccounted, and the user was
+      // never told what had happened either way. The fix is that the product
+      // now *says* which jar to close — `slotsAwaitingJarClosure` on the create
+      // form's config, the card on the sale's own screen, and the operator's
+      // RELEASE_JAR for the case where the bank will not answer.
+      //
+      // `cardId: { $ne: null }` keeps out the orders that never got a terminal
+      // at all: there is no jar to close, so there would be nothing the user
+      // could do to release the slot.
+      { status: { $in: JAR_OUTLIVES_ORDER_STATUSES }, cardId: { $ne: null }, jarClosedAt: null }
+    ]
+  }
+
+  /**
+   * This user's finished sales that are still holding a slot, newest first.
+   *
+   * The half of {@link countSlotsHeldByTelegramId} a user can act on. The count
+   * says a slot is taken; this says which sale took it and which bank's jar to
+   * go and close — without which the create form can only tell somebody with no
+   * running sale that they have too many running sales.
+   *
+   * The filter is the second branch of {@link slotHoldingConditions}, and it is
+   * read from there rather than restated: a list that disagreed with the count
+   * would name the wrong jars, which is worse than naming none.
+   */
+  async findAwaitingJarClosureByTelegramId(
+    telegramId: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    const [, endedWithOpenJar] = this.slotHoldingConditions()
+
+    return this.saleModel.find({ telegramId, ...endedWithOpenJar }).sort({ updatedAt: -1 }).lean()
+  }
+
+  /**
+   * Declares a jar closed because an operator said so, not because a bank did.
+   *
+   * Separate from {@link markJarClosedByCardId}, which is the scraper reporting
+   * what a bank answered. This is a human overriding that rule for one order
+   * when the bank will not answer at all — so it is keyed by the order, never
+   * by the card: a card can carry several sales, and an operator deciding about
+   * one of them has not looked at the others.
+   *
+   * Guarded on `jarClosedAt: null` so a second press cannot move a timestamp
+   * that is already recorded.
+   */
+  async markJarClosedById(saleId: string | Types.ObjectId): Promise<boolean> {
+    const result = await this.saleModel.updateOne(
+      { _id: saleId, jarClosedAt: null },
+      { $set: { jarClosedAt: new Date() } }
+    )
+
+    return (result.modifiedCount ?? 0) > 0
+  }
+
+  /**
+   * Records that the bank has reported this card's jar closed.
+   *
+   * Keyed by card rather than by order id because the scraper is what notices,
+   * and all it has is the terminal. Idempotent: a jar reported closed twice
+   * keeps the first timestamp, so the sweep cannot see the moment move.
+   */
+  async markJarClosedByCardId(cardId: number): Promise<number> {
+    const result = await this.saleModel.updateMany(
+      { cardId, jarClosedAt: null },
+      { $set: { jarClosedAt: new Date() } }
+    )
+
+    return result.modifiedCount ?? 0
+  }
+
+  /**
+   * What this user's live orders account for, in frozen USDT cents.
+   *
+   * The same statuses that hold a slot, because they are the same orders that
+   * hold a stake: an order still running has its USDT frozen, and a blocked one
+   * keeps it frozen on purpose. Everything else has either committed its stake
+   * or given it back.
+   *
+   * Read by the migration that repairs orphaned stakes — a user's
+   * `frozenBalance` above this sum is USDT frozen for nothing.
+   */
+  async sumFrozenStakesByTelegramId(telegramId: number): Promise<number> {
+    const [totals] = await this.saleModel
+      .aggregate<{ frozen: number }>([
+        { $match: { telegramId, status: { $in: SLOT_HOLDING_STATUSES } } },
+        { $group: { _id: null, frozen: { $sum: '$frozenUsdt' } } },
+        { $project: { _id: 0, frozen: 1 } }
+      ])
+      .exec()
+
+    return totals?.frozen ?? 0
+  }
+
+  async countCompletedByTelegramId(telegramId: number): Promise<number> {
+    return this.saleModel.countDocuments({
+      telegramId,
+      status: TmaSaleStatus.COMPLETED
+    })
+  }
+
+  async updateStatus(
+    id: string,
+    status: TmaSaleStatus
+  ): Promise<TmaSale & { _id: Types.ObjectId }> {
+    const result = await this.saleModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            status,
+            ...(status === TmaSaleStatus.COMPLETED ? { completedAt: new Date() } : {})
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+
+    if (!result) throw new NotFoundException(ERROR.SALE.NOT_FOUND)
+    return result
+  }
+
+  /**
+   * Links Transacto terminal IDs to this sale after successful API call.
+   *
+   * `traderId` is stored alongside them because every downstream lookup —
+   * scraper, terminal sync, order polling — keys on `{ traderId, cardId }`.
+   */
+  async linkTerminal(
+    id: string,
+    transactoTerminalId: number,
+    cardId: number,
+    traderId: number
+  ): Promise<TmaSale & { _id: Types.ObjectId }> {
+    const result = await this.saleModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            transactoTerminalId,
+            cardId,
+            traderId,
+            status: TmaSaleStatus.TERMINAL_READY
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+
+    if (!result) throw new NotFoundException(ERROR.SALE.NOT_FOUND)
+    this.logger.log(
+      `Linked terminal ${transactoTerminalId} (cardId: ${cardId}, traderId: ${traderId}) to sale ${id}`
+    )
+    return result
+  }
+
+  /**
+   * Find sales by Transacto terminal ID — used when fiat arrives
+   * and we need to complete the corresponding sale.
+   */
+  async findOpenByTerminalId(
+    transactoTerminalId: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOne({ transactoTerminalId, status: { $in: OPEN_STATUSES } })
+      .lean()
+  }
+
+  /**
+   * The reverse bridge the whole progress pipeline depends on.
+   *
+   * A bank scrape and an order webhook both know only `cardId`; this is the
+   * only route back to the `telegramId` whose socket room the update belongs
+   * in. Restricted to open orders so a completed order's terminal — which
+   * Transacto may keep reusing — cannot resurrect it.
+   */
+  async findOpenByCardId(
+    cardId: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel.findOne({ cardId, status: { $in: OPEN_STATUSES } }).lean()
+  }
+
+  /**
+   * Whether this card's sale is over while its jar is still open.
+   *
+   * The window between an ending and the jar being closed, which the user
+   * controls and nobody else can shorten: routing was switched off at the
+   * ending, so **no Transacto order can ever be sent here again**, and the
+   * terminal is still scraped for one reason only — to notice the closure that
+   * gives the user their slot back.
+   *
+   * What the scraper does with that: hryvnia leaving such a jar is its owner
+   * withdrawing their own settled money, not a trader emptying a jar that
+   * payers are still being routed to. The same reading means fraud in every
+   * other state and means nothing here, and only this collection knows which.
+   *
+   * `CLOSING` is deliberately absent — it is an {@link OPEN_STATUSES} member,
+   * with orders still outstanding and money still expected, so a drop there is
+   * exactly as serious as it has always been.
+   */
+  async isAwaitingJarClosureByCardId(cardId: number): Promise<boolean> {
+    const order = await this.saleModel
+      .findOne(
+        { cardId, status: { $in: JAR_OUTLIVES_ORDER_STATUSES }, jarClosedAt: null },
+        { _id: 1 }
+      )
+      .lean()
+
+    return order !== null
+  }
+
+  /**
+   * Takes over the collection this used to be called, if it is still there.
+   *
+   * A rename of the *collection*, which no query can express and no `@Schema`
+   * decorator can perform: Mongoose binds this model to `tma_sales`, and a
+   * database that still holds `tma_scroll_orders` answers every read with
+   * nothing. So the one operation that can fix it is issued through the driver,
+   * from the service that owns the collection — the layering rule says Mongoose
+   * lives here, and this is Mongoose.
+   *
+   * **The target usually exists already, and that is our own doing.** Mongoose
+   * runs with `autoCreate: true`, so the moment a process builds this model it
+   * issues `createCollection('tma_sales')` — the migration CLI included. By the
+   * time `up()` is called the destination is therefore present and empty, and a
+   * plain rename fails with `NamespaceExists`. Dropping an empty target first is
+   * what makes this runnable at all rather than a statement that throws on the
+   * one attempt it gets.
+   *
+   * **A target with documents in it is refused, loudly.** That is not our
+   * bootstrap; it is a process that has been serving traffic against the new
+   * name while the old data sat under the old one, so the sales are split across
+   * two collections and merging them is a judgement about somebody's money. The
+   * migration stops rather than guessing.
+   *
+   * Idempotent: a database already renamed has no legacy collection, and one
+   * that never had it — a fresh install — is the same case. Returns whether it
+   * actually moved anything.
+   */
+  async adoptLegacyCollection(): Promise<boolean> {
+    const connection = this.saleModel.db
+    const target = this.saleModel.collection.name
+    const present = await connection.listCollections()
+
+    if (!present.some((collection) => collection.name === LEGACY_SALE_COLLECTION)) return false
+
+    if (present.some((collection) => collection.name === target)) {
+      const strays = await this.saleModel.estimatedDocumentCount()
+      ensure(
+        strays === 0,
+        new ConflictException(
+          `${target} already holds ${strays} document(s) while ${LEGACY_SALE_COLLECTION} still ` +
+            `exists — sales are split across both and merging them is not this migration's call`
+        )
+      )
+
+      await connection.db?.dropCollection(target)
+    }
+
+    // Through the driver handle: renaming a collection is not a query, and
+    // Mongoose's own `Connection` does not offer it.
+    await connection.db?.renameCollection(LEGACY_SALE_COLLECTION, target)
+
+    return true
+  }
+
+  /**
+   * This user's orders that ended having moved money, oldest first.
+   *
+   * The set an earnings figure is built from, and it reuses
+   * {@link JAR_OUTLIVES_ORDER_STATUSES} rather than restating its two members:
+   * "the order finished and its jar outlived it" and "the order finished having
+   * sold something" are the same two statuses, and a second list would be a
+   * second place to remember the next terminal status in. `BLOCKED` and
+   * `FAILED` moved nothing, and the open ones have not finished moving it.
+   *
+   * Projected to the figures a settlement is computed from. The full documents
+   * carry an `events` timeline that grows for the life of the order, and
+   * pulling a user's whole history of those to read seven scalars is the cost
+   * this finder exists to avoid.
+   *
+   * Ascending, because everything that consumes it walks a history forwards.
+   */
+  async findSettledByTelegramId(
+    telegramId: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    return this.saleModel
+      .find(
+        { telegramId, status: { $in: JAR_OUTLIVES_ORDER_STATUSES } },
+        {
+          status: 1,
+          frozenUsdt: 1,
+          exchangeRate: 1,
+          fiatAmount: 1,
+          receivedAmount: 1,
+          jarBalance: 1,
+          openingJarBalance: 1,
+          remainderPolicy: 1,
+          createdAt: 1
+        }
+      )
+      .sort({ createdAt: 1 })
+      .lean()
+  }
+
+  /**
+   * The remainder policy behind each of these cards, newest order per card.
+   *
+   * **Any status, unlike {@link findOpenByCardId}.** The trader's dashboard
+   * labels a terminal by what its order does at the end, and a terminal outlives
+   * the order that made it — it stays on screen while it has an unread alert
+   * and is reachable through search forever. A finished order still explains
+   * what the terminal was for.
+   *
+   * Sorted by `_id`, which is monotonic per insert, so "newest" needs no extra
+   * index and cannot tie. One query for the whole page rather than one per row.
+   */
+  async findRemainderPoliciesByCardIds(
+    cardIds: readonly number[]
+  ): Promise<Map<number, SaleRemainderPolicy>> {
+    if (!cardIds.length) return new Map()
+
+    const orders = await this.saleModel
+      .find({ cardId: { $in: cardIds } }, { cardId: 1, remainderPolicy: 1 })
+      .sort({ _id: 1 })
+      .lean()
+
+    // Oldest first, so a later order on the same card overwrites an earlier one
+    // and the map ends up holding the newest.
+    return orders.reduce<Map<number, SaleRemainderPolicy>>((byCard, order) => {
+      if (order.cardId !== null && order.remainderPolicy)
+        byCard.set(order.cardId, order.remainderPolicy)
+
+      return byCard
+    }, new Map())
+  }
+
+  /**
+   * Appends a timeline entry and, for money events, advances `receivedAmount`
+   * in the same atomic update so the two can never disagree.
+   */
+  async appendEvent(
+    id: string,
+    event: {
+      type: SaleEventType
+      amount?: number
+      orderId?: number
+      at: number
+    },
+    receivedDelta = 0
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $push: {
+            events: {
+              type: event.type,
+              amount: event.amount ?? null,
+              orderId: event.orderId ?? null,
+              at: event.at
+            }
+          },
+          ...(receivedDelta !== 0 ? { $inc: { receivedAmount: receivedDelta } } : {})
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Credits one settled order towards the target, exactly once.
+   *
+   * The `creditedOrderIds: { $ne: orderId }` filter and the `$addToSet` are the
+   * whole point: the same order can be reported settled twice — once by the
+   * scraper matching a jar delta, once by Transacto reporting it paid in the
+   * admin panel — and counting it twice would complete an order on half the
+   * money. Doing the check inside the update makes it atomic, where a
+   * read-then-write would still race two concurrent reports.
+   *
+   * Returns `null` when this order was already credited, which is a normal
+   * outcome and not an error.
+   */
+  async creditExecutedOrder(
+    id: string,
+    orderId: number,
+    amount: number,
+    at: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, creditedOrderIds: { $ne: orderId } },
+        {
+          $addToSet: { creditedOrderIds: orderId },
+          $inc: { receivedAmount: amount },
+          $push: {
+            events: { type: SaleEventType.PAYMENT_MATCHED, amount, orderId, at }
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Records the latest scraped jar balance, and seeds the opening one.
+   *
+   * Guarded on the value actually differing so the scraper's heartbeat — which
+   * re-broadcasts an unchanged balance every 15 seconds — does not turn into a
+   * write per tick. A `null` return therefore means "nothing changed", not
+   * "order missing".
+   *
+   * `openingJarBalance` is written through `$ifNull` in the same update, so the
+   * very first scrape sets it and no later one can move it. An aggregation
+   * pipeline rather than `$setOnInsert`, which never fires here — the document
+   * already exists by the time any scrape reaches it. See the field's own note
+   * for why the baseline matters.
+   */
+  async updateJarBalance(
+    id: string,
+    jarBalance: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, jarBalance: { $ne: jarBalance } },
+        [
+          {
+            $set: {
+              jarBalance,
+              openingJarBalance: { $ifNull: ['$openingJarBalance', jarBalance] }
+            }
+          }
+        ],
+        // Mongoose 9 refuses an array update without this, and refuses it at
+        // runtime rather than at compile time — the query simply threw on every
+        // scrape that moved a Mini App jar's balance.
+        { returnDocument: 'after', updatePipeline: true }
+      )
+      .lean()
+  }
+
+  /**
+   * Moves an open order to AWAITING_FIAT exactly once.
+   *
+   * Guarded on the current status so a burst of order webhooks produces one
+   * transition rather than one write per webhook.
+   */
+  async markAwaitingFiat(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          status: { $in: [TmaSaleStatus.CREATED, TmaSaleStatus.TERMINAL_READY] }
+        },
+        { $set: { status: TmaSaleStatus.AWAITING_FIAT } },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Atomically closes an order that has received its full target.
+   *
+   * The status guard is the idempotency key: two concurrent payment matches
+   * both call this, and only the first one gets a document back, so the balance
+   * commit that follows can never run twice for the same order.
+   */
+  /**
+   * Atomically stops an open order for breaking a rule.
+   *
+   * Guarded on the current status for the same reason `completeIfOpen` is: the
+   * checks that call this run on the scraper's hot path, several times a
+   * minute, and only the call that actually flipped the status gets a document
+   * back — so the terminal is torn down and the user notified exactly once,
+   * however many scrapes observe the same violation.
+   *
+   * Deliberately does *not* touch the frozen balance. The stake stays frozen
+   * pending review, which is the whole point of blocking rather than failing.
+   */
+  async blockIfOpen(
+    id: string,
+    reason: SaleBlockReason,
+    observedGoal: number | null = null
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, status: { $in: OPEN_STATUSES } },
+        {
+          $set: {
+            status: TmaSaleStatus.BLOCKED,
+            blockReason: reason,
+            observedGoal
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Atomically stops an open order at the user's request.
+   *
+   * Status-guarded like its siblings, and for the same reason: this one hands
+   * money back, so two taps arriving together must produce one refund. Only the
+   * call that actually flipped the status gets a document, and only it refunds.
+   */
+  async cancelIfOpen(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, status: { $in: OPEN_STATUSES } },
+        { $set: { status: TmaSaleStatus.CANCELLED, completedAt: new Date() } },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Atomically closes a funded order, recording what was handed back with it.
+   *
+   * The status guard is the idempotency key for the whole completion: two
+   * payment matches arriving together both reach here, and only the one that
+   * actually flipped the status gets a document — so the balance commit that
+   * follows can never run twice for one order.
+   *
+   * The refund figures are written **in the same update**, not afterwards. They
+   * are computed from the pre-flip document, which the flip does not touch, and
+   * folding them in means there is no window in which an order is closed but
+   * does not yet say what it gave back. Zero for every order that filled its
+   * jar, which is the default and the overwhelming majority.
+   */
+  async completeIfOpen(
+    id: string,
+    refund: { usdt: number; fiat: number } = { usdt: 0, fiat: 0 }
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, status: { $in: OPEN_STATUSES } },
+        {
+          $set: {
+            status: TmaSaleStatus.COMPLETED,
+            completedAt: new Date(),
+            refundedRemainderUsdt: refund.usdt,
+            refundedRemainderFiat: refund.fiat
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Puts a blocked order back to work.
+   *
+   * Guarded on `BLOCKED` and on nothing else, which is what makes it the
+   * idempotency gate: two operators pressing at once produce one transition,
+   * and the second gets `null` rather than a second terminal being brought up.
+   *
+   * `blockReason` and `observedGoal` are cleared with the status — leaving them
+   * behind would show a live order still explaining why it was stopped, and the
+   * Mini App renders that reason to the user.
+   */
+  async resumeIfBlocked(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, status: TmaSaleStatus.BLOCKED },
+        {
+          $set: {
+            status: TmaSaleStatus.AWAITING_FIAT,
+            blockReason: null,
+            observedGoal: null,
+            // Recorded on the order, not only in its timeline: the goal check
+            // reads it on every scrape to know that a person has already
+            // answered the question it is about to ask again.
+            resumedByAdminAt: new Date()
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Ends a blocked order.
+   *
+   * Deliberately separate from {@link cancelIfOpen}, which guards on the open
+   * statuses: widening that one to accept `BLOCKED` would let the *user's* own
+   * cancel button release a stake that was frozen for breaking a rule, which is
+   * the thing blocking exists to prevent.
+   */
+  async cancelIfBlocked(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, status: TmaSaleStatus.BLOCKED },
+        { $set: { status: TmaSaleStatus.CANCELLED, completedAt: new Date() } },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  // --- Migration 0003: the market rate becomes the sell rate ----------------
+
+  /**
+   * Orders still priced at the market, with the markup beside them.
+   *
+   * `exchangeRate` used to hold the market rate and `profitPercent` the markup
+   * to apply to it. It now holds the finished sell rate and the other two
+   * fields do not exist, so these two are the shape of a document written
+   * before that — and `profitPercent` existing is what identifies one.
+   *
+   * The legacy field names appear here and in migration `0003` and nowhere
+   * else: this is the layer that knows what is on disk, which is the whole
+   * reason a migration reads through it rather than reaching for Mongoose.
+   */
+  async findPricedAtMarketRate(
+    page: PageQuery
+  ): Promise<Page<TmaSale & { _id: Types.ObjectId; profitPercent: number }>> {
+    const filter = { profitPercent: { $exists: true } } as QueryFilter<TmaSale>
+
+    const [items, total] = await Promise.all([
+      this.saleModel.find(filter).sort(page.sort).skip(page.skip).limit(page.limit).lean(),
+      this.saleModel.countDocuments(filter)
+    ])
+
+    return {
+      // Through `unknown`: the schema no longer declares `profitPercent`, which
+      // is exactly why these documents need finding — the stored shape and the
+      // declared one disagree, and this is the one place that is allowed to say so.
+      items: items as unknown as (TmaSale & {
+        _id: Types.ObjectId
+        profitPercent: number
+      })[],
+      total
+    }
+  }
+
+  /**
+   * Writes the finished sell rate and drops the two fields it replaces.
+   *
+   * One update, so an order can never be left with a repriced rate *and* the
+   * markup that was already folded into it — which a later pass would then fold
+   * in again.
+   *
+   * **`strict: false` is load-bearing and this is why.** Mongoose's default
+   * `strict: true` silently removes update keys for paths the schema does not
+   * declare — and the whole point of this method is to unset two paths the
+   * schema no longer declares. Without the option, `$unset` was dropped and
+   * `$set` was not: every pass re-marked-up `exchangeRate` and left
+   * `profitPercent` in place, so the document never left the migration's result
+   * set. It ran about eleven thousand times against production and drove every
+   * rate to 1e97 before it was killed. Nothing warned; `modifiedCount` was 1
+   * each time, because the `$set` really had modified something.
+   */
+  async repriceToSellRate(id: Types.ObjectId, sellRateKopecks: number): Promise<boolean> {
+    const result = await this.saleModel.updateOne(
+      { _id: id, profitPercent: { $exists: true } } as QueryFilter<TmaSale>,
+      {
+        $set: { exchangeRate: sellRateKopecks },
+        $unset: { profitPercent: '', expectedProfit: '' }
+      },
+      { strict: false }
+    )
+
+    return (result.modifiedCount ?? 0) > 0
+  }
+
+  // --- Admin reads ----------------------------------------------------------
+
+  async findPage(
+    filter: QueryFilter<TmaSale>,
+    page: PageQuery
+  ): Promise<Page<TmaSale & { _id: Types.ObjectId }>> {
+    const [items, total] = await Promise.all([
+      this.saleModel.find(filter).sort(page.sort).skip(page.skip).limit(page.limit).lean(),
+      this.saleModel.countDocuments(filter)
+    ])
+
+    return { items, total }
+  }
+
+  async count(filter: QueryFilter<TmaSale> = {}): Promise<number> {
+    return this.saleModel.countDocuments(filter)
+  }
+
+  /**
+   * How many orders sit in each status, in one pass.
+   *
+   * Returned as a plain map keyed by status rather than an array of pairs: the
+   * overview looks up one status at a time and would otherwise `find` its way
+   * through the array on every render.
+   */
+  async countByStatus(): Promise<Record<string, number>> {
+    const rows = await this.saleModel
+      .aggregate<{ _id: string; count: number }>([
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ])
+      .exec()
+
+    return Object.fromEntries(rows.map((row) => [row._id, row.count]))
+  }
+
+  /**
+   * How many slot-holding orders each of these users has right now.
+   *
+   * One aggregation for a page of users rather than a count per row — twenty
+   * rows would otherwise be twenty round trips, which is the N+1 the list would
+   * have shipped with.
+   */
+  async countOpenByTelegramIds(telegramIds: readonly number[]): Promise<Record<number, number>> {
+    if (!telegramIds.length) return {}
+
+    const rows = await this.saleModel
+      .aggregate<{ _id: number; count: number }>([
+        {
+          $match: {
+            telegramId: { $in: [...telegramIds] },
+            status: { $in: SLOT_HOLDING_STATUSES }
+          }
+        },
+        { $group: { _id: '$telegramId', count: { $sum: 1 } } }
+      ])
+      .exec()
+
+    return Object.fromEntries(rows.map((row) => [row._id, row.count]))
+  }
+}

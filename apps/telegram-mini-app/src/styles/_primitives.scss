@@ -1,0 +1,304 @@
+/*
+  The handful of shapes every screen draws, defined once.
+
+  These were previously copied verbatim into each page's stylesheet — six
+  identical `.glass-card` blocks, five spinners, four primary buttons — and the
+  copies had already begun to disagree: two radii, two greys, two spinner sizes.
+  Component styles are scoped, but *global* styles still reach into components,
+  so one definition here covers every template that names the class.
+
+  A component that needs a variant still writes it locally; its stylesheet is
+  injected after this file, so a rule of equal specificity wins there. That is
+  how `.error-card` recolours a card and how the status page's neutral
+  `.primary-btn` stops being blue.
+
+  Nothing in here is a layout: no widths, no page padding, no positions. Those
+  belong to the page that owns them.
+*/
+
+/* --- Surfaces ------------------------------------------------------------ */
+
+/*
+  The name is historical — this used to be a blurred translucent panel, and the
+  templates still say `glass-card`. It is now a flat, opaque surface: the blur
+  cost a compositing pass on every scroll for an effect that, on a ground this
+  dark, was indistinguishable from simply painting the lighter grey.
+*/
+.glass-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+/* --- Type ---------------------------------------------------------------- */
+
+.page-title {
+  margin: 0 0 16px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/*
+  A section's name, not a heading — it labels the card it sits in and must stay
+  quieter than the content below it.
+*/
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.section-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* --- Badges -------------------------------------------------------------- */
+
+/*
+  One pill shape, three tints. The trust levels are named the same way on the
+  dashboard card and on the levels page, so they are coloured the same way in
+  one place rather than in both.
+*/
+.badge-newbie,
+.badge-experienced,
+.badge-pro,
+.saved-badge {
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.badge-newbie {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.badge-experienced {
+  background: var(--c-warning-soft);
+  color: var(--c-warning);
+}
+
+.badge-pro {
+  background: var(--c-accent-soft);
+  color: var(--accent-text);
+}
+
+/* Transient confirmation — "saved", "copied", "transferred". */
+.saved-badge {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+/*
+  "In development", beside the name of something listed and not built yet — a
+  remainder policy on the sale form, a way of being paid on the sale screen.
+
+  Neutral, because the only thing it says is "not yet": a green badge on an
+  option nobody can pick would read as an endorsement of the option it is
+  greying out. Smaller and squarer than the pills above, because it sits inside
+  a title rather than standing on its own.
+*/
+.soon-badge {
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--surface-active);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+.primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 15px 16px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  transition:
+    background var(--t-base),
+    opacity var(--t-base),
+    transform var(--t-fast);
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.primary-btn:active:not(:disabled) {
+  background: var(--c-accent-press);
+  transform: scale(0.98);
+}
+
+/*
+  Disabled goes grey rather than faded-blue. A translucent accent still reads as
+  a blue button — it invites the tap it is there to refuse — and drags its label
+  down to roughly 2:1 against its own ground on the way. Grey says "not yet"
+  without pretending, and keeps the words readable while it does.
+*/
+.primary-btn:disabled {
+  background: var(--surface-nested);
+  color: var(--text-faint);
+  cursor: default;
+  transform: none;
+}
+
+/*
+  Vertical padding is not optional, though this button went a long time without
+  it: its first home was beside a text field in a stretching flex row, which
+  handed it the field's height and hid the omission. Standing on its own — the
+  cancel under the primary button in a confirmation sheet — it collapsed to the
+  height of its own 13px label and read as a squashed strip.
+
+  13px keeps it just short of the app's input height, so the stretched case
+  still takes its height from the field beside it and nothing there moves.
+*/
+.ghost-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 13px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--accent-text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  transition: background var(--t-base);
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.ghost-btn:active {
+  background: var(--surface-active);
+}
+
+/*
+  Inline, borderless, reads as a link. Used for "retry" inside a sentence, where
+  a button-shaped control would outweigh the sentence it belongs to.
+*/
+.link-btn {
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- Spinners ------------------------------------------------------------ */
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/*
+  The one inside a button, sized to the label beside it.
+
+  Both halves of the ring come from the accent's own foreground rather than from
+  white. The accent is gold, and a white ring on it is 1.9:1 — a spinner nobody
+  can see is a button that looks frozen.
+*/
+.btn-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--on-accent-faint);
+  border-top-color: var(--on-accent);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+  A spinner is motion for its own sake, which is exactly what this setting asks
+  us to stop. It still appears — the feedback matters — it simply does not turn.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .btn-spinner {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+/* --- States -------------------------------------------------------------- */
+
+.error-msg {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--c-danger);
+}
+
+/*
+  "There is nothing here yet", wherever a list has nothing in it.
+
+  Its third copy is what put it here: the amounts list, the trust ladder and the
+  earnings page each had the same rule at 13px, 14px and 14px-with-a-line-height,
+  which is how this file's own header describes every primitive that ended up in
+  it.
+*/
+.empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}

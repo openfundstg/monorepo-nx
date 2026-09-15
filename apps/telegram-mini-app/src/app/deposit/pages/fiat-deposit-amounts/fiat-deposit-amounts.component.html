@@ -1,0 +1,192 @@
+<div class="title-row">
+  <h2 class="page-title">{{ 'fiat.title' | translate }}</h2>
+  <!--
+    The rest of the rules, one tap away. They do not fit on this screen and most
+    of them only matter to somebody about to break one, but a user who wants
+    them before they start should not have to find out by being refused.
+  -->
+  <button
+    type="button"
+    class="rules-btn"
+    [attr.aria-label]="'fiat.rules.title' | translate"
+    (click)="openRules()"
+  >
+    ⓘ
+  </button>
+</div>
+<p class="page-lead">{{ 'fiat.lead' | translate }}</p>
+
+<!--
+  The one rule that decides whether a transfer will be accepted at all, at the
+  top where it is read before an amount is picked rather than after.
+-->
+<p class="bank-rule">{{ 'fiat.banks_only' | translate }}</p>
+
+<app-exchange-rate class="rate" [rate]="exchangeRate()" />
+
+@if (errorMsg()) {
+  <p class="error-msg">{{ errorMsg() }}</p>
+}
+
+@if (loading()) {
+  <div class="spinner"></div>
+} @else if (loadFailed() || !bookAvailable()) {
+  <!--
+    One block for two failures, because they are the same failure to a user:
+    the request did not arrive, or it arrived saying the payout book could not
+    be read. Neither is anything they did, and an empty list would have told
+    them the product was simply quiet — which is the lie this replaces.
+  -->
+  <div class="our-fault glass-card">
+    <span class="our-fault-icon" aria-hidden="true">⚠️</span>
+    <p class="our-fault-text">{{ 'fiat.our_fault' | translate }}</p>
+    <button class="link-btn" (click)="load()">{{ 'common.retry' | translate }}</button>
+  </div>
+
+  <!--
+    The timer keeps running through the apology, so the bar belongs here too —
+    without it the screen offers a Retry button and gives no sign that it is
+    already retrying on its own.
+  -->
+  <ng-container [ngTemplateOutlet]="refreshBar" />
+
+  <!--
+    Offered here too, and on purpose: somebody who can see no amounts at all is
+    exactly the person worth calling back when one appears.
+  -->
+  <ng-container [ngTemplateOutlet]="watchBlock" />
+} @else {
+  <ng-container [ngTemplateOutlet]="refreshBar" />
+
+  <div class="amounts">
+    @for (option of options(); track option.amountUah) {
+      <button
+        class="amount-card glass-card"
+        [disabled]="reserving() !== null"
+        (click)="select(option)"
+      >
+        <span class="amount-uah">{{ formatUahWhole(option.amountUah) }} {{ 'common.uah' | translate }}</span>
+        <span class="amount-usdt">≈ {{ formatUsdt(option.cryptoCents) }} USDT</span>
+      </button>
+    } @empty {
+      <p class="empty">
+        {{ 'fiat.empty' | translate }}
+        <button class="link-btn" (click)="load()">{{ 'common.retry' | translate }}</button>
+      </p>
+    }
+  </div>
+
+  <!--
+    Under the list rather than above it: with amounts on screen the request is
+    the fallback, and with none it is the only thing on the page a user can do.
+  -->
+  <ng-container [ngTemplateOutlet]="watchBlock" />
+}
+
+<!--
+  The list re-reads itself every twenty seconds and used to do it in silence:
+  sums appeared and vanished under the user's finger with nothing on screen
+  admitting that anything was happening. The bar is that admission — it fills
+  over exactly one interval, so what is about to happen is visible before it
+  does.
+
+  Rebuilt on every tick (`track cycle`) because restarting a CSS animation is
+  something only a new element can do.
+-->
+<ng-template #refreshBar>
+  @if (polling()) {
+    <div class="refresh">
+      <span class="refresh-label">
+        {{ (refreshing() ? 'fiat.refreshing' : 'fiat.auto_refresh') | translate }}
+      </span>
+      <span class="refresh-track" aria-hidden="true">
+        @for (cycle of [cycle()]; track cycle) {
+          <span
+            class="refresh-fill"
+            [class.busy]="refreshing()"
+            [style.animation-duration]="refreshDurationMs"
+          ></span>
+        }
+      </span>
+    </div>
+  }
+</ng-template>
+
+<!--
+  One block, drawn in two places — the empty list and the outage both need it,
+  and a second copy would be the one that stopped being updated.
+-->
+<ng-template #watchBlock>
+  <!--
+    Nothing at all until the answer is in. `undefined` means the offer has not
+    been read, or the read failed — and the prompt below says "you have no
+    request", which for a subscribed user is both untrue and an invitation to
+    overwrite the range they cannot currently see.
+  -->
+  @if (watch() === undefined) {
+    <!-- Deliberately empty. -->
+  } @else if (watch(); as request) {
+    <div class="watch glass-card active">
+      <span class="watch-icon" aria-hidden="true">🔔</span>
+      <p class="watch-text">
+        {{
+          'fiat.watch.active'
+            | translate
+              : {
+                  from: formatUahWhole(request.minAmountUah),
+                  to: formatUahWhole(request.maxAmountUah)
+                }
+        }}
+      </p>
+      <p class="watch-mode">
+        {{
+          (request.mode === Mode.ONCE ? 'fiat.watch.mode_once' : 'fiat.watch.mode_always')
+            | translate
+        }}
+      </p>
+      <div class="watch-actions">
+        <button class="link-btn" [disabled]="savingWatch()" (click)="openWatch()">
+          {{ 'fiat.watch.edit' | translate }}
+        </button>
+        <button class="link-btn danger" [disabled]="savingWatch()" (click)="cancelWatch()">
+          {{ 'fiat.watch.cancel' | translate }}
+        </button>
+      </div>
+    </div>
+  } @else {
+    <button class="watch glass-card prompt" (click)="openWatch()">
+      <span class="watch-icon" aria-hidden="true">🔔</span>
+      <span class="watch-text">{{ 'fiat.watch.prompt' | translate }}</span>
+      <span class="watch-hint">{{ 'fiat.watch.prompt_hint' | translate }}</span>
+    </button>
+  }
+</ng-template>
+
+@if (pending(); as option) {
+  <app-confirm-fiat-amount
+    [amountUah]="option.amountUah"
+    [cryptoCents]="option.cryptoCents"
+    [exchangeRate]="exchangeRate()"
+    [payWindowMinutes]="payWindowMinutes()"
+    [busy]="reserving() !== null"
+    (confirmed)="confirm()"
+    (dismissed)="dismiss()"
+  />
+}
+
+@if (editingWatch()) {
+  <app-fiat-watch
+    [watch]="watch() ?? null"
+    [busy]="savingWatch()"
+    [errorMsg]="watchErrorMsg()"
+    (saved)="saveWatch($event)"
+    (dismissed)="dismissWatch()"
+  />
+}
+
+@if (showingRules()) {
+  <app-fiat-rules
+    [payWindowMinutes]="payWindowMinutes()"
+    (dismissed)="showingRules.set(false)"
+  />
+}

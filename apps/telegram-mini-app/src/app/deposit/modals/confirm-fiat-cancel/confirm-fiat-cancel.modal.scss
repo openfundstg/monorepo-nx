@@ -1,0 +1,57 @@
+/* Above the page and the bottom nav, below the forced-update screen. */
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  align-items: end;
+  padding: var(--page-pad);
+  padding-bottom: calc(var(--page-pad) + var(--app-safe-bottom, 0px));
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+
+.sheet {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.buttons {
+  display: grid;
+  gap: 8px;
+}
+
+/* The one button in the app that gives something away. */
+/*
+  Red fill, white label. `.primary-btn` hands out `--on-accent`, which is
+  near-black because the accent is gold — legible on gold, and a smudge on red.
+*/
+.primary-btn.danger {
+  background: var(--c-danger);
+  color: var(--on-fill);
+}
+
+.primary-btn.danger:active:not(:disabled) {
+  background: var(--c-danger);
+  opacity: 0.85;
+}

@@ -1,0 +1,56 @@
+<div class="deposit-create">
+  <h2 class="page-title">{{ 'deposit.create' | translate }}</h2>
+
+  @if (rateUnavailable()) {
+    <p class="validation-error">
+      {{ 'common.rate_unavailable' | translate }}
+      <button class="link-btn" (click)="loadConfig()">{{ 'common.retry' | translate }}</button>
+    </p>
+  }
+
+  <div class="input-group glass-card">
+    <label class="input-label">{{ 'deposit.amount_label' | translate }}</label>
+    <div class="amount-input-wrap">
+      <input
+        type="number"
+        [placeholder]="'deposit.amount_placeholder' | translate"
+        [(ngModel)]="cryptoAmount"
+        (ngModelChange)="onAmountChange()"
+        min="10"
+        step="0.01"
+        class="amount-input"
+        id="deposit-amount-input"
+      />
+      <span class="input-suffix">USDT</span>
+    </div>
+
+    @if (cryptoAmount() > 0 && !rateUnavailable() && hasRate()) {
+      <div class="equivalent">
+        <span class="eq-label">≈ {{ 'deposit.equivalent' | translate }}:</span>
+        <span class="eq-value">{{ formatUah(fiatEquivalent()) }} {{ 'common.uah' | translate }}</span>
+      </div>
+    }
+  </div>
+
+  @if (belowMinimum() && cryptoAmount() > 0) {
+    <p class="validation-error">
+      {{ 'deposit.min_amount' | translate: { min: MIN_USDT_AMOUNT } }}
+    </p>
+  }
+
+  <button
+    class="primary-btn"
+    [disabled]="submitting() || belowMinimum() || rateUnavailable()"
+    (click)="onSubmit()"
+    id="deposit-submit-btn"
+  >
+    @if (submitting()) {
+      <span class="btn-spinner"></span>
+    }
+    {{ 'deposit.continue' | translate }}
+  </button>
+</div>
+
+@if (errorMsg()) {
+  <p class="error-msg">{{ errorMsg() }}</p>
+}

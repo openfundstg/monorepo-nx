@@ -1,0 +1,651 @@
+:host {
+  display: block;
+  /* The shell already pushed us down by the top inset; asking for a full
+     viewport on top of that would overflow by exactly that much. */
+  min-height: calc(100vh - var(--app-safe-top, 0px));
+  /* The reserve is the fixed nav plus the gesture bar under it — one token, so
+     the three nav pages cannot drift apart. */
+  padding: var(--page-pad) var(--page-pad) var(--nav-reserve);
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+/*
+  Quiet on purpose. It names the app once at the top of the home screen; the
+  balance a few pixels below is what the reader came for, and a mark at full
+  cream would be the brightest thing on a screen whose brightest thing is a
+  number.
+*/
+.brand {
+  display: flex;
+  opacity: 0.7;
+}
+
+.channel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  transition:
+    background var(--t-fast),
+    border-color var(--t-fast),
+    transform var(--t-fast);
+
+  &:focus,
+  &:focus-visible {
+    outline: none;
+  }
+
+  &:active {
+    background: var(--surface-active);
+    transform: scale(0.96);
+  }
+}
+
+.channel-text {
+  line-height: 1;
+}
+
+.channel-icon {
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+  color: var(--text-muted);
+}
+
+/* --- Balance ------------------------------------------------------------- */
+
+/*
+  The one number the screen exists to show. It carries no tint of its own: the
+  size is the emphasis, and a gradient behind it would only compete with the
+  figure it is meant to frame.
+*/
+.balance-card {
+  text-align: center;
+  padding: 28px 20px;
+}
+
+.balance-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.balance-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.balance-value {
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.balance-currency {
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.frozen-amount {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* --- Trust level --------------------------------------------------------- */
+
+/* The whole card is a link to the levels page; it must not look like body text. */
+.trust-card {
+  display: block;
+  padding: 16px 20px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--t-base);
+
+  &:active {
+    background: var(--surface-active);
+  }
+}
+
+.trust-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trust-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.trust-progress {
+  margin-top: 12px;
+}
+
+.progress-bar {
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-nested);
+  overflow: hidden;
+}
+
+/*
+  Spans the track and is clipped back to the current progress, rather than being
+  painted across the filled part alone.
+
+  Solid, in the current level's own colour, because the bar now measures one
+  rung rather than the whole ladder. A three-stop gradient across it would put
+  the top rung's colour on the tip of a NEWBIE bar, which reads as the wrong
+  level entirely. The colours match the badges above, so the bar and the badge
+  say the same thing.
+*/
+.progress-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  clip-path: inset(0 calc(100% - var(--progress, 0%)) 0 0);
+  transition: clip-path 0.5s ease;
+}
+
+.fill-newbie {
+  background: var(--c-success);
+}
+
+.fill-experienced {
+  background: var(--c-warning);
+}
+
+.fill-pro {
+  background: var(--accent);
+}
+
+.turnover-text {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* --- Quick actions ------------------------------------------------------- */
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/*
+  Two equals, not a primary and a secondary. Both are things the user came here
+  to do, and picking one to paint blue would be the layout asserting a priority
+  the product does not have. The tint lives in the icon chip instead, which is
+  enough to tell them apart at a glance without either shouting.
+*/
+.action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background var(--t-base),
+    transform var(--t-fast);
+}
+
+/*
+  The price under the button's own label.
+
+  Smaller than the line is anywhere else and set through the child's own custom
+  property, because `.rate-line` lives inside `app-exchange-rate`'s emulated
+  view: a rule here naming that class would style nothing, which is the mistake
+  this file already made once.
+
+  `gap` on the tile is 10px and reads as spacing between the icon, the label and
+  this — too much between a label and the figure that belongs to it, so the
+  negative margin pulls it back under the word it explains.
+*/
+.action-rate {
+  --rate-line-size: 11px;
+  margin-top: -6px;
+  text-align: center;
+}
+
+.action-btn:active {
+  background: var(--surface-active);
+  transform: scale(0.97);
+}
+
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.action-icon svg {
+  width: 23px;
+  height: 23px;
+}
+
+/*
+  Each tile's icon is drawn in the colour its own disc is tinted with, rather
+  than in the page's cream. The tint was doing nothing while the glyph was an
+  emoji — it carries its own colours and ignores everything around it — and the
+  disc read as a grey-green smudge behind a picture of a coin.
+*/
+.deposit-btn .action-icon {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.sell-btn .action-icon {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.action-text {
+  font-size: 14px;
+}
+
+/* --- History ------------------------------------------------------------- */
+
+/*
+  The filters scroll; the button beside them does not. That is the whole reason
+  the two are siblings rather than the button being the strip's last child —
+  inside it, it would scroll away with them.
+*/
+.tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tabs {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+}
+
+/*
+  The way to the user's own figures, and deliberately the quietest control on
+  the screen: it leads to something to read, where everything above it leads to
+  something to do.
+
+  Round because it carries no label — a pill shaped like the filters beside it
+  would read as a fourth filter, which is the one thing it is not.
+*/
+.income-btn {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-active);
+  color: var(--text-muted);
+  transition:
+    background var(--t-base),
+    color var(--t-base);
+}
+
+.income-btn:active {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.income-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--t-base),
+    color var(--t-base);
+}
+
+.tab-btn.active {
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition:
+    background var(--t-base),
+    transform var(--t-fast);
+}
+
+.activity-item:active {
+  background: var(--surface-active);
+  transform: scale(0.99);
+}
+
+/* A constant slot for the leading mark, so rows line up whether it is an emoji
+   or a bank logo. */
+.activity-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  font-size: 18px;
+}
+
+.bank-icon-md {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.activity-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.activity-type {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.activity-date {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.activity-public-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.activity-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+/*
+  A currency mark in the icon slot, sized like the emoji it replaced.
+
+  Heavier and slightly smaller than body text: ₮ and ₴ are single glyphs
+  standing where a picture stood, and at the emoji's own weight they read as
+  punctuation rather than as a mark.
+*/
+.activity-glyph {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.activity-amount {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* What the sale fetched, under what it cost. Secondary, and legibly so. */
+.activity-subamount {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+  Which way the money went, and nothing else. Green is what arrived — a top-up,
+  a referral transfer, an operator's correction upward; red is what left — a
+  finished sale, a correction downward. A sale used to read green because it had
+  completed successfully, which coloured a debit as a credit.
+*/
+.activity-amount.positive {
+  color: var(--c-success);
+}
+
+.activity-amount.negative {
+  color: var(--c-danger);
+}
+
+.activity-status {
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.status-completed,
+.status-paid_late {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.status-pending,
+.status-terminal_ready,
+.status-awaiting_fiat {
+  background: var(--c-warning-soft);
+  color: var(--c-warning);
+}
+
+.status-expired,
+.status-failed,
+.status-cancelled {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+.status-created {
+  background: var(--surface-nested);
+  color: var(--text-muted);
+}
+
+.no-activity {
+  padding: 32px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/*
+  Which way a sale ends when its last stretch is too small to pay for.
+  A badge rather than a sentence — the row is already three lines deep.
+*/
+.activity-remainder {
+  display: none;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: nowrap;
+
+  &.refunds {
+    border-color: transparent;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+}
+
+/**
+ * Jars a finished sale left open.
+ *
+ * Warning-toned rather than danger: nothing has gone wrong and no money is at
+ * risk — there is something the user has to do, and until they do it their
+ * allowance is spent. Red would read as a failure they need support for.
+ */
+.jar-reminder {
+  border: 1px solid var(--c-warning);
+  background: var(--c-warning-soft);
+
+  h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--c-warning);
+  }
+
+  p {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-muted);
+  }
+}
+
+.jar-reminder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-nested);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  & + & {
+    margin-top: 8px;
+  }
+}
+
+.jar-reminder-bank {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.jar-reminder-id {
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+}
+
+/**
+ * What the two rates above are worth together.
+ *
+ * Deliberately quiet. It states a fact about two prices already on screen, so
+ * it reads as their footnote rather than as an announcement: no border, a
+ * ground barely lifted off the page, and the success colour carried only by the
+ * hryvnia figure instead of by the whole strip. The first version had a full
+ * green border and a flame, and shouted louder than the balance above it.
+ */
+.profit-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  background: var(--c-success-soft);
+}
+
+.profit-icon {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+/**
+ * The success colour, but at the weight of a caption rather than a headline.
+ */
+.profit-text {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--c-success);
+}
+
+/*
+ * The percentage, emphasised from inside the translated sentence — see the
+ * template for why the tag lives in the dictionary. Stated here rather than
+ * left to the browser's default `bolder`, which against this 500 resolves to
+ * 700 on some engines and to 600 on others.
+ */
+.profit-text strong {
+  font-weight: 700;
+}
+

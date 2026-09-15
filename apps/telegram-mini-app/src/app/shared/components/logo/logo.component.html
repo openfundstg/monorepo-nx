@@ -1,0 +1,11 @@
+<img
+  class="mark"
+  [src]="BRAND_MARK_SRC"
+  [alt]="wordmark() ? '' : BRAND_NAME"
+  [style.width.px]="size()"
+  [style.height.px]="size()"
+/>
+
+@if (wordmark()) {
+  <span class="name" [style.font-size.px]="size() * 0.5">{{ BRAND_NAME }}</span>
+}

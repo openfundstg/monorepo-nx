@@ -1,0 +1,20 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-title {
+  margin-bottom: 8px;
+}
+
+.page-lead {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.methods {
+  display: grid;
+  gap: 12px;
+}

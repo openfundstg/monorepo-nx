@@ -1,0 +1,370 @@
+<div class="dashboard">
+  <!--
+    Outside the loading branch, so the header is the first thing painted rather
+    than something that appears once the balance has arrived.
+  -->
+  <header class="dashboard-header">
+    <div class="brand">
+      <app-logo [size]="26" [wordmark]="true" />
+    </div>
+
+    <button
+      type="button"
+      class="channel-link"
+      (click)="openChannel()"
+      [attr.aria-label]="'dashboard.channel' | translate"
+    >
+      <span class="channel-text">{{ 'dashboard.channel' | translate }}</span>
+      <svg
+        class="channel-icon"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        fill-rule="evenodd"
+        aria-hidden="true"
+      >
+        <path
+          d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"
+        />
+      </svg>
+    </button>
+  </header>
+
+  @if (loading()) {
+    <div class="loading-container">
+      <div class="spinner"></div>
+      <p>{{ 'common.loading' | translate }}</p>
+    </div>
+  } @else {
+    <!-- Balance Card -->
+    <div class="balance-card glass-card" [appTourAnchor]="TourStep.BALANCE">
+      <span class="balance-label">{{ 'dashboard.balance' | translate }}</span>
+      <div class="balance-amount">
+        <span class="balance-value">{{ balance() | usdt }}</span>
+        <span class="balance-currency">{{ 'common.usdt' | translate }}</span>
+      </div>
+      @if (frozenBalance() > 0) {
+        <div class="frozen-amount">
+          {{ 'dashboard.frozen' | translate }}: {{ frozenBalance() | usdt }}
+          {{ 'common.usdt' | translate }}
+        </div>
+      }
+    </div>
+
+    <!--
+      Jars a finished sale left open.
+
+      An instruction, and the only place most users will meet it: each of these
+      is holding one of their parallel-sale slots, nothing releases it but the
+      bank reporting the jar closed, and the screen otherwise shows nothing
+      running. Above the trust card because it is the reason the allowance on
+      that card is already spent.
+    -->
+    @if (awaitingJarClosure().length > 0) {
+      <div class="jar-reminder glass-card">
+        <h3>{{ 'dashboard.close_jars_title' | translate }}</h3>
+        <p>{{ 'dashboard.close_jars_desc' | translate }}</p>
+
+        @for (sale of awaitingJarClosure(); track sale.publicId) {
+          <button type="button" class="jar-reminder-row" (click)="openSale(sale.id)">
+            <span class="jar-reminder-bank">{{ bankNameKey(sale.bankType) | translate }}</span>
+            <span class="jar-reminder-id">{{ sale.publicId }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    <!-- Trust Level -->
+    <a class="trust-card glass-card" routerLink="/trust-level" [appTourAnchor]="TourStep.TRUST">
+      <div class="trust-header">
+        <span class="trust-label">{{ 'dashboard.trust_level' | translate }}</span>
+        <span class="trust-badge" [class]="'badge-' + currentTrustLevel().toLowerCase()">
+          {{ 'trust.' + currentTrustLevel() | translate }}
+        </span>
+      </div>
+      <div class="trust-progress">
+        <div class="progress-bar">
+          <!--
+            Published as a custom property rather than a width, so the fill can
+            span the track and be clipped back to it — see the stylesheet.
+          -->
+          <div
+            class="progress-fill"
+            [class]="'fill-' + currentTrustLevel().toLowerCase()"
+            [style.--progress]="turnoverProgress() + '%'"
+          ></div>
+        </div>
+        <span class="turnover-text">
+          {{ 'dashboard.turnover' | translate }}: {{ turnover() | uah: true }}
+          <!--
+            The target is what makes the bar legible: without it a user reads
+            their own turnover next to a part-filled bar and has no way to tell
+            what it is filling towards.
+          -->
+          @if (nextLevel(); as next) {
+            / {{ next.minTurnover | uah: true }}
+          }
+          {{ 'common.uah' | translate }}
+        </span>
+      </div>
+    </a>
+
+    <!-- Quick Actions -->
+    <div class="actions">
+      <a
+        routerLink="/deposit"
+        [appTrackTap]="PixelTapEvent.START_DEPOSIT"
+        class="action-btn deposit-btn"
+        [appTourAnchor]="TourStep.DEPOSIT"
+      >
+        <!--
+          Drawn rather than typed. The pair is deliberately one shape with the
+          arrow reversed: these two tiles are exact opposites — value arriving
+          and value leaving — and two unrelated pictograms would hide that.
+          The tray is repeated on purpose, and is what makes them read as a pair.
+
+          Inline SVG, not an icon font or a sprite: two icons do not justify a
+          dependency, and inline is the only form that takes `currentColor`, so
+          each tile tints its own icon from the stylesheet.
+        -->
+        <span class="action-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.5v10.5" />
+            <path d="m7.75 10.25 4.25 4.25 4.25-4.25" />
+            <path d="M4 14.5v3A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5v-3" />
+          </svg>
+        </span>
+        <span class="action-text">{{ 'dashboard.deposit' | translate }}</span>
+        <!--
+          The price this button buys at, under its own label. No words in front
+          of it: the button is the label, and "Поповнення гривнею: 1 USDT = …"
+          inside a tile called "Поповнити" says the same thing twice.
+
+          The *discounted* rate, not the market one — topping up with hryvnia is
+          the only thing behind this button that has a price at all; a chain
+          transfer arrives as the USDT it was.
+        -->
+        <app-exchange-rate class="action-rate" [rate]="buyRate()" [labelKey]="null" />
+      </a>
+      <a
+        routerLink="/sale"
+        [appTrackTap]="PixelTapEvent.START_SALE"
+        class="action-btn sell-btn"
+        [appTourAnchor]="TourStep.SELL"
+      >
+        <!-- The same tray, the arrow the other way. See the tile above. -->
+        <span class="action-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 14V3.5" />
+            <path d="m7.75 7.75 4.25-4.25 4.25 4.25" />
+            <path d="M4 14.5v3A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5v-3" />
+          </svg>
+        </span>
+        <span class="action-text">{{ 'dashboard.sell' | translate }}</span>
+        <!--
+          The sale's own rate — the market plus the markup — because that is
+          what the user is paid per USDT. Quoting the market here would
+          understate it by exactly the markup.
+        -->
+        <app-exchange-rate class="action-rate" [rate]="sellRate()" [labelKey]="null" />
+      </a>
+    </div>
+
+    <!--
+      What the two rates above are worth together.
+
+      Directly under the tiles that quote them, because it is the reason those
+      two numbers are different — a user who reads "45,66" and "46,81" and stops
+      there has been shown the mechanism and not the point.
+
+      One key holding both figures and the emphasis, not a sentence assembled
+      from styled fragments. Each language decides where its own bold sits: the
+      percentage opens the line in all three today, and the next language added
+      may not want it there. Splitting the `<strong>` out into its own key would
+      fix Ukrainian's word order for every language at once.
+
+      Which is why this is the app's only `[innerHTML]`. The alternative is not
+      "interpolation with markup" — Angular escapes that, so the tags would show
+      up as text — it is fragments, and fragments are the worse trade. What is
+      bound is a shipped dictionary string, never anything a user typed, and
+      Angular sanitises it on the way in regardless; `i18n.spec.ts` pins the tag
+      set so this stays one bold and does not become a hole somebody widens.
+
+      Both figures are derived from the two prices on screen and neither is
+      written down anywhere. There is no percentage in this app to go stale.
+    -->
+    @if (roundTripProfit(); as profit) {
+      <div class="profit-banner">
+        <span class="profit-icon" aria-hidden="true">📈</span>
+        <span
+          class="profit-text"
+          [innerHTML]="
+            'dashboard.round_trip_profit' | translate: { percent: profit.percent, uah: profit.uah }
+          "
+        ></span>
+      </div>
+    }
+
+    <!-- History Tabs -->
+    <div class="tabs-row" [appTourAnchor]="TourStep.ACTIVITY">
+      <div class="tabs">
+        <button
+          class="tab-btn"
+          [class.active]="activeTab() === HistoryTab.ALL"
+          (click)="activeTab.set(HistoryTab.ALL)"
+        >
+          {{ 'dashboard.tab_all' | translate }}
+        </button>
+        <button
+          class="tab-btn"
+          [class.active]="activeTab() === HistoryTab.DEPOSITS"
+          (click)="activeTab.set(HistoryTab.DEPOSITS)"
+        >
+          {{ 'dashboard.tab_deposits' | translate }}
+        </button>
+        <button
+          class="tab-btn"
+          [class.active]="activeTab() === HistoryTab.SALES"
+          (click)="activeTab.set(HistoryTab.SALES)"
+        >
+          {{ 'dashboard.tab_sales' | translate }}
+        </button>
+      </div>
+
+      <!--
+        Outside the scrolling strip, so it stays reachable however wide the
+        filters get in a language that needs more room — inside it, a long set
+        of labels would push it off the edge with nothing to say it was there.
+
+        Drawn rather than typed, like the two action tiles above and for the
+        same reasons: an icon takes `currentColor`, and two SVGs do not justify
+        a dependency. The label lives in `aria-label` because the shape is the
+        whole button.
+      -->
+      <a
+        class="income-btn"
+        routerLink="/income"
+        [attr.aria-label]="'income.link' | translate"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 19.5V15" />
+          <path d="M9.5 19.5V9.5" />
+          <path d="M15 19.5v-6" />
+          <path d="M20.5 19.5V5" />
+        </svg>
+      </a>
+    </div>
+
+    <!-- History List -->
+    <div class="history-list">
+      @for (item of filteredHistory(); track item.id) {
+        <div class="activity-item glass-card" (click)="onItemClick(item)">
+          <div class="activity-icon">
+            <!--
+              The same two glyphs the deposit screen offers these routes under —
+              ₮ for the chain and ₴ for the card — so a row and the screen that
+              created it carry one mark between them. Emoji did not survive that
+              comparison: 📥 and 🏦 named neither the asset nor the route.
+            -->
+            @if (item.type === 'deposit') {
+              <span class="activity-glyph">₮</span>
+            } @else if (item.type === 'fiat_deposit') {
+              <span class="activity-glyph">₴</span>
+            } @else if (item.type === 'balance_movement') {
+              {{ movementIcon(item.kind) }}
+            } @else {
+              <img
+                [src]="'banks/' + item.bankType.toLowerCase() + '.png'"
+                [alt]="'sale.bank_' + item.bankType.toLowerCase() | translate"
+                class="bank-icon-md"
+              />
+            }
+          </div>
+
+          <div class="activity-info">
+            <span class="activity-type">
+              <!--
+                One word for both routes. Which one it was is already said by
+                the glyph beside it and by the figures on the right; "Поповнення
+                гривнею" beside a ₴ was the same fact twice.
+              -->
+              @if (item.type === 'deposit' || item.type === 'fiat_deposit') {
+                {{ 'dashboard.deposits' | translate }}
+              } @else if (item.type === 'balance_movement') {
+                {{ 'dashboard.movement.' + item.kind | translate }}
+              } @else {
+                {{ 'dashboard.sale' | translate }}
+              }
+            </span>
+            @if (item.type === 'sale') {
+              <span class="activity-public-id">{{ item.publicId }}</span>
+              <!--
+                Which way this order ends when the last stretch is too small to
+                pay for. A badge rather than a sentence: the row is already
+                three lines and this only has to separate two kinds at a glance.
+              -->
+              <span class="activity-remainder" [class.refunds]="refundsRemainder(item)">
+                {{
+                  (refundsRemainder(item)
+                    ? 'sale.remainder_badge_refund'
+                    : 'sale.remainder_badge_wait'
+                  ) | translate
+                }}
+              </span>
+            }
+            <span class="activity-date">{{ item.createdAt | dateTime }}</span>
+          </div>
+
+          <div class="activity-right">
+            <span
+              class="activity-amount"
+              [class.positive]="isCredited(item)"
+              [class.negative]="isDebited(item)"
+            >
+              @if (item.type === 'deposit') {
+                +{{ item.cryptoAmount }} {{ 'common.usdt' | translate }}
+              } @else if (item.type === 'fiat_deposit') {
+                +{{ item.cryptoCents | usdt }} {{ 'common.usdt' | translate }}
+              } @else if (item.type === 'balance_movement') {
+                <!--
+                  Signed, because an operator's correction goes both ways and a
+                  debit rendered as a credit is the one mistake this row cannot
+                  afford. The minus comes with the number; only the plus has to
+                  be written.
+                -->
+                @if (item.cryptoCents > 0) {
+                  +
+                }{{ item.cryptoCents | usdt }} {{ 'common.usdt' | translate }}
+              } @else {
+                <!--
+                  A sale is a debit in USDT and a credit in hryvnia. The USDT is
+                  the headline because that is the unit the balance above is
+                  counted in; the hryvnia it fetched follows underneath.
+                -->
+                -{{ item.stakeUsdtCents | usdt }} {{ 'common.usdt' | translate }}
+              }
+            </span>
+            @if (item.type !== 'balance_movement') {
+              <span class="activity-subamount">
+                {{ item.amount | uah: true }} {{ 'common.uah' | translate }}
+              </span>
+            }
+            <!--
+              A movement has no status by construction: it is a thing that
+              already happened, not a process with a state to report.
+            -->
+            @if (item.type !== 'balance_movement') {
+              <span class="activity-status" [class]="'status-' + item.status.toLowerCase()">
+                {{ 'status.' + item.status.toLowerCase() | translate }}
+              </span>
+            }
+          </div>
+        </div>
+      } @empty {
+        <p class="no-activity">{{ 'dashboard.empty_history' | translate }}</p>
+      }
+    </div>
+  }
+</div>

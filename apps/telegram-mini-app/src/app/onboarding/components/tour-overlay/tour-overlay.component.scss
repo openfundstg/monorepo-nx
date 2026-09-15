@@ -1,0 +1,147 @@
+/*
+  Above the fixed nav (10) and the page, below the confirmation sheets (900)
+  and the update / session-expired / loading screens (1000): a tour is chrome
+  the user may dismiss, never something that must not be worked around.
+*/
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  overflow: hidden;
+  /* The browser starts no pan for a touch that begins here; the component's
+     non-passive listeners are the other half — see `lock`. */
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+/* The safe viewport. Highlight and card are positioned inside it. */
+.frame {
+  position: absolute;
+  top: var(--app-safe-top, 0px);
+  bottom: var(--app-safe-bottom, 0px);
+  left: 0;
+  right: 0;
+}
+
+/* Unanchored steps dim the whole screen; otherwise the highlight's shadow does. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+}
+
+/*
+  A box the size of the anchor whose shadow paints the rest of the screen.
+  Concentric with the tiles it frames: their radius plus the padding around
+  them. `pointer-events: none` — the overlay root swallows the tap.
+*/
+.highlight {
+  position: absolute;
+  border-radius: calc(var(--r-lg) + var(--tour-pad, 0px));
+  box-shadow: 0 0 0 100vmax var(--scrim);
+  pointer-events: none;
+  transition:
+    top var(--t-base),
+    left var(--t-base),
+    width var(--t-base),
+    height var(--t-base);
+}
+
+.card {
+  position: absolute;
+  left: var(--page-pad);
+  right: var(--page-pad);
+  /* Telegram Desktop: a 1 200 px card is a banner. */
+  max-width: 420px;
+  margin: 0 auto;
+  max-height: calc(100% - 2 * var(--page-pad));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--page-pad);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  /* Focus lands here programmatically; the ring belongs on the buttons. */
+  outline: none;
+  /* The tokens zero `--t-base` under reduced motion, which zeroes this too. */
+  animation: tour-card-in var(--t-base);
+}
+
+.card-center {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.card-sheet {
+  bottom: var(--page-pad);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-progress {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A quiet link, with enough padding to be a thumb target. */
+.card-skip {
+  margin: 0;
+  padding: 8px 0 8px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.card-brand {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.card-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Back beside Next once there is a Back: a class binding, not `:has()`. */
+.card-actions-pair {
+  grid-template-columns: auto 1fr;
+}
+
+.ghost-btn {
+  min-width: 88px;
+}
+
+/* Thumb-sized. */
+.ghost-btn,
+.primary-btn {
+  min-height: 44px;
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+  }
+}

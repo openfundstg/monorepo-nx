@@ -1,0 +1,97 @@
+/*
+  Above the page and the bottom nav, below the forced-update screen — that one
+  must not be worked around, and this one is an ordinary decision.
+*/
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  align-items: end;
+  padding: var(--page-pad);
+  padding-bottom: calc(var(--page-pad) + var(--app-safe-bottom, 0px));
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+
+.sheet {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.amount {
+  display: grid;
+  gap: 4px;
+}
+
+.amount-uah {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.amount-usdt {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.amount-usdt strong {
+  color: var(--accent-text);
+}
+
+.rate {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/*
+  The rules, and they are meant to be alarming: this is the last screen before a
+  stranger's payout is taken in the user's name, and every line in here is a way
+  to lose money. Left-aligned inside a centred sheet on purpose — a list reads
+  as a list, and four centred lines read as decoration.
+*/
+.rules {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--r-md);
+  background: var(--c-danger-soft);
+  text-align: left;
+}
+
+.rules-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-danger);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rules-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.rules-list li + li {
+  margin-top: 4px;
+}
+
+.buttons {
+  display: grid;
+  gap: 8px;
+}

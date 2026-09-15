@@ -1,0 +1,116 @@
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  min-height: calc(100vh - var(--app-safe-top, 0px));
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-title {
+  margin-bottom: 4px;
+}
+
+.page-intro {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 20px;
+}
+
+.summary-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.summary-value {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.summary-hint {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.level-card {
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  /* Rungs not yet earned read as out of reach without being unreadable. */
+  opacity: 0.5;
+
+  &.reached {
+    opacity: 1;
+  }
+
+  /* The one the reader is on, called out rather than merely not dimmed. */
+  &.current {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+}
+
+.level-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.level-you {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-text);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.level-facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+
+  dt {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  dd {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+  }
+}
+
+.empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}

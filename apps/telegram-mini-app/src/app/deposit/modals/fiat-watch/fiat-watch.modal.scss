@@ -1,0 +1,139 @@
+/*
+  Above the page and the bottom nav, below the forced-update screen — the same
+  layer the confirmation sheet sits on, and for the same reason: this is an
+  ordinary decision, not one that must never be worked around.
+*/
+:host {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: grid;
+  align-items: end;
+  padding: var(--page-pad);
+  padding-bottom: calc(var(--page-pad) + var(--app-safe-bottom, 0px));
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+
+.sheet {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.lead {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/*
+  16px is the floor, not a preference. Below it iOS zooms the page in when the
+  field takes focus — and does not zoom back out on blur, leaving the app
+  magnified.
+*/
+.field-input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+  transition: border-color var(--t-base);
+}
+
+.field-input:focus {
+  border-color: var(--accent);
+}
+
+/* The spinners steal width from a field that is already half a row wide. */
+.field-input::-webkit-outer-spin-button,
+.field-input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.field-input {
+  appearance: textfield;
+}
+
+.modes {
+  display: grid;
+  gap: 8px;
+}
+
+.mode {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--t-base),
+    background var(--t-base);
+}
+
+.mode.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mode-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mode-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.buttons {
+  display: grid;
+  gap: 8px;
+}

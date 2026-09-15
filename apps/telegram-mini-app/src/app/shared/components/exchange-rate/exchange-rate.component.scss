@@ -1,0 +1,16 @@
+:host {
+  display: block;
+}
+
+.rate-line {
+  /* Overridable by the placer — see the component's doc comment. */
+  font-size: var(--rate-line-size, 13px);
+  color: var(--text-muted);
+}
+
+/* The figure itself reads as the content of the line, not as emphasis. */
+.rate-line strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

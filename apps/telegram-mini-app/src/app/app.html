@@ -1,0 +1,46 @@
+<router-outlet></router-outlet>
+
+<!--
+  Rendered here, once, rather than by each page. `@if` toggles its visibility
+  between destinations and sub-flows, but the component instance itself is only
+  torn down when the nav genuinely goes away — not on every navigation between
+  the three tabs, which is what made it flicker.
+-->
+@if (showNav()) {
+  <app-bottom-nav />
+}
+
+<!--
+  Above the nav (10), below the sheets (900) and the three screens that must
+  not be worked around (1000). Renders nothing until a tour is due AND the
+  dashboard has loaded — see `OnboardingTourService.active`. Checked after the
+  outlet and the nav, which is where its anchors register, so an anchor
+  appearing never changes an expression this component has already rendered.
+-->
+<app-tour-overlay />
+
+<!--
+  Last in the shell so it paints over everything, including the nav. It renders
+  nothing until a request has been running longer than the delay.
+-->
+<app-loading-overlay />
+
+<!--
+  Above even the loading overlay: a stale client is one of the two states the
+  user must not be able to keep working in.
+-->
+@if (version.updateRequired()) {
+  <app-update-required />
+}
+
+<!--
+  Last, so it paints over the update screen when both are true — and they will
+  be, for anyone who left the app open across a release. Of the two instructions
+  only this one works: reloading onto a newer bundle re-reads the same launch
+  URL and the same expired `initData`, and lands the user on the "open this in
+  Telegram" gate. Closing and reopening fixes both at once, because the new
+  launch fetches `index.html` afresh and that is where the update was.
+-->
+@if (session.expired()) {
+  <app-session-expired />
+}

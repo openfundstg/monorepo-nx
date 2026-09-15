@@ -1,0 +1,55 @@
+@if (formattedAlerts().length === 0) {
+  <div class="empty-state small">
+    <p>{{ 'DASHBOARD.NO_ALERTS' | translate }}</p>
+  </div>
+} @else {
+  <div class="alerts-list">
+    @for (alert of formattedAlerts(); track alert.id) {
+      <div 
+        class="alert-item glass-panel" 
+        [class.unread]="!alert.isRead" 
+        [ngClass]="'alert-' + alert.type.toLowerCase()"
+        (click)="markAsRead(alert)"
+      >
+        <div class="alert-icon" [ngClass]="alert.type.toLowerCase()"></div>
+        <div class="alert-content">
+          <!--
+            The alert type IS the translation key and metadata IS its
+            parameters, so every type renders through one expression — no
+            per-type branch, and no server-rendered sentence anywhere.
+          -->
+          <strong>{{ 'ALERTS.' + alert.type | translate }}</strong>
+          <p>{{ 'ALERTS.' + alert.type + '_DESC' | translate: alert.metadata }}</p>
+          <small>{{ alert.timestamp | date: 'short' }}</small>
+          
+          @if (alert.type === 'UNRECOGNIZED_DEPOSIT' || alert.type === 'AMBIGUOUS_DEPOSIT') {
+            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+              <button class="secondary-btn small-btn" (click)="moveToBox(alert, $event)">
+                {{ 'ALERTS.MOVE_TO_BOX_BTN' | translate }}
+              </button>
+              @if (activeForceMatchAlertId() === (alert.id || alert._id)) {
+                <div class="inline-form" style="display: flex; gap: 8px; align-items: center;" (click)="$event.stopPropagation()">
+                  <input type="number" [(ngModel)]="forceMatchData.orderId" [placeholder]="'ALERTS.FORCE_MATCH_ORDER_ID' | translate" class="input-field" style="width: 100px; padding: 4px; font-size: 12px; height: 28px;">
+                  <input type="number" step="0.01" [(ngModel)]="forceMatchData.amount" [placeholder]="'ALERTS.FORCE_MATCH_AMOUNT' | translate" class="input-field" style="width: 100px; padding: 4px; font-size: 12px; height: 28px;">
+                  <button class="secondary-btn small-btn" (click)="submitForceMatch(alert.id || alert._id, $event)">
+                    {{ 'ALERTS.FORCE_MATCH_SUBMIT' | translate }}
+                  </button>
+                  <button class="secondary-btn small-btn" (click)="cancelForceMatch($event)">
+                    {{ 'ALERTS.FORCE_MATCH_CANCEL' | translate }}
+                  </button>
+                </div>
+              } @else {
+                <button class="secondary-btn small-btn" (click)="startForceMatch(alert, $event)">
+                  {{ 'ALERTS.FORCE_MATCH_BTN' | translate }}
+                </button>
+              }
+              <button class="secondary-btn small-btn" (click)="acknowledgeAlert(alert.id || alert._id, $event)">
+                {{ 'ALERTS.ACKNOWLEDGE_BTN' | translate }}
+              </button>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+}

@@ -1,0 +1,179 @@
+/*
+  Global styles for the Telegram Mini App.
+
+  Three files, in this order and for this reason: the tokens must exist before
+  anything reads them, and the primitives are written in terms of the tokens.
+  Everything after them is the document baseline — the rules that have nowhere
+  else to live because they apply to `html`, `body` or every element at once.
+
+  The app draws its own dark palette and does not follow Telegram's
+  `themeParams`. See `styles/_tokens.scss` for why.
+*/
+
+@use './styles/tokens';
+@use './styles/primitives';
+
+/*
+  No browser zoom, of any kind.
+
+  `pan-x pan-y` keeps scrolling in both directions while withdrawing pinch —
+  `manipulation` would only stop the double-tap half and leave the pinch. The
+  text-size lock stops WebKit inflating type on its own in landscape, which
+  reflows the layout and reads as a zoom to a user who did not ask for one.
+
+  Together with the viewport meta and `ZoomLockService`, these are the three
+  layers it takes: the meta is ignored by WebKit, `touch-action` is not honoured
+  for pinch by every WebView version in the wild, and the gesture events only
+  exist on WebKit.
+*/
+html,
+body {
+  touch-action: pan-x pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  background-color: var(--bg);
+}
+
+:root {
+  /*
+    Tells the engine which way the page is painted, so the parts we do not style
+    — form control internals, the caret, the tap-and-hold selection sheet —
+    arrive dark instead of being drawn light on our dark ground.
+  */
+  color-scheme: dark;
+
+  /*
+    How much of each edge is already spoken for.
+
+    In the Fullscreen launch mode the web view fills the whole screen, so the
+    Android status bar AND Telegram's own controls — back, collapse, ⋮ — are
+    drawn on top of our first pixels. Without compensating, every page title
+    sits underneath them.
+
+    Seeded here from the variables Telegram sets itself (Bot API 8.0+), and
+    overwritten by `AppComponent` with the values read from the JS API, which
+    also updates them when the insets move. The two are the same numbers; this
+    is the fallback for a client that publishes one and not the other.
+
+    The insets stack: `--tg-safe-area-inset-top` is the device's status bar,
+    `--tg-content-safe-area-inset-top` is Telegram's toolbar measured inside it.
+  */
+  --app-safe-top: calc(
+    var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px)
+  );
+  --app-safe-bottom: var(--tg-safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+
+  /*
+    No visible scrollbars anywhere.
+
+    Native apps do not draw them, and Telegram Desktop's web view does — the
+    grey track down the right-hand edge. Scrolling itself is untouched: this
+    hides the indicator only, so wheel, touch and keyboard all still work.
+
+    Applied to every element rather than just the document because inner
+    scrollers (the guide's wide blocks, long lists) would otherwise keep theirs.
+  */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior-y: none;
+
+  /* Prevent text selection */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+/* Remove browser tap highlight and focus outline on interactive elements */
+a,
+button,
+[role='button'],
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role='button'] {
+  outline: none;
+  -webkit-touch-callout: none;
+
+  &:focus,
+  &:focus-visible,
+  &:active {
+    outline: none;
+  }
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Allow text selection in inputs */
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  font-family: inherit;
+}
+
+/* Hide native arrows for number inputs */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

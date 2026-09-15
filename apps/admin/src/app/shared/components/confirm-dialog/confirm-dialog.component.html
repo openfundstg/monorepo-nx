@@ -1,0 +1,22 @@
+<h2 mat-dialog-title>{{ data.title | translate }}</h2>
+
+<mat-dialog-content>
+  <p class="message">{{ data.message | translate: data.messageParams }}</p>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" mat-dialog-close>{{ 'common.cancel' | translate }}</button>
+  <!--
+    Closes with `true`. The caller filters on it, so dismissing with Escape —
+    which closes with `undefined` — reads as "no" rather than as a confirmation.
+  -->
+  <button
+    mat-flat-button
+    type="button"
+    [color]="data.destructive ? 'warn' : 'primary'"
+    [mat-dialog-close]="true"
+    cdkFocusInitial
+  >
+    {{ data.confirmLabel | translate }}
+  </button>
+</mat-dialog-actions>

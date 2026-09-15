@@ -1,0 +1,112 @@
+<div class="header">
+  <a mat-button [routerLink]="['/users']">
+    <mat-icon>arrow_back</mat-icon>
+    {{ 'users.title' | translate }}
+  </a>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (detail(); as data) {
+  <div class="identity card">
+    <div>
+      <h1 class="page-title">{{ displayName() }}</h1>
+      <p class="page-subtitle mono">{{ data.user.telegramId }}</p>
+    </div>
+    <div class="identity__flags">
+      <app-status-chip [value]="data.user.trustLevel" translatePrefix="TRUST_LEVEL" />
+      <app-status-chip
+        [value]="data.user.isActive ? 'common.yes' : 'common.no'"
+        [tone]="flagTone(data.user.isActive)"
+      />
+    </div>
+  </div>
+
+  <section class="grid">
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.balance' | translate }}</span>
+      <span class="figure__value">{{ data.user.balance | usdt }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.frozen' | translate }}</span>
+      <span class="figure__value">{{ data.user.frozenBalance | usdt }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.referral_balance' | translate }}</span>
+      <span class="figure__value">{{ data.user.referralBalance | usdt }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.turnover' | translate }}</span>
+      <span class="figure__value">{{ data.user.totalTurnover | uah }}</span>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.sales_total' | translate }}</span>
+      <span class="figure__value">{{ data.stats.salesTotal }}</span>
+      <span class="figure__hint">
+        {{ 'users.completed_count' | translate: { count: data.stats.salesCompleted } }}
+      </span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.deposits_total' | translate }}</span>
+      <span class="figure__value">{{ data.stats.depositsTotal }}</span>
+      <span class="figure__hint">{{ data.stats.depositedTotal | usdtWhole }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.referrals_count' | translate }}</span>
+      <span class="figure__value">{{ data.stats.referralsCount }}</span>
+      <span class="figure__hint">{{ data.stats.referralEarnedTotal | usdt }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'users.referral_code' | translate }}</span>
+      <span class="figure__value mono">{{ data.user.referralCode ?? '—' }}</span>
+      @if (data.user.referredBy) {
+        <span class="figure__hint">
+          {{ 'users.referred_by' | translate: { id: data.user.referredBy } }}
+        </span>
+      }
+    </div>
+  </section>
+
+  <section class="card list">
+    <h2>{{ 'users.recent_sales' | translate }}</h2>
+    @for (order of data.recentSales; track order.id) {
+      <div class="row">
+        <span class="mono">{{ order.publicId }}</span>
+        <span>{{ order.fiatAmount | uah }}</span>
+        <span class="muted">{{ order.receivedAmount | uah }}</span>
+        <app-status-chip
+          [value]="order.status"
+          [tone]="saleTone(order.status)"
+          translatePrefix="SALE_STATUS"
+        />
+        <span class="muted">{{ order.createdAt | dateTime }}</span>
+      </div>
+    } @empty {
+      <p class="muted">{{ 'users.no_sales' | translate }}</p>
+    }
+  </section>
+
+  <section class="card list">
+    <h2>{{ 'users.recent_deposits' | translate }}</h2>
+    @for (deposit of data.recentDeposits; track deposit.id) {
+      <div class="row">
+        <span>{{ deposit.cryptoAmount | usdtWhole }}</span>
+        <span class="muted">{{ deposit.fiatEquivalent | uah }}</span>
+        <span class="mono">{{ deposit.txId ?? '—' }}</span>
+        <app-status-chip
+          [value]="deposit.status"
+          [tone]="depositTone(deposit.status)"
+          translatePrefix="DEPOSIT_STATUS"
+        />
+        <span class="muted">{{ deposit.createdAt | dateTime }}</span>
+      </div>
+    } @empty {
+      <p class="muted">{{ 'users.no_deposits' | translate }}</p>
+    }
+  </section>
+}

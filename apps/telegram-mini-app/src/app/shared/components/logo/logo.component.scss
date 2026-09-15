@@ -1,0 +1,27 @@
+/*
+  A lockup, not a layout: the host is inline-flex so a caller can centre it,
+  put it in a row or stand it on its own without this file having an opinion.
+*/
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32em;
+}
+
+.mark {
+  display: block;
+  flex: none;
+}
+
+/*
+  Sized in `px` from the template rather than in `em` here, because the host's
+  own font-size is whatever the calling page happens to set — the name would
+  then follow the surrounding copy instead of the mark it belongs to.
+*/
+.name {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}

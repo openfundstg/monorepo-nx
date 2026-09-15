@@ -1,0 +1,186 @@
+/*
+  The app's colour, radius and spacing vocabulary — one dark palette, defined once.
+
+  Custom properties rather than Sass variables on purpose: component stylesheets
+  are compiled in isolation and cannot `@use` this file without a preprocessor
+  include path, but they inherit every custom property through the cascade. So a
+  token declared here is readable from `dashboard.component.scss` with no build
+  configuration at all, and changing one repaints the whole app.
+
+  Two layers, and the distinction is load-bearing:
+
+  - `--c-*` is the palette. Raw colour, named after what it *is*.
+  - Everything else is semantic — named after what it is *for*. Components use
+    these. When a card's ground has to change, it changes here, not in nine
+    stylesheets that each happened to write the same hex.
+
+  There is no light variant. Telegram's `themeParams` are ignored: the design is
+  drawn for a single dark ground, and a second palette invented to satisfy a
+  light client would be a palette nobody designed.
+
+  The palette is Open Funds' own, and its three anchors are read off the mark in
+  `assets/logo.png` and the campaign artwork rather than picked by eye: the
+  near-black tile the mark sits on (#161616), the warm cream the mark is cut
+  from (#fff9f1), and the gold the artwork highlights a number in. Everything
+  else here is a step away from one of those three.
+*/
+
+:root {
+  /* --- Palette ----------------------------------------------------------- */
+
+  /*
+    Warm-neutral blacks, not the blue-grey navy this palette used to be. The
+    logo tile is #161616 and the artwork's ground is darker still, so the page
+    sits below the card rather than above it — a card is a *lighter* shape on
+    this ground, which is what makes the surface steps legible without borders
+    doing the work.
+  */
+  --c-bg: #0e0e0f;
+  /* Chrome that sits on top of the page rather than in it — the bottom nav. */
+  --c-bg-raised: #131314;
+  --c-surface: #191919;
+  /* Nested inside a surface: inputs, chips, rows within a card. */
+  --c-surface-2: #232323;
+  /* Pressed, selected, hovered. */
+  --c-surface-3: #2e2e2e;
+
+  /*
+    Lines are the cream at low alpha, not plain white. On a warm black a neutral
+    white hairline reads faintly blue against the cream text beside it.
+  */
+  --c-line: rgba(255, 249, 241, 0.07);
+  --c-line-strong: rgba(255, 249, 241, 0.14);
+
+  /*
+    Three weights of text, and all three are checked against `--c-surface`
+    rather than picked by eye: 16.8:1, 7.0:1 and 5.4:1. The faintest was
+    originally two steps darker and measured 3.1:1 — legible on a desktop
+    monitor, and not on a phone held at arm's length in daylight, which is where
+    this app is actually read.
+
+    The brightest is the mark's own cream. It is not white: white beside the
+    logo makes the logo look yellowed.
+  */
+  --c-text: #fff9f1;
+  --c-text-dim: #a8a29a;
+  --c-text-faint: #948e86;
+
+  /*
+    Gold. The brand's accent and, unlike the blue it replaces, a *light* colour:
+    it reads at 9.1:1 on a card, so nothing has to be lightened to make a gold
+    label legible. `--c-accent-text` is a half-step up all the same, because a
+    12px label is thinner than a button and gains from it; the two are the same
+    hue, so a gold label and a gold button still look like one decision.
+  */
+  --c-accent: #e3b44a;
+  --c-accent-press: #c79a34;
+  --c-accent-text: #edc15c;
+  --c-accent-soft: rgba(227, 180, 74, 0.14);
+  /*
+    The accent spent rather than offered — a step already taken, the track
+    behind it. Softer than a fill and stronger than `--c-accent-soft`, which is
+    a ground for text to sit on and disappears when it has to carry a shape of
+    its own.
+  */
+  --c-accent-dim: rgba(227, 180, 74, 0.3);
+
+  /*
+    Text laid on a saturated fill — the red ribbon, an armed destructive button.
+    Every fill in this palette *except the accent* is dark enough that white is
+    the readable answer on all of them.
+  */
+  --c-on-fill: #ffffff;
+  /*
+    The accent is the exception, and the reason `--on-accent` is now its own
+    token rather than an alias of `--c-on-fill`. White on gold is 1.9:1 —
+    invisible. Near-black on gold is 9.5:1, and warm rather than neutral so the
+    label does not read as a hole punched in the button.
+  */
+  --c-on-accent: #17140d;
+  /* The unfilled half of a spinner turning on a gold ground. */
+  --c-on-accent-faint: rgba(23, 20, 13, 0.3);
+
+  --c-success: #3ecf8e;
+  --c-success-soft: rgba(62, 207, 142, 0.14);
+  /*
+    Orange, not the amber it was. Amber and the accent are now the same colour,
+    and a "waiting for you" chip that is indistinguishable from a button is a
+    chip that says nothing — the trust badges sit two of them side by side.
+  */
+  --c-warning: #f2994a;
+  --c-warning-soft: rgba(242, 153, 74, 0.14);
+  --c-danger: #f2585c;
+  --c-danger-soft: rgba(242, 88, 92, 0.14);
+  /*
+    NovaPay's own purple, read off their mark, and the one colour here that is
+    somebody else's rather than this palette's. It exists because the bank
+    picker tints the selected tile in the bank's colour — the pair sits with the
+    others so a reader finds every accent in one place, and so the soft variant
+    is mixed at the same 14% as the rest.
+  */
+  --c-novapay: #690dd3;
+  --c-novapay-soft: rgba(105, 13, 211, 0.14);
+
+  /*
+    What a modal or the loading overlay lays over the page. One value: the four
+    stylesheets that each wrote their own had already drifted to two, so the
+    sheet dimmed the page differently depending on which one opened it.
+  */
+  --c-scrim: rgba(6, 6, 6, 0.62);
+
+  /* --- Semantic ---------------------------------------------------------- */
+
+  --bg: var(--c-bg);
+  --surface: var(--c-surface);
+  --surface-nested: var(--c-surface-2);
+  --surface-active: var(--c-surface-3);
+  --border: var(--c-line);
+  --border-strong: var(--c-line-strong);
+
+  --text: var(--c-text);
+  --text-muted: var(--c-text-dim);
+  --text-faint: var(--c-text-faint);
+
+  --accent: var(--c-accent);
+  --accent-text: var(--c-accent-text);
+  --accent-soft: var(--c-accent-soft);
+  --accent-dim: var(--c-accent-dim);
+  --on-fill: var(--c-on-fill);
+  --on-accent: var(--c-on-accent);
+  --on-accent-faint: var(--c-on-accent-faint);
+  --scrim: var(--c-scrim);
+
+  /* --- Shape ------------------------------------------------------------- */
+
+  --r-lg: 16px;
+  --r-md: 12px;
+  --r-sm: 8px;
+  --r-pill: 999px;
+
+  --page-pad: 16px;
+
+  /*
+    Height of the fixed `<app-bottom-nav />` plus whatever the device puts under
+    it. Every page that shows the nav reserves exactly this much at its foot, and
+    it is one token so the three of them cannot drift apart — which is what a
+    hand-written `calc(80px + …)` repeated per page eventually does.
+  */
+  --nav-reserve: calc(80px + var(--app-safe-bottom, 0px));
+
+  /* --- Motion ------------------------------------------------------------ */
+
+  --t-fast: 0.15s ease;
+  --t-base: 0.2s ease;
+}
+
+/*
+  Motion is decoration here — a pressed card shrinking, a spinner turning. None
+  of it carries meaning that the still frame does not, so all of it goes when
+  the reader has asked for less.
+*/
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0s;
+    --t-base: 0s;
+  }
+}

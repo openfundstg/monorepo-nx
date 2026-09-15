@@ -1,0 +1,26 @@
+# Build context is the workspace root, so keep it small and deterministic.
+node_modules
+**/node_modules
+**/dist
+**/out-tsc
+.nx
+.angular
+.git
+.github
+.vscode
+.idea
+.claude
+.cursor
+.codex
+.gemini
+.opencode
+.agents
+coverage
+**/*.log
+
+# Secrets are injected at runtime via env_file, never baked into the image
+**/.env
+**/.env.*
+
+# Docs
+**/*.md

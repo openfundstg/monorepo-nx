@@ -1,0 +1,174 @@
+<div
+  class="terminal-card progress-widget"
+  [class.has-alert]="hasAlert()"
+  [class.status-error]="terminal().status === 'ERROR'"
+  [class.expanded]="isExpanded()"
+  [class.archived]="isArchived()"
+  (click)="onToggle()"
+  [style.background]="backgroundGradient()"
+>
+  @if (isTmaCreated()) {
+    <span
+      class="tma-badge"
+      [class.refunds-remainder]="refundsRemainder()"
+      [title]="tmaBadgeTitleKey() | translate"
+      >TG</span
+    >
+  }
+
+  <div class="terminal-info-widget">
+    <!--
+      A disabled jar is not being polled, so its figures are however old they
+      are. The date is shown instead of the clock time a live card carries:
+      "14:03:11" on a balance from last week reads as now.
+
+      When the age is unknown the stamp is simply absent. It used to fall back
+      to "balance unknown", which said the wrong thing entirely — the balance
+      was right there beside it, and what was missing was its date. The claim
+      about the balance belongs on the balance, where `hasKnownBalance` renders
+      it as a dash.
+    -->
+    @if (isArchived()) {
+      @if (terminal().balanceAt) {
+        <span
+          class="last-updated-text archived-stamp"
+          [title]="'DASHBOARD.ARCHIVED_HINT' | translate"
+        >
+          {{ terminal().balanceAt | date: 'dd.MM.yy HH:mm' }}
+        </span>
+      }
+    } @else if (terminal().lastUpdated) {
+      <span class="last-updated-text" [title]="'DASHBOARD.UPDATED' | translate">
+        {{ terminal().lastUpdated | date: 'HH:mm:ss' }}
+      </span>
+    }
+    <!-- @if (terminal().goal && terminal().goal! > 0) {
+      <div class="terminal-percent">{{ percent() | number: '1.0-0' }}%</div>
+    } -->
+    <div class="terminal-title-row">
+      <span class="terminal-balance">
+        @if (hasKnownBalance()) {
+          {{ terminal().balance | kopecks }}
+        } @else {
+          <span [title]="'DASHBOARD.BALANCE_UNKNOWN' | translate">—</span>
+        }
+      </span>
+      <div class="terminal-title-right">
+        <span class="terminal-name">
+          {{ terminal().terminalName || 'Unknown' }}
+        </span>
+
+        @if (isArchived()) {
+          <span class="badge archived-badge">{{ 'DASHBOARD.DISABLED' | translate }}</span>
+        } @else if (isPollingActive()) {
+          <div class="polling-indicator" [title]="'DASHBOARD.TOOLTIPS.POLLING' | translate">
+            <span class="ping"></span>
+            <span class="dot"></span>
+          </div>
+        } @else {
+          <button
+            class="icon-btn sync-btn"
+            [class.spinning]="isSyncing()"
+            (click)="syncTerminal($event)"
+            [title]="'DASHBOARD.TOOLTIPS.SYNC' | translate"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 2v6h-6"></path>
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+              <path d="M3 22v-6h6"></path>
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+            </svg>
+          </button>
+        }
+      </div>
+    </div>
+
+    <div class="terminal-bottom-row">
+      <span class="terminal-goal-text">{{ terminal().goal | kopecks }}</span>
+      <!--
+        Beside the goal because that is what it qualifies: this jar does not
+        have to reach the figure on its left. Only the self-closing kind is
+        marked — a jar waiting for its full amount behaves like every other
+        terminal, and labelling that would put a chip on most of the cards to
+        say nothing new.
+      -->
+      <!--
+        Beside the goal too, because it qualifies the same figure: this jar is
+        no longer trying to reach it. Shown rather than hiding the card — money
+        can still arrive here, and a jar that vanished the moment its user
+        tapped stop would take a late payment with nobody watching the row.
+      -->
+      @if (isWindingDown()) {
+        <span class="closing-chip" [title]="'DASHBOARD.CLOSING_HINT' | translate"
+          >⏳ {{ 'DASHBOARD.CLOSING' | translate }}</span
+        >
+      }
+      @if (showsRemainderChip()) {
+        <span class="remainder-chip" [title]="'DASHBOARD.SOURCE_TMA_REFUND' | translate"
+          >↩ {{ 'DASHBOARD.REMAINDER_AUTO' | translate }}</span
+        >
+      }
+      <div class="terminal-bottom-actions">
+        @if (terminal().pendingOrdersSum && terminal().pendingOrdersSum! > 0) {
+          <span class="badge pending-badge pulsing">{{
+            'DASHBOARD.PENDING_ORDERS' | translate: { sum: formattedPendingSum() }
+          }}</span>
+        }
+        @if (terminal().cardId) {
+          <a
+            class="clickable-terminal-link history-link"
+            (click)="openHistoryTab($event)"
+            [title]="'DASHBOARD.TOOLTIPS.HISTORY' | translate"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </a>
+        }
+        <a
+          class="clickable-terminal-link"
+          (click)="openTerminalLink($event)"
+          [title]="'DASHBOARD.TOOLTIPS.OPEN_MONO' | translate"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="link-icon"
+          >
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</div>

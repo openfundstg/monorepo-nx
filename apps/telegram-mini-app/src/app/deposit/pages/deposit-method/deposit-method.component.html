@@ -1,0 +1,20 @@
+<h2 class="page-title">{{ 'deposit.create' | translate }}</h2>
+<p class="page-lead">{{ 'deposit.method_lead' | translate }}</p>
+
+<div class="methods">
+  <app-method-tile
+    link="/deposit/crypto"
+    titleKey="deposit.method_crypto"
+    hintKey="deposit.method_crypto_hint"
+  >
+    ₮
+  </app-method-tile>
+
+  <app-method-tile
+    link="/deposit/fiat"
+    titleKey="deposit.method_fiat"
+    hintKey="deposit.method_fiat_hint"
+  >
+    ₴
+  </app-method-tile>
+</div>

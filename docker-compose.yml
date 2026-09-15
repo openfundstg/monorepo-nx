@@ -1,0 +1,227 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: transacto-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASS}
+      MONGO_DB_NAME: ${MONGO_DB_NAME}
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      # Loopback only — never exposed off the host.
+      # Host-side port is overridable because it is only for your own tooling:
+      # the API reaches Mongo as `mongodb:27017` over the compose network.
+      - '127.0.0.1:${MONGO_HOST_PORT:-27017}:27017'
+
+  redis:
+    image: redis:alpine
+    container_name: transacto-redis
+    restart: always
+    # Two accounts. `default` is the API's, unchanged, with the whole command
+    # set. `inspector` is `deploy/inspect/`'s: `-@all` first, then `+@read`, so
+    # it can be handed to a read-only tool and still not be able to write —
+    # which is the point of having it rather than sharing the API's password.
+    # `+info` is separate because INFO is classed dangerous, not read.
+    #
+    # Spelled as a list, not a string: Compose parses a string command with
+    # shell rules and reads the `>` that starts an ACL password as a
+    # redirection, silently truncating everything after it. The inspector user
+    # was defined but had no password and no rules — and redis started anyway.
+    command:
+      - redis-server
+      - --requirepass
+      - "${REDIS_PASSWORD}"
+      - --user
+      - inspector
+      - "on"
+      - ">${REDIS_INSPECT_PASSWORD:?set REDIS_INSPECT_PASSWORD in .env - see deploy/inspect/README.md}"
+      - "~*"
+      - "-@all"
+      - "+@read"
+      - "+info"
+      - "+ping"
+    volumes:
+      - redis_data:/data
+    ports:
+      # Same as above — the API connects as `redis:6379` inside the network.
+      # Set REDIS_HOST_PORT if something already owns 6379 on your machine
+      # (a local redis-server, or one inside a WSL distro, which WSL mirrors
+      # onto Windows' 127.0.0.1 and which Docker then cannot bind).
+      - '127.0.0.1:${REDIS_HOST_PORT:-6379}:6379'
+
+  api:
+    # Context is the workspace root: the build needs nx.json, the root lockfile
+    # and libs/contracts, not just apps/api.
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: transacto-api
+    restart: always
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-8000}:8000'
+    depends_on:
+      - mongodb
+      - redis
+      # Started with the API, not required by it: a fiat receipt cannot be
+      # verified without this container, and every other endpoint is indifferent
+      # to it. RECEIPT_VERIFICATION_REQUIRED is what decides whether its absence
+      # refuses a receipt or merely logs that one went out unverified.
+      - receipt-checker
+      # Same arrangement as the checker: started with the API, not required by
+      # it. Only PrivatBank receipts go through it, and only when
+      # PRIVATBANK_PROXY_URLS points at it.
+      - tor
+    # On every segment, and the only service that is. The checker has to be
+    # reachable from here and must not reach the database; the same is true of
+    # the tunnel, which is an open proxy to whatever can open a socket to it.
+    networks:
+      - default
+      - checker
+      - tor
+    env_file:
+      - ./apps/api/src/environments/.env
+
+  receipt-checker:
+    # An OCR engine, kept out of the API's image.
+    #
+    # It answers one question the API cannot answer in Node: what text is in an
+    # uploaded receipt. **It used to answer a second** — what `check.gov.ua` says
+    # about a receipt code — which needed a real Chrome, because their endpoint
+    # refuses any request without a reCAPTCHA token minted by their own page.
+    # That verifier is gone, and the browser, its seccomp profile, its shared
+    # memory and its proxy pool went with it.
+    build:
+      context: .
+      dockerfile: apps/receipt-checker/Dockerfile
+    container_name: transacto-receipt-checker
+    restart: always
+    ports:
+      # Loopback only, and it must stay that way: there is no authentication on
+      # this service, exactly as there is none on Mongo or Redis inside the
+      # network. The API reaches it as `receipt-checker:8100`.
+      - '127.0.0.1:${RECEIPT_CHECKER_HOST_PORT:-8100}:8100'
+    environment:
+      # Tuning, all optional. Every one of these may be left blank — `settings.py`
+      # treats a blank as absent, which is not what `os.environ.get` does and is
+      # why they go through it. Documented in apps/receipt-checker/README.md.
+      #
+      # `PROXY_URLS` is deliberately not among them any more: this container
+      # makes no outbound request at all.
+      RECEIPT_CHECKER_LOG_LEVEL: ${RECEIPT_CHECKER_LOG_LEVEL:-}
+      RECEIPT_CHECKER_EXTRACT_TIMEOUT_S: ${RECEIPT_CHECKER_EXTRACT_TIMEOUT_S:-}
+      RECEIPT_CHECKER_MEMORY_BYTES: ${RECEIPT_CHECKER_MEMORY_BYTES:-}
+      RECEIPT_CHECKER_CPU_SECONDS: ${RECEIPT_CHECKER_CPU_SECONDS:-}
+    # An init as PID 1, and still load-bearing. Each extraction runs in a child
+    # under its own limits, and one killed for exceeding them leaves the process
+    # group to be reaped. Without an init those accumulate against the pid limit
+    # below until the container can start nothing at all.
+    init: true
+    # This container renders a page nobody here controls and parses PDFs
+    # uploaded by strangers. Everything below assumes one of those two will
+    # eventually be the way in, and makes the inside worth less than it costs.
+    networks:
+      # Its own segment, and that segment is `internal`. Mongo and Redis are on
+      # `default` and unreachable from here — the API bridges the two and is the
+      # only thing that does — and since the browser left there is nothing here
+      # that needs the internet either.
+      - checker
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # A ceiling, not a reservation. An OCR pass fits inside this with room to
+    # spare, and a receipt engineered to allocate forever hits it.
+    mem_limit: 1g
+    pids_limit: 256
+
+  tor:
+    # A route to PrivatBank, because the shared proxy pool has none.
+    #
+    # Their provider refuses the destination rather than the request: measured
+    # from one process inside one minute, `CONNECT` to `app.transacto.us`
+    # succeeded twice while `CONNECT` to `privatbank.ua` was refused on three
+    # consecutive addresses. Blocking banking domains is ordinary policy for a
+    # residential provider, and no amount of rotating inside that pool gets
+    # past it.
+    #
+    # **This is for PrivatBank and must stay that way.** The two paths that
+    # work today work because of the addresses they are on: `check.gov.ua` is
+    # not reachable over Tor at all — five circuits, five failures to even open
+    # the connection — and that is the Monobank path. Moving everything here
+    # would trade a broken PrivatBank for a broken Monobank, and the Transacto
+    # panel sits behind Cloudflare, which scores a published exit list for
+    # exactly what it is.
+    build:
+      context: .
+      dockerfile: deploy/tor/Dockerfile
+    container_name: transacto-tor
+    restart: always
+    # No host port. It has no authentication, and unlike the checker there is
+    # no reason to reach it from the host — an open proxy on loopback is
+    # available to every process on the machine.
+    networks:
+      # Its own segment, alone with the API. It makes connections wherever it
+      # is told to, so it is the last container that should be able to open a
+      # socket to Mongo.
+      - tor
+    volumes:
+      # The guard relays, kept across restarts. Tor picks a small set of entry
+      # points and sticks to them on purpose; a fresh set on every deploy is
+      # the behaviour that design exists to avoid.
+      - tor_data:/var/lib/tor
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 128
+
+  telegram-mini-app:
+    build:
+      context: .
+      dockerfile: apps/telegram-mini-app/Dockerfile
+    container_name: transacto-tma
+    restart: always
+    ports:
+      - '127.0.0.1:${TMA_HOST_PORT:-8080}:80'
+    depends_on:
+      - api
+
+  admin:
+    # Serves only static files. `/api` and `/socket.io` are routed to the API by
+    # the host proxy and must stay on the main origin — the admin session cookie
+    # and its CSRF double-submit only work same-origin, so proxying them through
+    # this container would break authentication rather than merely add a hop.
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    container_name: transacto-admin
+    restart: always
+    ports:
+      - '127.0.0.1:${ADMIN_HOST_PORT:-8090}:80'
+    depends_on:
+      - api
+
+networks:
+  # Everything that was here before: the API, both frontends, Mongo and Redis.
+  default:
+  # The receipt checker, alone with the API, and with no route off the host.
+  #
+  # It parses files strangers upload, which is the most exploitable job in the
+  # stack, and it has no reason to speak to anything: the API hands it bytes and
+  # takes text back. `internal` is what turns "it should not need the internet"
+  # into "it cannot reach it" — so a parser bug is a dead end rather than a
+  # foothold with an exit.
+  checker:
+    internal: true
+  # The tunnel, alone with the API. Same reasoning as above, from the other
+  # direction: it is an unauthenticated proxy, so what it can reach is the
+  # whole of what an attacker reaching it would get.
+  tor:
+
+volumes:
+  mongodb_data:
+  redis_data:
+  tor_data:
