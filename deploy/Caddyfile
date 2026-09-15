@@ -1,5 +1,15 @@
 # The production edge for openfunds.top.
 #
+# The origin is HIDDEN behind the public worker VPS. DNS for openfunds.top points
+# at the worker, which L4-forwards the raw TLS to this host's `web` Tor onion, so
+# nothing reaches this host directly. Two things below follow from that:
+#   - `default_bind 127.0.0.1` — Caddy listens only on loopback, where the onion
+#     hands connections in; there is no public listener at all.
+#   - TLS via DNS-01 (Njalla) — with no inbound port, an HTTP or TLS-ALPN
+#     challenge could never arrive, so the certificate is proven through a DNS
+#     record instead. Needs a Caddy built with the `caddy-dns/njalla` module and
+#     NJALLA_TOKEN in the environment (never committed).
+#
 # Copy to /etc/caddy/Caddyfile on the host, then:
 #
 #   caddy fmt --overwrite /etc/caddy/Caddyfile
@@ -16,8 +26,26 @@
 # /robots.txt ends up running after the catch-all `reverse_proxy` and never
 # firing at all.
 
+{
+	# The onion delivers connections on loopback; there is no public listener.
+	default_bind 127.0.0.1
+}
+
 openfunds.top {
 	encode gzip zstd
+
+	# TLS over DNS-01 — no inbound needed, which is the whole point of a hidden
+	# origin. NJALLA_TOKEN is read from the environment, never the repo, and Caddy
+	# must be built with the caddy-dns/njalla module.
+	tls {
+		dns njalla {env.NJALLA_TOKEN}
+		# Caddy's egress is locked to Tor (see deploy/egress-tor.nft), so it
+		# cannot reach Njalla's nameservers to self-check propagation. Disable
+		# that check and just wait a fixed delay before Let's Encrypt validates
+		# (LE queries the NS from its own IPs, not ours).
+		propagation_delay 60s
+		propagation_timeout -1
+	}
 
 	# ------------------------------------------------------------------
 	# Keep the whole site out of search results.

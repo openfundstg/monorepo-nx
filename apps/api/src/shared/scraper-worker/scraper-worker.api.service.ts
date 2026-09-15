@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios'
 import { Injectable, Logger } from '@nestjs/common'
-import { HttpProxyAgent } from 'http-proxy-agent'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import environments from 'src/environments'
 import {
   ScraperWorkerErrorCode,
@@ -35,7 +35,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set(Object.values(ScraperWorkerErro
 @Injectable()
 export class ScraperWorkerApiService {
   private readonly logger = new Logger(ScraperWorkerApiService.name)
-  private cachedAgent: HttpProxyAgent<string> | undefined
+  private cachedAgent: HttpsProxyAgent<string> | undefined
 
   constructor(private readonly httpService: HttpService) {}
 
@@ -50,9 +50,15 @@ export class ScraperWorkerApiService {
     return Number(environments.SCRAPER_WORKER_TIMEOUT_MS || '40000')
   }
 
-  /** The Tor tunnel to the onion, built once. */
-  private get agent(): HttpProxyAgent<string> {
-    return (this.cachedAgent ??= new HttpProxyAgent(environments.SCRAPER_WORKER_PROXY_URL))
+  /**
+   * The Tor tunnel to the onion, built once. `https-proxy-agent`, not
+   * `http-proxy-agent`: the `tor` container's `HTTPTunnelPort` speaks only HTTP
+   * CONNECT, and `http-proxy-agent` sends the absolute-form request it resets
+   * (`ECONNRESET`). For a plain-HTTP target this agent issues the CONNECT and
+   * hands back the raw socket — the tunnel the worker's `.onion` actually needs.
+   */
+  private get agent(): HttpsProxyAgent<string> {
+    return (this.cachedAgent ??= new HttpsProxyAgent(environments.SCRAPER_WORKER_PROXY_URL))
   }
 
   async send(request: ScraperWorkerRequest): Promise<ScraperWorkerOutcome> {
