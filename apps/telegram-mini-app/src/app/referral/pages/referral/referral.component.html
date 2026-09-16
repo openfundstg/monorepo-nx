@@ -1,10 +1,7 @@
 <h1 class="page-title">{{ 'referral.title' | translate }}</h1>
 
 @if (loading()) {
-  <div class="loading-container">
-    <div class="spinner"></div>
-    <p>{{ 'common.loading' | translate }}</p>
-  </div>
+  <!-- Loading is shown by the app-wide overlay, not a per-page spinner. -->
 } @else if (summary(); as data) {
   <!-- Earnings -->
   <section class="glass-card earnings-card">

@@ -29,7 +29,7 @@
 }
 
 @if (loading()) {
-  <div class="spinner"></div>
+  <!-- Loading is shown by the app-wide overlay, not a per-page spinner. -->
 } @else if (loadFailed() || !bookAvailable()) {
   <!--
     One block for two failures, because they are the same failure to a user:

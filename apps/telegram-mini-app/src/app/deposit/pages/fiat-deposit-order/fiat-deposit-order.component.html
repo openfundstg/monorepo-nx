@@ -1,5 +1,5 @@
 @if (loading()) {
-  <div class="spinner"></div>
+  <!-- Loading is shown by the app-wide overlay, not a per-page spinner. -->
 } @else if (deposit(); as order) {
   <h2 class="page-title">{{ 'fiat.order_title' | translate }}</h2>
 

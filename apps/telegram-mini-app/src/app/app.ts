@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, OnInit, effect, inject } from '@angular/core'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
   ActivatedRoute,
   ActivatedRouteSnapshot,
   NavigationCancel,
   NavigationEnd,
   NavigationError,
+  NavigationStart,
   PRIMARY_OUTLET,
   Router,
   RouterOutlet
@@ -16,6 +17,7 @@ import { MiniAppStartParam } from '@transacto/contracts'
 import { TmaService } from './auth/services/tma.service'
 import { BottomNavComponent } from './shared/components/bottom-nav/bottom-nav.component'
 import { LoadingOverlayComponent } from './shared/components/loading-overlay/loading-overlay.component'
+import { LoadingService } from './shared/services/loading.service'
 import { UpdateRequiredComponent } from './shared/components/update-required/update-required.component'
 import { SessionExpiredComponent } from './auth/components/session-expired/session-expired.component'
 import { SessionExpiryService } from './auth/services/session-expiry.service'
@@ -67,6 +69,7 @@ export class AppComponent implements OnInit {
   private readonly metaPixel = inject(MetaPixelService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
+  private readonly loading = inject(LoadingService)
 
   /**
    * Whether the current screen is one of the nav's own destinations.
@@ -89,6 +92,28 @@ export class AppComponent implements OnInit {
   constructor() {
     this.translate.addLangs(APP_LANGUAGES.map((option) => option.code))
     this.translate.setFallbackLang(DEFAULT_LANGUAGE)
+    this.trackNavigationLoading()
+  }
+
+  /**
+   * Raises the same overlay the API interceptor uses while the router is
+   * navigating — which is when a lazy route chunk is downloading. That fetch is
+   * a dynamic `import()`, not an `HttpClient` call, so `loadingInterceptor`
+   * never sees it: without this, tapping into a not-yet-loaded section left the
+   * screen blank for however long the chunk took to cross the Tor onion. The
+   * counter's delay still applies, so an already-cached (instant) navigation
+   * never flashes.
+   */
+  private trackNavigationLoading(): void {
+    this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      if (event instanceof NavigationStart) this.loading.start()
+      else if (
+        event instanceof NavigationEnd ||
+        event instanceof NavigationCancel ||
+        event instanceof NavigationError
+      )
+        this.loading.stop()
+    })
   }
 
   ngOnInit(): void {

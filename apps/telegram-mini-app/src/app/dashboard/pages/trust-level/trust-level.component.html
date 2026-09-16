@@ -3,7 +3,7 @@
   <p class="page-intro">{{ 'trust_page.intro' | translate }}</p>
 
   @if (loading()) {
-    <div class="loading-container"><div class="spinner"></div></div>
+    <!-- Loading is shown by the app-wide overlay, not a per-page spinner. -->
   } @else {
     <div class="summary glass-card">
       <span class="summary-label">{{ 'dashboard.turnover' | translate }}</span>

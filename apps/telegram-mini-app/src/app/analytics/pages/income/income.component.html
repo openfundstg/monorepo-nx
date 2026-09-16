@@ -1,7 +1,7 @@
 <h2 class="page-title">{{ 'income.title' | translate }}</h2>
 
 @if (loading()) {
-  <div class="spinner"></div>
+  <!-- Loading is shown by the app-wide overlay, not a per-page spinner. -->
 } @else if (errorMsg(); as message) {
   <p class="error-msg">
     {{ message }}
