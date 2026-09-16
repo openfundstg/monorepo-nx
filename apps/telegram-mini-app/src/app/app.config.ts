@@ -4,7 +4,7 @@ import {
   provideAppInitializer,
   provideZonelessChangeDetection
 } from '@angular/core'
-import { NavigationError, provideRouter, withNavigationErrorHandler } from '@angular/router'
+import { NavigationError, provideRouter, withNavigationErrorHandler, withPreloading } from '@angular/router'
 import { provideHttpClient, withInterceptors } from '@angular/common/http'
 import { provideStore } from '@ngrx/store'
 import { provideEffects } from '@ngrx/effects'
@@ -23,6 +23,7 @@ import { ratesEffects } from './core/store/rates.effects'
 import { tmaAuthInterceptor } from './auth/interceptors/tma-auth.interceptor'
 import { loadingInterceptor } from './shared/interceptors/loading.interceptor'
 import { StaleBundleRecoveryService } from './shared/services/stale-bundle-recovery.service'
+import { IdlePreloadStrategy } from './shared/services/idle-preload.strategy'
 import { TmaService } from './auth/services/tma.service'
 
 export const appConfig: ApplicationConfig = {
@@ -55,6 +56,13 @@ export const appConfig: ApplicationConfig = {
      */
     provideRouter(
       routes,
+      /**
+       * Preload lazy chunks in the background so navigation between sections is
+       * instant — but idle-paced and sequential, because everything crosses the
+       * Tor onion and eager preloading would starve the first screen's own calls.
+       * See IdlePreloadStrategy.
+       */
+      withPreloading(IdlePreloadStrategy),
       withNavigationErrorHandler((event: NavigationError) =>
         inject(StaleBundleRecoveryService).recover(event.error, event.url)
       )
