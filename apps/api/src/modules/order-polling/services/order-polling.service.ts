@@ -404,8 +404,26 @@ export class OrderPollingService {
     // is not guaranteed, and this sync is the net under it. A card sale whose
     // `order.created` never landed would otherwise have an order upstream that
     // this side has never heard of, and no question ever put to its seller.
+    //
+    // **And it has to carry the deadline, which it did not.** This path left it
+    // out, so an order discovered by the sweep rather than by a webhook fell
+    // back to the configured hour — and the seller was shown a countdown from
+    // 59:59 for a payment Transacto was expiring in five minutes. Not a
+    // cosmetic error: they wait on a clock that is not the one running.
+    //
+    // Anchored at discovery, like the webhook's. The sweep runs every thirty
+    // seconds and only reaches an order the webhook missed, so the window is at
+    // most that much long — seconds in the seller's favour, against the fifty
+    // minutes the fallback was giving them.
     if (!credential.cred3) {
-      await this.trackOnly(trader, order.id, order.order_id, order.amount, cardId)
+      await this.trackOnly(
+        trader,
+        order.id,
+        order.order_id,
+        order.amount,
+        cardId,
+        payerDeadlineFrom(order, new Date()) ?? undefined
+      )
 
       return {
         orderId: order.id,

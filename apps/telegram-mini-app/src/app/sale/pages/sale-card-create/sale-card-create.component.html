@@ -94,6 +94,13 @@
   </div>
 }
 
+<!--
+  How the sale ends when the last stretch is too small to pay for. The same
+  question a jar sale asks, and the same picker — on a card sale "wait" means an
+  operator transferring the last few hryvnia by hand.
+-->
+<app-sale-remainder [(policy)]="remainderPolicy" />
+
 @if (submit.rateMoved()) {
   <div class="validation-error">{{ 'sale.rate_moved' | translate }}</div>
 }

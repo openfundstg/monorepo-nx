@@ -109,109 +109,12 @@
   text-align: center;
 }
 
-/* --- Remainder ----------------------------------------------------------- */
-
-/* How the order ends when the last stretch is too small for any payment. */
-.remainder-section {
-  margin-top: 16px;
-}
-
-.remainder-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.remainder-option {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: var(--surface-nested);
-  cursor: pointer;
-  transition:
-    border-color var(--t-base),
-    background var(--t-base);
-
-  &.active {
-    border-color: var(--accent);
-    background: var(--accent-soft);
-  }
-}
-
-/*
-  Listed, and not built yet.
-
-  Sunk to the page's own ground rather than merely faded: a row sitting *below*
-  the card it is on reads as switched off before a word of it is read, which is
-  the job the greyed Monobank tile does on the bank picker above.
-*/
-.remainder-option.coming-soon {
-  background: var(--bg);
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
 /*
   Greyed by colour, not by `opacity` on the row, which would take the badge down
   with the text it sits inside — and the badge is the one thing on a switched-off
   row that has to stay readable, being the only answer to "why". The bank tiles
   learned this the hard way and moved their dimming onto the contents too.
 */
-.remainder-option.coming-soon .remainder-title,
-.remainder-option.coming-soon .remainder-desc {
-  color: var(--text-faint);
-}
-
-.remainder-option.coming-soon .remainder-radio {
-  border-color: var(--border-strong);
-}
-
-/*
-  A radio in look only: the whole row is the target, which is the tap area a
-  thumb actually hits on a phone.
-*/
-.remainder-radio {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  border: 2px solid var(--text-faint);
-  border-radius: 50%;
-  transition: border-color var(--t-base);
-
-  .remainder-option.active & {
-    border-color: var(--accent);
-    border-width: 5px;
-  }
-}
-
-.remainder-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.remainder-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.remainder-desc {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-muted);
-}
-
 /* The answer to the goal mismatch, directly under the sentence that states it. */
 .goal-fix {
   margin-top: 6px;

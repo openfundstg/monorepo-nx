@@ -84,24 +84,17 @@ export interface RemainderPolicyOption {
   readonly policy: SaleRemainderPolicy;
   readonly titleKey: string;
   readonly descriptionKey: string;
-  /**
-   * Listed but not built yet: the row is greyed out, carries the "in
-   * development" badge and cannot be selected.
-   */
-  readonly comingSoon?: boolean;
 }
 
 /**
  * What happens to a tail no payment can cover, in the order it is rendered —
  * **the one policy an order can actually be created with first**.
  *
- * Waiting for the tail to be paid in by hand is listed rather than dropped,
- * greyed out and badged, for the same reason Monobank stays on the bank picker:
- * a row that answers "this is coming" is worth more than a row that silently
- * disappeared. Both the default and the click handler are derived from
- * `comingSoon` rather than restated — see {@link DEFAULT_REMAINDER_POLICY} and
- * {@link isRemainderPolicyEnabled} — so a greyed-out row and a selectable one
- * cannot drift apart.
+ * **Both are real choices now, and both sale variants ask the question.** The
+ * second was greyed out and badged while waiting for a tail to be paid in by
+ * hand was not something a user could ask for. It is: on a card sale it means
+ * an operator transferring the last few hryvnia, which some sellers would
+ * rather have than USDT back.
  */
 export const REMAINDER_POLICY_OPTIONS: readonly RemainderPolicyOption[] = [
   {
@@ -113,36 +106,21 @@ export const REMAINDER_POLICY_OPTIONS: readonly RemainderPolicyOption[] = [
     policy: SaleRemainderPolicy.WAIT_FOR_TOP_UP,
     titleKey: 'sale.remainder_wait_title',
     descriptionKey: 'sale.remainder_wait_desc',
-    comingSoon: true,
   },
 ] as const;
 
-/**
- * Whether an order may be created with this policy at all.
- *
- * The picker greys the others out; this is what makes the grey mean something,
- * exactly as `isSaleBankEnabled` does for the bank picker. An unknown policy
- * counts as enabled, because the list above is the picker and not the contract:
- * the server is the one that refuses.
- */
-export const isRemainderPolicyEnabled = (policy: SaleRemainderPolicy): boolean =>
-  !REMAINDER_POLICY_OPTIONS.find((option) => option.policy === policy)?.comingSoon;
 
 /**
  * Selected on first paint: the first policy a user can actually choose.
  *
- * Derived rather than named, exactly as {@link DEFAULT_BANK} is above.
- * Pre-selecting a row the picker greys out is the kind of disagreement that
- * only shows up in front of a user.
+ * The first row, which is what a picker with nothing disabled should start on.
  *
  * Note this is **not** the server's default. `POST /tma/sales` falls back to
  * {@link SaleRemainderPolicy.WAIT_FOR_TOP_UP} when the field is absent, which
  * is what a client older than the choice must keep getting; this screen names
  * the policy on every order it creates, so the two never meet.
  */
-export const DEFAULT_REMAINDER_POLICY: SaleRemainderPolicy = (
-  REMAINDER_POLICY_OPTIONS.find((option) => !option.comingSoon) ?? REMAINDER_POLICY_OPTIONS[0]
-).policy;
+export const DEFAULT_REMAINDER_POLICY: SaleRemainderPolicy = REMAINDER_POLICY_OPTIONS[0].policy;
 
 /**
  * The smallest order the payment pipeline routes, until the server says

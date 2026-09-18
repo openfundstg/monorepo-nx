@@ -214,33 +214,13 @@
     hidden, so the screen answers "can I just wait for the full amount" instead
     of saying nothing about it.
   -->
-  <div class="remainder-section glass-card">
-    <label class="input-label">{{ 'sale.remainder_label' | translate }}</label>
+  <!--
+    How the order ends when the last stretch is too small to pay for.
 
-    <div class="remainder-options">
-      @for (option of remainderOptions; track option.policy) {
-        <div
-          class="remainder-option"
-          [class.active]="remainderPolicy() === option.policy"
-          [class.coming-soon]="option.comingSoon"
-          (click)="onSelectRemainderPolicy(option.policy)"
-        >
-          <span class="remainder-radio" aria-hidden="true"></span>
-          <div class="remainder-copy">
-            <span class="remainder-title">
-              {{ option.titleKey | translate }}
-              @if (option.comingSoon) {
-                <span class="soon-badge">{{ 'common.in_development' | translate }}</span>
-              }
-            </span>
-            <span class="remainder-desc">
-              {{ option.descriptionKey | translate: { amount: pricing.minOrderKopecks() / 100 } }}
-            </span>
-          </div>
-        </div>
-      }
-    </div>
-  </div>
+    Placed last, immediately above the confirm button: everything above decides
+    what the order *is*, and this decides what happens when it is nearly done.
+  -->
+  <app-sale-remainder [(policy)]="remainderPolicy" />
 
   <!-- Submit -->
   <!-- Static `disabled` as well as the binding — see deposit-create for why. -->

@@ -14,8 +14,8 @@ import {
   SaleRemainderPolicy,
 } from '@transacto/contracts';
 import {
+  DEFAULT_REMAINDER_POLICY,
   REMAINDER_POLICY_OPTIONS,
-  isRemainderPolicyEnabled,
   SALE_BANKS,
 } from '../../constants/sale-create.const';
 
@@ -307,41 +307,33 @@ describe('SaleCreateComponent validation', () => {
      * readable answer to what happens on submit — the radio would sit on an
      * option the click handler refuses.
      */
-    it('starts on a policy the picker actually offers', () => {
-      expect(isRemainderPolicyEnabled(component.remainderPolicy())).toBe(true);
-    });
-
-    it('greys out waiting for the full amount until it is built', () => {
-      const comingSoon = REMAINDER_POLICY_OPTIONS.filter((option) => option.comingSoon);
-
-      expect(comingSoon).toHaveLength(1);
-      expect(comingSoon[0].policy).toBe(SaleRemainderPolicy.WAIT_FOR_TOP_UP);
-      expect(isRemainderPolicyEnabled(SaleRemainderPolicy.WAIT_FOR_TOP_UP)).toBe(false);
+    it('starts on the first policy the picker offers', () => {
+      expect(component.remainderPolicy()).toBe(DEFAULT_REMAINDER_POLICY);
     });
 
     /**
-     * Listed rather than dropped: a greyed row with a badge answers "is this
-     * coming", which a row removed from the picker does not.
+     * Both are real choices now, and both sale variants ask the question.
+     *
+     * Waiting for the tail was greyed out and badged while it was not something
+     * a user could ask for. It is: on a card sale it means an operator
+     * transferring the last few hryvnia, which some sellers prefer to USDT back.
      */
-    it('lists every policy the contract defines', () => {
+    it('offers every policy the contract defines, and none of them greyed', () => {
       expect(new Set(REMAINDER_POLICY_OPTIONS.map((option) => option.policy))).toEqual(
         new Set(Object.values(SaleRemainderPolicy)),
       );
     });
 
-    it('takes a selection the picker offers', () => {
-      for (const option of REMAINDER_POLICY_OPTIONS.filter((entry) => !entry.comingSoon)) {
-        component.onSelectRemainderPolicy(option.policy);
+    it('carries whichever policy is chosen into the order it creates', async () => {
+      component.remainderPolicy.set(SaleRemainderPolicy.WAIT_FOR_TOP_UP);
+      fillForm();
+      component.pricing.usdtAmount.set(10);
 
-        expect(component.remainderPolicy()).toBe(option.policy);
-      }
-    });
+      await component.onSubmit();
 
-    /** The grey has to mean something, exactly as it does on the bank picker. */
-    it('refuses a selection that is not built yet', () => {
-      component.onSelectRemainderPolicy(SaleRemainderPolicy.WAIT_FOR_TOP_UP);
-
-      expect(component.remainderPolicy()).toBe(SaleRemainderPolicy.REFUND_TO_BALANCE);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP }),
+      );
     });
 
     /**

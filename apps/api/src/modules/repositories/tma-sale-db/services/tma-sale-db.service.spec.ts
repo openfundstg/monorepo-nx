@@ -1,6 +1,7 @@
 import { InternalServerErrorException } from '@nestjs/common'
-import { Mongoose } from 'mongoose'
-import { PUBLIC_ID_PATTERN, TmaSaleStatus } from '@transacto/contracts'
+import { Mongoose, Types } from 'mongoose'
+import { BankProvider, PUBLIC_ID_PATTERN, SaleCardOrderState, TmaSaleStatus } from '@transacto/contracts'
+import { StatementSubject } from 'src/shared/interfaces'
 import { TmaSaleDbService } from './tma-sale-db.service'
 import {
   TmaSale,
@@ -463,5 +464,69 @@ describe('TmaSaleDbService.updateJarBalance', () => {
     expect(calls[0].filter).toEqual(
       expect.objectContaining({ jarBalance: { $ne: JAR_BALANCE } }),
     )
+  })
+})
+
+/**
+ * **Which order a bank statement may attach itself to.**
+ *
+ * Two, and they are not the same order in the same state: a `DISPUTED` one,
+ * whose seller says the payment never came, and a `CONFIRMED` one carrying the
+ * figure its seller declared when they said it came up short.
+ *
+ * This write used to insist on `DISPUTED` outright — a second statement of a
+ * rule the service had already applied. So a seller who declared a shortfall
+ * was shown "a statement is needed", handed an upload box, and met a 409 after
+ * their file had already been written to disk. The filter now re-applies the
+ * caller's own decision instead of restating the rule.
+ */
+describe('TmaSaleDbService.pushStatement', () => {
+  const SALE_ID = '000000000000000000000009'
+  const ORDER = 2_052_688
+
+  let model: { findOneAndUpdate: jest.Mock }
+  let service: TmaSaleDbService
+
+  beforeEach(() => {
+    model = {
+      findOneAndUpdate: jest.fn().mockReturnValue({ lean: () => Promise.resolve(null) })
+    }
+    service = new TmaSaleDbService(model as unknown as Model<TmaSaleDocument>)
+  })
+
+  const push = async (answers: StatementSubject) => {
+    await service.pushStatement(
+      SALE_ID,
+      ORDER,
+      {
+        _id: new Types.ObjectId(),
+        bank: BankProvider.MONO,
+        storedName: 'statement.pdf',
+        sizeBytes: 183_836
+      },
+      answers
+    )
+
+    const [filter] = model.findOneAndUpdate.mock.calls[0] as [Record<string, unknown>]
+
+    return filter['cardOrders'] as { $elemMatch: Record<string, unknown> }
+  }
+
+  it('takes a denial only while the order is still disputed', async () => {
+    const matched = await push(StatementSubject.DENIAL)
+
+    expect(matched.$elemMatch).toEqual({ orderId: ORDER, state: SaleCardOrderState.DISPUTED })
+  })
+
+  /**
+   * The regression this describes. A checkpoint statement answers a claim on an
+   * order that was confirmed — insisting on `DISPUTED` here matched nothing and
+   * refused every one of them.
+   */
+  it('takes a shortfall on a confirmed order that carries a declared figure', async () => {
+    const matched = await push(StatementSubject.SHORTFALL)
+
+    expect(matched.$elemMatch).toEqual({ orderId: ORDER, declaredAmount: { $exists: true } })
+    expect(matched.$elemMatch['state']).toBeUndefined()
   })
 })

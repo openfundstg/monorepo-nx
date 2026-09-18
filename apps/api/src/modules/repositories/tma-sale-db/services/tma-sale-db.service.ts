@@ -1,3 +1,4 @@
+import { StatementSubject } from 'src/shared/interfaces'
 import {
   BankProvider,
   ERROR,
@@ -819,8 +820,19 @@ export class TmaSaleDbService {
    *
    * **The id is minted by the caller**, not by Mongo, because the file on disk
    * is named after it: a `$push` that let the database choose would leave the
-   * bytes written under a name nothing yet knew. Guarded on the order actually
-   * being disputed, so a statement cannot attach itself to a settled one.
+   * bytes written under a name nothing yet knew.
+   *
+   * **`answers` is the caller's own decision, re-applied atomically.** Two
+   * different orders may legitimately receive a statement — a disputed one, and
+   * a confirmed one whose seller declared it arrived short — and which of those
+   * this upload is for was settled by `SaleStatementService.load` before a byte
+   * was read. Repeating that rule here as a second Mongo filter is how the two
+   * came apart the first time: this write insisted on `DISPUTED`, so every
+   * checkpoint statement was stored on disk and then refused with a 409.
+   *
+   * What the filter is for is the race — the order being answered between the
+   * read and the write — so it re-checks the same condition the caller acted on
+   * and nothing else.
    */
   async pushStatement(
     id: string,
@@ -830,14 +842,20 @@ export class TmaSaleDbService {
       bank: BankProvider
       storedName: string
       sizeBytes: number
-    }
+    },
+    answers: StatementSubject
   ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    const stillTrue =
+      answers === StatementSubject.DENIAL
+        ? { state: SaleCardOrderState.DISPUTED }
+        : { declaredAmount: { $exists: true } }
+
     return this.saleModel
       .findOneAndUpdate(
         {
           _id: id,
           saleMethod: SaleMethod.CARD,
-          cardOrders: { $elemMatch: { orderId, state: SaleCardOrderState.DISPUTED } }
+          cardOrders: { $elemMatch: { orderId, ...stillTrue } }
         },
         {
           $push: {

@@ -213,3 +213,91 @@ describe('OrderPollingService — Transacto echoing our own execution', () => {
     expect(trackedOrderDbService.markCompleted).toHaveBeenCalled()
   })
 })
+
+/**
+ * **The countdown a card sale's seller is shown, and where it comes from.**
+ *
+ * Transacto gives the payer a window of its own — six minutes on the orders
+ * observed — and that window is what a card order lives on: the seller is asked
+ * to confirm before it closes, and the sweep disputes the order when it does.
+ * Both ways an order reaches this process therefore have to carry it.
+ *
+ * One of them did not. An order the `order.created` webhook missed is picked up
+ * by the thirty-second sweep, and that path tracked it without a deadline — so
+ * the card order fell back to the configured hour and the seller watched a
+ * countdown from 59:59 for a payment expiring in five minutes. They wait on a
+ * clock that is not the one running, and by the time it disagrees the order is
+ * already in dispute.
+ */
+describe('OrderPollingService — the deadline a card order runs on', () => {
+  const CARD_TERMINAL = { terminalId: TERMINAL_ID, cardId: CARD_ID, cred3: null }
+
+  /** Structure only: six minutes, which is what the real orders carry. */
+  const SIX_MINUTES = { datetime: '2026-01-02 03:04:05', deadline: '2026-01-02 03:10:05' }
+
+  let trackedOrderDbService: { isTracked: jest.Mock; track: jest.Mock }
+  let terminalDbService: { findOne: jest.Mock }
+  let service: OrderPollingService
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+    jest.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined)
+
+    trackedOrderDbService = {
+      isTracked: jest.fn(async () => false),
+      track: jest.fn(async () => ({ orderId: ORDER_ID }))
+    }
+    terminalDbService = { findOne: jest.fn(async () => CARD_TERMINAL) }
+
+    service = new OrderPollingService(
+      terminalDbService as never,
+      trackedOrderDbService as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never
+    )
+  })
+
+  afterEach(() => jest.restoreAllMocks())
+
+  /** The `payerDeadlineAt` argument of whichever `track` call was made. */
+  const trackedDeadline = (): Date | undefined =>
+    trackedOrderDbService.track.mock.calls[0]?.[5] as Date | undefined
+
+  const order = (over: Record<string, unknown> = {}) => ({
+    id: ORDER_ID,
+    order_id: 'e0000000-0000-0000-0000-000000000000',
+    amount: 300,
+    card_id: CARD_ID,
+    ...SIX_MINUTES,
+    ...over
+  })
+
+  it.each([
+    ['the webhook', (o: unknown) => service.handleWebhookOrder(TRADER as never, o as never)],
+    ['the sweep that catches a missed webhook', (o: unknown) =>
+      service.enqueueOrderFromFallback(TRADER as never, o as never)]
+  ])('carries Transacto’s window through %s', async (_case, arrive) => {
+    const before = Date.now()
+
+    await arrive(order())
+
+    const deadline = trackedDeadline()
+    expect(deadline).toBeInstanceOf(Date)
+    // Six minutes from when this process learned of the order, not an hour.
+    expect((deadline as Date).getTime() - before).toBeGreaterThanOrEqual(6 * 60 * 1000)
+    expect((deadline as Date).getTime() - before).toBeLessThan(6 * 60 * 1000 + 5_000)
+  })
+
+  /**
+   * A delivery with no usable pair leaves it absent, and the card order falls
+   * back to the configured window. Passing something unparseable through would
+   * be worse than passing nothing: the fallback at least says so in the log.
+   */
+  it('leaves it absent when the timestamps are unusable', async () => {
+    await service.handleWebhookOrder(TRADER as never, order({ deadline: null }) as never)
+
+    expect(trackedDeadline()).toBeUndefined()
+  })
+})

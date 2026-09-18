@@ -27,6 +27,7 @@ import {
 } from 'src/shared/constants'
 import type { ParsedStatement } from 'src/shared/interfaces'
 import { awaitsStatementCheckpoint } from 'src/shared/utils'
+import { StatementSubject } from 'src/shared/interfaces'
 import { statementCorrection, windowForOrder } from 'src/modules/telegram-mini-app/utils'
 import type { StoredSale, TmaSaleCardOrder } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
@@ -87,7 +88,7 @@ export class SaleStatementService {
     orderId: number,
     file: ReceiptFile
   ): Promise<StoredSale> {
-    const { sale, cardOrder } = await this.load(telegramId, saleId, orderId)
+    const { sale, cardOrder, answers } = await this.load(telegramId, saleId, orderId)
 
     this.assertAcceptable(file)
     this.assertNothingInFlight(cardOrder)
@@ -102,17 +103,20 @@ export class SaleStatementService {
     const statementId = new Types.ObjectId()
     const storedName = await this.storage.save(statementId.toHexString(), file)
 
-    const stored = await this.saleDbService.pushStatement(saleId, orderId, {
-      _id: statementId,
-      bank,
-      storedName,
-      sizeBytes: file.buffer.length
-    })
+    const stored = await this.saleDbService.pushStatement(
+      saleId,
+      orderId,
+      { _id: statementId, bank, storedName, sizeBytes: file.buffer.length },
+      // The decision `load` already made, re-applied atomically — never the rule
+      // restated. Restating it is what made every checkpoint statement a 409.
+      answers
+    )
 
     if (!stored) {
-      // The order stopped being disputed between the read and the write —
-      // somebody confirmed it, here or in the bot. The upload is undone rather
-      // than left orphaned on disk.
+      // The order stopped being the thing it was between the read and the write
+      // — a denial confirmed here or in the bot, a claim settled by a statement
+      // that arrived first. The upload is undone rather than left orphaned on
+      // disk.
       await this.storage.remove(storedName)
 
       throw new ConflictException(ERROR.SALE_CARD.STATEMENT_NOT_REQUIRED)
@@ -365,7 +369,7 @@ export class SaleStatementService {
     telegramId: number,
     saleId: string,
     orderId: number
-  ): Promise<{ sale: StoredSale; cardOrder: TmaSaleCardOrder }> {
+  ): Promise<{ sale: StoredSale; cardOrder: TmaSaleCardOrder; answers: StatementSubject }> {
     const resolved = await this.cardOrders.resolve(telegramId, saleId, orderId)
 
     // Two questions a statement answers, and nothing else. Accepting one for
@@ -385,7 +389,13 @@ export class SaleStatementService {
     if (!answersDenial && !answersShortfall)
       throw new ConflictException(ERROR.SALE_CARD.STATEMENT_NOT_REQUIRED)
 
-    return resolved
+    // A disputed order that also carries a declared figure is answered as a
+    // denial: the dispute is the larger question, and settling it settles the
+    // claim inside it.
+    return {
+      ...resolved,
+      answers: answersDenial ? StatementSubject.DENIAL : StatementSubject.SHORTFALL
+    }
   }
 
   /**

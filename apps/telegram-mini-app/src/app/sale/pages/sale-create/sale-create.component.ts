@@ -20,6 +20,7 @@ import { SaleService } from '../../services/sale.service'
 import { SalePricingService } from '../../services/sale-pricing.service'
 import { SaleSubmitService } from '../../services/sale-submit.service'
 import { SaleAmountComponent } from '../../components/sale-amount/sale-amount.component'
+import { SaleRemainderComponent } from '../../components/sale-remainder/sale-remainder.component'
 import { TmaService } from '../../../auth/services/tma.service'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
@@ -29,9 +30,7 @@ import {
   DEFAULT_BANK,
   DEFAULT_REMAINDER_POLICY,
   MIN_ORDER_USDT,
-  REMAINDER_POLICY_OPTIONS,
   SALE_BANKS,
-  isRemainderPolicyEnabled,
 } from '../../constants/sale-create.const'
 import { MetaPixelService } from '../../../shared/services/meta-pixel.service'
 import { TrackTapDirective } from '../../../shared/directives/track-tap.directive'
@@ -47,7 +46,7 @@ import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
     UsdtPipe,
     BankInstructionsComponent,
     TrackTapDirective,
-    ExchangeRateComponent, SaleAmountComponent],
+    ExchangeRateComponent, SaleAmountComponent, SaleRemainderComponent],
   // Route-scoped state: two sale forms must not inherit each other's amount.
   providers: [SalePricingService, SaleSubmitService],
   templateUrl: './sale-create.component.html',
@@ -105,8 +104,6 @@ export class SaleCreateComponent implements OnInit {
    * screen shows and what the server stores cannot come apart on a default.
    */
   readonly remainderPolicy = signal<SaleRemainderPolicy>(DEFAULT_REMAINDER_POLICY)
-  /** The picker, in the order it is rendered — see {@link REMAINDER_POLICY_OPTIONS}. */
-  protected readonly remainderOptions = REMAINDER_POLICY_OPTIONS
   /** The submit half both forms share — the post, the recovery, the three flags. */
   readonly submit = inject(SaleSubmitService)
 
@@ -489,14 +486,6 @@ export class SaleCreateComponent implements OnInit {
     this.pricing.usdtAmount.set(cents / CENTS_PER_USDT)
     this.submit.clearRateMoved()
     this.tma.hapticFeedback('light')
-  }
-
-  onSelectRemainderPolicy(policy: SaleRemainderPolicy): void {
-    // The picker greys these out; this is what makes the grey mean something,
-    // as it does for a switched-off bank above.
-    if (!isRemainderPolicyEnabled(policy)) return
-
-    this.remainderPolicy.set(policy)
   }
 
   onSelectBank(bank: BankProvider): void {

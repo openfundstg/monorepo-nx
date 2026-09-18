@@ -10,6 +10,7 @@ import {
   MIN_RECEIVER_NAME_LENGTH,
   MIN_USDT_AMOUNT,
   SaleMethod,
+  SaleRemainderPolicy,
   saleCardMaxOrders,
   saleCardMinOrderKopecks
 } from '@transacto/contracts'
@@ -18,8 +19,10 @@ import { TmaService } from '../../../auth/services/tma.service'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
 import { CARD_SALE_BANKS, DEFAULT_CARD_SALE_BANK } from '../../constants/sale-card-create.const'
+import { DEFAULT_REMAINDER_POLICY } from '../../constants/sale-create.const'
 import { CardInstructionsComponent } from '../../components/card-instructions/card-instructions.component'
 import { SaleAmountComponent } from '../../components/sale-amount/sale-amount.component'
+import { SaleRemainderComponent } from '../../components/sale-remainder/sale-remainder.component'
 import { SalePricingService } from '../../services/sale-pricing.service'
 import { SaleSubmitService } from '../../services/sale-submit.service'
 
@@ -45,8 +48,7 @@ import { SaleSubmitService } from '../../services/sale-submit.service'
     UahPipe,
     UsdtPipe,
     CardInstructionsComponent,
-    SaleAmountComponent
-  ],
+    SaleAmountComponent, SaleRemainderComponent],
   templateUrl: './sale-card-create.component.html',
   styleUrl: './sale-card-create.component.scss',
   // Route-scoped state: two sale forms must not inherit each other's amount.
@@ -67,6 +69,15 @@ export class SaleCardCreateComponent implements OnInit {
   readonly selectedBank = signal<BankProvider>(DEFAULT_CARD_SALE_BANK)
   readonly cardNumber = signal('')
   readonly receiverName = signal('')
+
+  /**
+   * What happens to a tail no payment can cover.
+   *
+   * Asked here as well as on the jar form, because a card sale ends the same
+   * way. It was not, and the server's own default — wait for somebody to pay
+   * the tail in by hand — was being chosen for people who had not been asked.
+   */
+  readonly remainderPolicy = signal<SaleRemainderPolicy>(DEFAULT_REMAINDER_POLICY)
 
   /** Only the banks whose statements something can read — see the constant. */
   protected readonly banks = CARD_SALE_BANKS
@@ -153,6 +164,7 @@ export class SaleCardCreateComponent implements OnInit {
       bankType: this.selectedBank(),
       cardNumber: cardDigits(this.cardNumber()),
       receiverName: this.receiverName().trim(),
+      remainderPolicy: this.remainderPolicy(),
       // The rate this total was worked out at. The market moves while a form is
       // being filled, and the server refuses a quote it has moved out from
       // under rather than freezing a stake against a target it never agreed.
