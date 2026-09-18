@@ -265,30 +265,16 @@ export class SaleStatementService {
   /**
    * The document covered the window and held no such credit.
    *
-   * Nothing is executed and nothing is told upstream: from here Transacto will
-   * raise its own appeal and an operator settles it in their panel, which is
-   * deliberately where that decision lives. What this does is stop the order
-   * being a question anybody is still waiting on an answer to.
+   * Delegated rather than done here, and that is the fix as much as the
+   * behaviour is. Three transitions lead out of `DISPUTED` and each has to put
+   * the terminal back into service; two of them lived in `SaleCardOrderService`
+   * and this one did not, so this was the one that forgot. It now sits beside
+   * its siblings — see {@link SaleCardOrderService.denyFromStatement}.
    */
   private async upholdDenial(sale: StoredSale, cardOrder: TmaSaleCardOrder): Promise<StoredSale> {
-    const saleId = sale._id.toString()
+    const moved = await this.cardOrders.denyFromStatement(sale, cardOrder)
 
-    this.logger.warn(
-      `Sale ${sale.publicId}: a statement covering the window shows no credit for order ` +
-        `${cardOrder.orderId}. Held for an operator.`
-    )
-
-    const moved = await this.saleDbService.moveCardOrder(
-      saleId,
-      cardOrder.orderId,
-      [SaleCardOrderState.DISPUTED],
-      SaleCardOrderState.PROVEN_UNPAID
-    )
-    if (!moved) return this.reread(saleId, sale)
-
-    await this.progressService.emit(moved)
-
-    return moved
+    return moved ?? this.reread(sale._id.toString(), sale)
   }
 
   /**

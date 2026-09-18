@@ -4,7 +4,8 @@ import {
   OrderExecutionReason,
   SaleCardOrderState,
   SaleEventType,
-  SaleMethod
+  SaleMethod,
+  TmaSaleStatus
 } from '@transacto/contracts'
 import { SaleCardOrderService } from './sale-card-order.service'
 import { OrderStatus } from 'src/modules/repositories/order-db'
@@ -35,6 +36,9 @@ const sale = (overrides: Record<string, unknown> = {}) => ({
   publicId: 'Z38SL69F',
   telegramId: TELEGRAM_ID,
   saleMethod: SaleMethod.CARD,
+  // Routing only ever resumes on a sale still taking payers, so the fixture has
+  // to say which it is — a sale winding down deliberately has routing down.
+  status: TmaSaleStatus.AWAITING_FIAT,
   fiatAmount: 1_000_000,
   receivedAmount: 0,
   cardId: 42,
@@ -445,6 +449,25 @@ describe('SaleCardOrderService', () => {
       })
 
       /**
+       * **Routing is switched off by more than a dispute.** A seller who stops
+       * a sale with payments outstanding leaves it `CLOSING` with routing down
+       * on purpose; settling a dispute afterwards would hand the sale back to
+       * new payers after its owner had ended it.
+       */
+      it.each([TmaSaleStatus.CLOSING, TmaSaleStatus.BLOCKED, TmaSaleStatus.CANCELLED])(
+        'leaves routing stopped on a sale that is %s',
+        async (status) => {
+          db.appendEvent.mockResolvedValue(
+            sale({ status, cardOrders: [cardOrder({ state: SaleCardOrderState.CONFIRMED })] })
+          )
+
+          await service.confirm(TELEGRAM_ID, SALE_ID, ORDER_ID)
+
+          expect(terminals.resumeRouting).not.toHaveBeenCalled()
+        }
+      )
+
+      /**
        * The sale is correct either way; what a failure costs is that no further
        * payer is routed until somebody notices. Not worth failing the seller's
        * confirmation over.
@@ -665,4 +688,93 @@ describe('SaleCardOrderService', () => {
       expect(await service.markSettledUpstream(sale() as never, ORDER_ID)).toBeNull()
     })
   })
+
+  /**
+   * A statement covered the window and showed no such credit.
+   *
+   * **The transition that used to live somewhere else and forgot to switch the
+   * terminal back on.** A dispute stops routing so the question stays
+   * answerable; three things answer it — a seller confirming, a document
+   * confirming, a document refusing — and each has to undo that. This one sat
+   * in `SaleStatementService`, apart from its siblings, and did not: a sale
+   * whose denial a statement had just *proved* was left unable to take another
+   * payer, with its stake frozen, until its owner gave up and stopped it.
+   */
+  describe('denyFromStatement', () => {
+    const disputed = () => cardOrder({ state: SaleCardOrderState.DISPUTED })
+
+    beforeEach(() => {
+      db.moveCardOrder.mockResolvedValue(
+        sale({ cardOrders: [cardOrder({ state: SaleCardOrderState.PROVEN_UNPAID })] })
+      )
+    })
+
+    it('records the order as proven unpaid', async () => {
+      await service.denyFromStatement(sale({ cardOrders: [disputed()] }), disputed())
+
+      expect(db.moveCardOrder).toHaveBeenCalledWith(
+        SALE_ID,
+        ORDER_ID,
+        [SaleCardOrderState.DISPUTED],
+        SaleCardOrderState.PROVEN_UNPAID
+      )
+    })
+
+    /** **The bug.** The sale still has a target to fill and a stake against it. */
+    it('puts the terminal back into service', async () => {
+      await service.denyFromStatement(sale({ cardOrders: [disputed()] }), disputed())
+
+      expect(terminals.resumeRouting).toHaveBeenCalled()
+    })
+
+    /** Nothing is told upstream: Transacto raises its own appeal from here. */
+    it('executes nothing upstream', async () => {
+      await service.denyFromStatement(sale({ cardOrders: [disputed()] }), disputed())
+
+      expect(transacto.executeOrder).not.toHaveBeenCalled()
+      expect(orders.markExecutionStarted).not.toHaveBeenCalled()
+    })
+
+    it('leaves routing stopped while another order is still disputed', async () => {
+      db.moveCardOrder.mockResolvedValue(
+        sale({
+          cardOrders: [
+            cardOrder({ state: SaleCardOrderState.PROVEN_UNPAID }),
+            cardOrder({ orderId: 999, state: SaleCardOrderState.DISPUTED })
+          ]
+        })
+      )
+
+      await service.denyFromStatement(sale({ cardOrders: [disputed()] }), disputed())
+
+      expect(terminals.resumeRouting).not.toHaveBeenCalled()
+    })
+
+    /** A sale its owner has stopped must not be handed back to new payers. */
+    it('leaves routing stopped on a sale that is winding down', async () => {
+      db.moveCardOrder.mockResolvedValue(
+        sale({
+          status: TmaSaleStatus.CLOSING,
+          cardOrders: [cardOrder({ state: SaleCardOrderState.PROVEN_UNPAID })]
+        })
+      )
+
+      await service.denyFromStatement(sale({ cardOrders: [disputed()] }), disputed())
+
+      expect(terminals.resumeRouting).not.toHaveBeenCalled()
+    })
+
+    /** Somebody else answered first — an operator, or a later statement. */
+    it('answers null when the order had already moved on', async () => {
+      db.moveCardOrder.mockResolvedValue(null)
+
+      await expect(
+        service.denyFromStatement(sale({ cardOrders: [disputed()] }), disputed())
+      ).resolves.toBeNull()
+
+      expect(terminals.resumeRouting).not.toHaveBeenCalled()
+      expect(progress.emit).not.toHaveBeenCalled()
+    })
+  })
+
 })

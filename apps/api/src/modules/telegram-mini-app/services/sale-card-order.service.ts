@@ -36,7 +36,7 @@ import {
   MINUTE_MS,
   TMA_CARD_SALE_CONFIRM_WINDOW_MINUTES
 } from 'src/shared/constants'
-import { describeError } from 'src/shared/utils'
+import { acceptsNewPayers, describeError } from 'src/shared/utils'
 
 
 /** The states an unanswered order may be answered from. */
@@ -328,6 +328,54 @@ export class SaleCardOrderService {
   }
 
   /**
+   * A statement covered the window and showed no such credit.
+   *
+   * **The mirror of {@link confirmFromStatement}, and it lives here for the
+   * reason that one does.** Three transitions lead out of `DISPUTED` — a
+   * seller confirming, a document confirming, and a document refusing — and
+   * each has to put the terminal back into service, because the dispute is
+   * what took it out. This one used to live in `SaleStatementService`, apart
+   * from its two siblings, and it was the one that forgot: a sale whose denial
+   * a statement had just proved sat with routing switched off for good, its
+   * stake frozen, unable to take another payer. The seller's only way out was
+   * to stop the sale.
+   *
+   * Nothing is executed and nothing is told upstream: from here Transacto
+   * raises its own appeal and an operator settles it in their panel, which is
+   * deliberately where that decision lives.
+   *
+   * `null` when the order had already moved on — a later statement reaching
+   * past this one, or an operator. The caller re-reads.
+   */
+  async denyFromStatement(
+    sale: StoredSale,
+    cardOrder: TmaSaleCardOrder
+  ): Promise<StoredSale | null> {
+    const saleId = sale._id.toString()
+
+    this.logger.warn(
+      `Sale ${sale.publicId}: a statement covering the window shows no credit for order ` +
+        `${cardOrder.orderId}. Held for an operator.`
+    )
+
+    const moved = await this.saleDbService.moveCardOrder(
+      saleId,
+      cardOrder.orderId,
+      [SaleCardOrderState.DISPUTED],
+      SaleCardOrderState.PROVEN_UNPAID
+    )
+    if (!moved) return null
+
+    // The question is answered, so payers may be routed here again. The order
+    // itself is finished either way — what is resumed is the *sale*, which
+    // still has a target to fill and a stake frozen against it.
+    await this.resumeIfSettled(moved)
+    await this.progressService.emit(moved)
+
+    return moved
+  }
+
+  /**
    * Loads a card order, proving on the way that this caller may answer for it.
    *
    * **Public, and the only way to reach one.** Ownership is checked here rather
@@ -570,8 +618,18 @@ export class SaleCardOrderService {
     }
   }
 
-  /** Lets payers back in once no order on this sale is disputed. */
+  /**
+   * Lets payers back in once no order on this sale is disputed.
+   *
+   * **And only where the sale is still taking payers at all.** Routing is
+   * switched off by more than a dispute: a seller who stops a sale with
+   * payments outstanding leaves it `CLOSING` with routing deliberately down,
+   * and an order disputed after that would be settled here — handing the sale
+   * back to new payers after its owner had ended it. See {@link acceptsNewPayers}.
+   */
   private async resumeIfSettled(sale: StoredSale): Promise<void> {
+    if (!acceptsNewPayers(sale)) return
+
     const stillDisputed = sale.cardOrders?.some(
       (candidate) => candidate.state === SaleCardOrderState.DISPUTED
     )
