@@ -13,15 +13,27 @@ const RECEIPT_TIME_ZONE = 'Europe/Kyiv'
  * It lives in `shared/` because the second parser needed it: monobank prints
  * `08.09.2026 15:15` and PrivatBank `08/09/2026 15:15`, the formats differ and
  * the clock does not. Two copies would be two answers about the same hour.
+ *
+ * **`second` is not decoration.** A receipt prints minutes and a statement
+ * prints `18:14:20`, and this took only hours and minutes — so every statement
+ * row was silently moved back to its minute boundary. Up to fifty-nine seconds
+ * earlier than it happened, which is enough to fall outside a window that
+ * starts seconds after the credit did. It cost exactly that: a ₴300 credit at
+ * 18:14:20 read as 18:14:00, against an order recorded at 18:14:04, and a
+ * statement that plainly showed the money reported as showing none.
+ *
+ * Defaulted to zero, so the callers that genuinely have no seconds to give —
+ * a receipt's clock, a period boundary — are unchanged.
  */
 export const fromKyivWallClock = (
   year: number,
   month: number,
   day: number,
   hour: number,
-  minute: number
+  minute: number,
+  second = 0
 ): Date | null => {
-  const asUtc = Date.UTC(year, month - 1, day, hour, minute)
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute, second)
 
   if (Number.isNaN(asUtc)) return null
 

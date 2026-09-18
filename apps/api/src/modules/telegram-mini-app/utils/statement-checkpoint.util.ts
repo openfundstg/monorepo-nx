@@ -2,31 +2,66 @@ import type { TmaSaleCardOrder } from 'src/modules/repositories/tma-sale-db/sche
 import type { ParsedStatement } from 'src/shared/interfaces'
 
 /**
+ * How much earlier than we heard of an order its money may already have landed.
+ *
+ * **An order exists upstream before this process knows it does.** Transacto
+ * creates it and routes a payer to it; we learn of it from an `order.created`
+ * webhook, or — when that does not land — from a sweep that runs every thirty
+ * seconds. The payer is paying on Transacto's clock the whole time.
+ *
+ * So `arrivedAt` is when we found out, not when the order began, and a window
+ * starting there excludes money that arrived in the gap. It did: a ₴300 credit
+ * timed 18:14:20 against an order recorded at 18:14:04 was reported as no
+ * credit at all, because the row had also been rounded back to its minute.
+ *
+ * Two minutes covers a missed sweep tick and clock skew between the two
+ * machines with room to spare, and it cannot reach into a neighbouring order's
+ * window — the windows are cut against each other, not against this figure.
+ */
+const DISCOVERY_ALLOWANCE_MS = 2 * 60 * 1000
+
+/**
+ * The earliest a credit for this order could have been sent.
+ *
+ * Its own function because two windows need it: this order's start, and the
+ * point the *previous* order's window has to stop at so the two do not overlap.
+ */
+const windowOpensAt = (order: TmaSaleCardOrder): Date =>
+  new Date(order.arrivedAt.getTime() - DISCOVERY_ALLOWANCE_MS)
+
+/**
  * The stretch of time a credit for this order could have landed in.
  *
- * **Bounded by the next order, not only by the grace period.** The grace exists
- * for a bank posting a transfer late, and three hours of it makes consecutive
- * windows overlap — seven orders of one sale are minutes apart, so order one's
- * window would swallow order two's credit and neither could be attributed.
- * A test caught exactly that.
+ * **Bounded on both sides by its neighbours, not only by the clock.** The grace
+ * period exists for a bank posting a transfer late, and three hours of it makes
+ * consecutive windows overlap — seven orders of one sale are minutes apart, so
+ * order one's window would swallow order two's credit and neither could be
+ * attributed. A test caught exactly that.
  *
- * The cut is sound because a card sale's credential carries
+ * Cutting at the next order is sound because a card sale's credential carries
  * `max_open_orders: 1`: order two was not routed until order one had been
- * answered, so money arriving after order two exists is order two's. Where that
- * makes a window shorter than the order itself — two orders answered inside a
- * minute — the window collapses to the order's own span, which attributes
- * nothing and is reported rather than guessed at.
+ * answered, so money arriving once order two exists is order two's. The cut is
+ * made where that next window *opens* rather than where the order was recorded,
+ * so the two partition the time between them with no gap and no overlap.
  */
 export const attributionWindow = (
   order: TmaSaleCardOrder,
   next: TmaSaleCardOrder | undefined,
   graceMs: number
 ): { from: Date; to: Date } => {
+  const from = windowOpensAt(order)
   const lateAllowance = new Date(order.confirmDeadlineAt.getTime() + graceMs)
-  const to =
-    next && next.arrivedAt < lateAllowance ? new Date(next.arrivedAt.getTime() - 1) : lateAllowance
+  const nextOpens = next === undefined ? null : windowOpensAt(next)
 
-  return { from: order.arrivedAt, to }
+  const to =
+    nextOpens !== null && nextOpens < lateAllowance
+      ? new Date(nextOpens.getTime() - 1)
+      : lateAllowance
+
+  // A window cut back past its own start carries nothing, which is the honest
+  // answer for two orders recorded within seconds of each other: nothing can be
+  // attributed to the first, and the claim is reported rather than guessed at.
+  return { from, to: to < from ? from : to }
 }
 
 /** A claim the document contradicts outright, rather than merely corrects. */

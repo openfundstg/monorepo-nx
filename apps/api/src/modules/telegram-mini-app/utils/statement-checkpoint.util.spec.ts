@@ -113,6 +113,50 @@ describe('statementCorrection', () => {
     expect(result.correctionKopecks).toBe(500)
   })
 
+  /**
+   * **The money can land before this process hears of the order.**
+   *
+   * Transacto creates an order and routes a payer to it; we learn of it from a
+   * webhook, or — when that does not land — from a sweep thirty seconds wide.
+   * The payer is paying on Transacto's clock the whole time, so a window that
+   * opened at our own `arrivedAt` excluded credits that were plainly this
+   * order's. This is the production case, to the second: the credit at 18:14:20
+   * and the order recorded at 18:14:31.
+   */
+  it('finds a credit that landed before the order was recorded', () => {
+    const result = statementCorrection(
+      [
+        order({
+          declaredAmount: 29_900,
+          arrivedAt: new Date('2026-09-18T15:14:31Z'),
+          confirmDeadlineAt: new Date('2026-09-18T15:20:31Z')
+        })
+      ],
+      statement([{ at: '2026-09-18T15:14:20Z', amountKopecks: 30_000 }]),
+      GRACE
+    )
+
+    expect(result.correctionKopecks).toBe(100)
+    expect(result.unsettled).toEqual([])
+  })
+
+  /** …but not one from long enough before to belong to something else. */
+  it('still ignores a credit from well before the order existed', () => {
+    const result = statementCorrection(
+      [
+        order({
+          declaredAmount: 29_900,
+          arrivedAt: new Date('2026-09-18T15:14:31Z'),
+          confirmDeadlineAt: new Date('2026-09-18T15:20:31Z')
+        })
+      ],
+      statement([{ at: '2026-09-18T15:05:00Z', amountKopecks: 30_000 }]),
+      GRACE
+    )
+
+    expect(result.unsettled).toEqual([{ orderId: 1, declaredKopecks: 29_900 }])
+  })
+
   /** Understating your own receipts costs only yourself; nothing is taken back. */
   it('never corrects downwards', () => {
     const result = statementCorrection(

@@ -347,7 +347,7 @@ const readRows = (
 }
 
 const MOMENT = /^(\d{2})\.(\d{2})\.(\d{4})$/
-const CLOCK = /^(\d{2}):(\d{2})(?::\d{2})?$/
+const CLOCK = /^(\d{2}):(\d{2})(?::(\d{2}))?$/
 
 /** Everything but the last millisecond of a minute. */
 const LAST_MINUTE_MS = 59_999
@@ -361,9 +361,15 @@ const LAST_MINUTE_MS = 59_999
  * is the difference between a credit inside an order's window and one outside
  * it.
  *
- * PrivatBank prints `HH:MM` and monobank `HH:MM:SS`; the seconds are discarded
- * rather than branched over, because a minute is finer than anything this is
- * compared against.
+ * PrivatBank prints `HH:MM` and monobank `HH:MM:SS`, and **the seconds are
+ * kept**. They were discarded, on the reasoning that a minute is finer than
+ * anything this is compared against — which was simply untrue. The window a
+ * credit is matched into is bounded by timestamps this process wrote itself,
+ * and those have seconds: a ₴300 credit printed at 18:14:20 was read as
+ * 18:14:00, the order it belonged to had been recorded at 18:14:04, and a
+ * statement that plainly showed the money reported as showing none.
+ *
+ * Absent seconds are zero, which is what PrivatBank's `HH:MM` means.
  */
 const readMoment = (date: string | undefined, time: string | undefined): Date | null => {
   if (date === undefined || time === undefined) return null
@@ -377,7 +383,8 @@ const readMoment = (date: string | undefined, time: string | undefined): Date | 
     Number(day[2]),
     Number(day[1]),
     Number(clock[1]),
-    Number(clock[2])
+    Number(clock[2]),
+    clock[3] === undefined ? 0 : Number(clock[3])
   )
 }
 

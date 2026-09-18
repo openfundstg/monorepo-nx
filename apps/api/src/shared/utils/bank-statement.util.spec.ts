@@ -173,6 +173,22 @@ describe('parseStatement — monobank', () => {
   })
 
   /**
+   * **The seconds are part of the moment, and dropping them cost a real sale.**
+   *
+   * They were discarded, on the reasoning that a minute is finer than anything
+   * a statement is compared against. It is not: the window a credit is matched
+   * into is bounded by timestamps this process wrote itself, and those have
+   * seconds. A ₴300 credit printed at 18:14:20 was read as 18:14:00 against an
+   * order recorded at 18:14:04, and a statement that plainly showed the money
+   * was reported as showing none.
+   */
+  it('keeps the seconds a row prints', () => {
+    const parsed = parse(monoStatement({ rows: [monoRow('14.09.2026', '12:00:20', '1 470.00')] }))
+
+    expect(parsed?.movements[0]?.at.toISOString()).toBe('2026-09-14T09:00:20.000Z')
+  })
+
+  /**
    * The reason the clock goes through `fromKyivWallClock` rather than a fixed
    * offset: Kyiv is UTC+3 in September and UTC+2 in January, and an hour is the
    * difference between a credit inside an order's window and one outside it.
