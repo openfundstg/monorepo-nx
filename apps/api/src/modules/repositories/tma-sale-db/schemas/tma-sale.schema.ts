@@ -1,11 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { HydratedDocument } from 'mongoose'
+import { HydratedDocument, Types } from 'mongoose'
 import {
   BankProvider,
   TmaSaleStatus,
   SaleEventType,
   SaleBlockReason,
-  SaleRemainderPolicy
+  SaleRemainderPolicy,
+  SaleMethod,
+  SaleCardOrderState,
+  SaleReceiverNameSource,
+  SaleStatementStatus,
+  SaleStatementRejection
 } from '@transacto/contracts'
 
 export type TmaSaleDocument = HydratedDocument<TmaSale>
@@ -15,7 +20,12 @@ export {
   TmaSaleStatus,
   SaleEventType,
   SaleBlockReason,
-  SaleRemainderPolicy
+  SaleRemainderPolicy,
+  SaleMethod,
+  SaleCardOrderState,
+  SaleReceiverNameSource,
+  SaleStatementStatus,
+  SaleStatementRejection
 }
 
 /**
@@ -45,6 +55,172 @@ export class TmaSaleEvent {
 
 export const TmaSaleEventSchema = SchemaFactory.createForClass(TmaSaleEvent)
 
+/**
+ * One bank statement uploaded to settle one disputed order.
+ *
+ * **The bytes are not here.** They are written to disk under this document's
+ * own `_id`, and nothing but an operator's download ever reads them back. A
+ * statement is the most sensitive document this product handles — somebody's
+ * whole transaction history — so what the database keeps is the verdict and the
+ * few fields the verdict was reached on, and the file stays a file.
+ */
+@Schema({ versionKey: false })
+export class TmaSaleStatement {
+  /**
+   * Mongo's own, declared so it is visible on the lean type.
+   *
+   * Load-bearing rather than incidental: it names the file on disk, and it is
+   * how an operator asks for one particular statement.
+   */
+  _id: Types.ObjectId
+
+  /** Which bank's verifier judged it, and whose format it was read with. */
+  @Prop({ type: String, enum: BankProvider, required: true })
+  bank: BankProvider
+
+  @Prop({ type: String, enum: SaleStatementStatus, default: SaleStatementStatus.UPLOADED })
+  status: SaleStatementStatus
+
+  /** Why it proved nothing, or `null` while it still might. */
+  @Prop({ type: String, enum: SaleStatementRejection, default: null })
+  rejection: SaleStatementRejection | null
+
+  /**
+   * The file's name on disk, relative to `SALE_STATEMENT_STORAGE_DIR`.
+   *
+   * Stored rather than derived from `_id`, so the layout on disk can change
+   * without orphaning every statement written under the old one. Never built
+   * from anything the user sent: a name they chose is a path they chose.
+   */
+  @Prop({ type: String, required: true })
+  storedName: string
+
+  @Prop({ type: Number, required: true })
+  sizeBytes: number
+
+  /**
+   * When the file itself was deleted, or `null` while it is still on disk.
+   *
+   * **The record outlives the document, deliberately.** What a dispute was
+   * settled on — the verdict, the period, the account holder — is the audit
+   * trail and stays forever; the bytes are somebody's whole transaction
+   * history and have no business doing the same. This is what tells the two
+   * apart, and what lets an operator see that a statement existed and is gone
+   * rather than that it never existed.
+   *
+   * `storedName` is left alone so the row still says what the file was called,
+   * which is what makes an orphan on disk traceable.
+   */
+  @Prop({ type: Date, default: null })
+  purgedAt: Date | null
+
+  @Prop({ type: Date, default: () => new Date() })
+  uploadedAt: Date
+
+  /**
+   * The period the document covers, once it has been read.
+   *
+   * The pair that decides whether it is evidence at all. A statement proves a
+   * *negative* — that no such credit arrived — and one whose period does not
+   * contain the whole time the order was open proves nothing about the part it
+   * misses. Both `null` until the document has been parsed, and a `null` here
+   * can never be read as "covers everything".
+   */
+  @Prop({ type: Date, default: null })
+  periodFrom: Date | null
+
+  @Prop({ type: Date, default: null })
+  periodTo: Date | null
+
+  /**
+   * The account holder's name as the document states it.
+   *
+   * What rewrites the sale's `receiverName` on the first accepted statement:
+   * the bank naming its own customer outranks a form field. Kept per statement
+   * rather than only on the sale, because a later statement naming somebody
+   * else is a fact worth having both halves of.
+   */
+  @Prop({ type: String, default: null })
+  ownerName: string | null
+
+  /**
+   * The last four digits of the account the document is for.
+   *
+   * Four and not more, for the reason `cardTail` gives: enough to refuse a
+   * statement plainly for another account, and not a payment credential at rest.
+   */
+  @Prop({ type: String, default: null })
+  accountTail: string | null
+}
+
+export const TmaSaleStatementSchema = SchemaFactory.createForClass(TmaSaleStatement)
+
+/**
+ * One Transacto order of a card sale — the unit the seller has to answer.
+ *
+ * A jar sale's orders live only in the `orders` collection and in the timeline,
+ * because nobody is asked anything about them: the scraper sees the money or it
+ * does not. These are questions put to a person, so each carries its own clock,
+ * its own answer and whatever was uploaded to settle it.
+ */
+@Schema({ _id: false, versionKey: false })
+export class TmaSaleCardOrder {
+  /** Transacto's internal numeric id — the only one `orders_execute` accepts. */
+  @Prop({ type: Number, required: true })
+  orderId: number
+
+  /** What the payer was routed to send, in UAH kopecks. */
+  @Prop({ type: Number, required: true })
+  amount: number
+
+  @Prop({
+    type: String,
+    enum: SaleCardOrderState,
+    default: SaleCardOrderState.AWAITING_CONFIRMATION
+  })
+  state: SaleCardOrderState
+
+  @Prop({ type: Date, default: () => new Date() })
+  arrivedAt: Date
+
+  /**
+   * When silence becomes a dispute.
+   *
+   * **Ours, not Transacto's.** Their `deadline` is how long the payer has to
+   * pay; this is how long the seller has to say whether the money came. Stored
+   * per order rather than computed from `arrivedAt` plus a constant, so
+   * changing the window later cannot move the deadline of an order already
+   * counting down — the same reason `exchangeRate` is snapshotted.
+   */
+  @Prop({ type: Date, required: true })
+  confirmDeadlineAt: Date
+
+  /** When it was answered, or `null` while it still stands open. */
+  @Prop({ type: Date, default: null })
+  answeredAt: Date | null
+
+  /**
+   * What the seller says actually landed, in UAH kopecks.
+   *
+   * Absent when they answered with a plain "it arrived", which means the whole
+   * of {@link amount}. Present and smaller when a transfer fee took a bite out
+   * of it, and it is then this figure — not `amount` — that counts toward the
+   * sale's target.
+   *
+   * Kept even after a statement corrects the total, because the two are
+   * different facts: what the seller said, and what the bank shows. Overwriting
+   * the claim with the truth would erase the only record that they differed.
+   */
+  @Prop({ type: Number, required: false })
+  declaredAmount?: number
+
+  /** Statements uploaded against this order, oldest first. */
+  @Prop({ type: [TmaSaleStatementSchema], default: [] })
+  statements: TmaSaleStatement[]
+}
+
+export const TmaSaleCardOrderSchema = SchemaFactory.createForClass(TmaSaleCardOrder)
+
 @Schema({ timestamps: true, collection: 'tma_sales', versionKey: false })
 export class TmaSale {
   /**
@@ -57,6 +233,25 @@ export class TmaSale {
 
   @Prop({ type: Number, required: true, index: true })
   telegramId: number
+
+  /**
+   * Where this sale delivers its hryvnia — and therefore what proves it did.
+   *
+   * The one field that decides which half of this document is meaningful.
+   * A {@link SaleMethod.JAR} sale uses `dropLink`, `jarBalance`,
+   * `openingJarBalance`, `jarClosedAt` and `observedGoal`, and none of them mean
+   * anything on a {@link SaleMethod.CARD} sale, which uses `cardOrders` and
+   * `payoutCardTail` instead. Rather than two collections for two shapes that
+   * share a stake, a rate, a status machine and a timeline, they share one and
+   * this says which is which.
+   *
+   * Defaults to `JAR` because that is what every sale written before the
+   * variant existed was. `.lean()` does not apply defaults, so the backfill
+   * migration writes it onto those documents explicitly — a reader that has to
+   * remember `?? JAR` is a reader that will one day forget.
+   */
+  @Prop({ type: String, enum: SaleMethod, default: SaleMethod.JAR, index: true })
+  saleMethod: SaleMethod
 
   /** Fiat amount to sell, in UAH kopecks */
   @Prop({ type: Number, required: true })
@@ -101,7 +296,16 @@ export class TmaSale {
   bankType: string
 
   /** Drop link / jar URL provided by the user */
-  @Prop({ type: String, required: true })
+  /**
+   * The jar this sale pays into, already resolved to the link the scraper can
+   * read.
+   *
+   * **Empty on a card sale**, which has no jar — hence a default rather than
+   * `required`, since Mongoose reads an empty string as a missing required
+   * field. Emptiness here is not "unknown": it is the destination being
+   * somewhere else, and `saleMethod` is what says where.
+   */
+  @Prop({ type: String, default: '' })
   dropLink: string
 
   @Prop({ type: String, enum: TmaSaleStatus, default: TmaSaleStatus.CREATED })
@@ -185,6 +389,74 @@ export class TmaSale {
    */
   @Prop({ type: String, default: null })
   receiverName: string | null
+
+  /**
+   * How much {@link receiverName} has been proven.
+   *
+   * `DECLARED` on every sale at creation: a jar's owner name and a card
+   * seller's typed one are both assembled from what was available, and neither
+   * has been checked against the account the money lands on. The first accepted
+   * statement moves it to `STATEMENT`, which only a card sale can produce.
+   *
+   * Recorded rather than inferred because the rewrite is the interesting part:
+   * a statement naming somebody other than who the seller typed means money has
+   * already gone to a card whose holder they described wrongly, and that is a
+   * question for an operator rather than a field update.
+   */
+  @Prop({
+    type: String,
+    enum: SaleReceiverNameSource,
+    default: SaleReceiverNameSource.DECLARED
+  })
+  receiverNameSource: SaleReceiverNameSource
+
+  /**
+   * The last four digits of the card a card sale pays out to.
+   *
+   * Four and not sixteen — see `cardTail`. Nothing in this codebase stores a
+   * full PAN: the card goes to Transacto as `cred` and is never written down,
+   * which is why `terminals` keeps `cred3` and no `cred`. Four digits are
+   * enough to recognise the payout account on a bank statement and to name it
+   * on screen, which is everything this field is asked to do.
+   *
+   * `null` on a jar sale, whose destination is the drop link.
+   */
+  @Prop({ type: String, default: null })
+  payoutCardTail: string | null
+
+  /**
+   * How far a bank statement has established the truth for this sale.
+   *
+   * The period end of the last statement accepted against it. **Every card
+   * order answered on or before this moment is settled fact**, whatever the
+   * seller said at the time: the document has been read, the credits counted,
+   * and any difference already applied.
+   *
+   * `null` while no statement has ever been accepted, which is the ordinary
+   * case — most sales never need one.
+   *
+   * It exists because a shortfall is the one claim on this document a seller
+   * gains by making. Saying ₴995 arrived of ₴1 000 leaves ₴5 outstanding, so
+   * another order is routed and they receive more hryvnia for the same stake.
+   * The statement is what turns that claim into a fact or into a correction —
+   * and this is how the sale remembers which of its claims have been through
+   * that and which have not.
+   */
+  @Prop({ type: Date, default: null })
+  statementCheckpointAt: Date | null
+
+  /**
+   * The Transacto orders of a card sale, oldest first.
+   *
+   * At most `SALE_CARD_MAX_ORDERS`, and at most one awaiting an answer at a
+   * time — the credential is created with `max_open_orders: 1`, so the cap is
+   * upstream's to enforce and this is where the answers are kept.
+   *
+   * Empty on a jar sale. Bounded by seven, which is what makes an embedded
+   * array the right shape here rather than a collection of its own.
+   */
+  @Prop({ type: [TmaSaleCardOrderSchema], default: [] })
+  cardOrders: TmaSaleCardOrder[]
 
   /**
    * What to do with a tail no payment can cover.
@@ -334,3 +606,27 @@ export const TmaSaleSchema = SchemaFactory.createForClass(TmaSale)
  * `cardId`, and this is the only route back to the owning `telegramId`.
  */
 TmaSaleSchema.index({ cardId: 1, status: 1 })
+
+/**
+ * How an operator finds a card sale from the only thing they have.
+ *
+ * A dispute is worked in Transacto's own panel, where the order is a number and
+ * nothing else — no sale id, no user, no public code. This index is what turns
+ * that number back into the sale, the seller and the statement they uploaded.
+ * Without it the lookup is a collection scan, which is the same as not having
+ * the feature at three in the morning.
+ */
+TmaSaleSchema.index({ 'cardOrders.orderId': 1 })
+
+/** Sweeping card orders whose confirmation window has run out. */
+TmaSaleSchema.index({ saleMethod: 1, 'cardOrders.state': 1, 'cardOrders.confirmDeadlineAt': 1 })
+
+/**
+ * A sale as it comes back from Mongo — the schema plus the id Mongo gave it.
+ *
+ * Nine services had written this line for themselves, which is nine places to
+ * change the day a lean read stops looking like this, and nine chances for one
+ * of them to be missed. It lives beside the schema because that is what it is
+ * made of.
+ */
+export type StoredSale = TmaSale & { _id: Types.ObjectId }

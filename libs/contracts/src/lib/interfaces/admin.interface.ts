@@ -13,7 +13,11 @@ import type { OrderStatus } from '../enums/order-status.enum.js';
 import type { TerminalSource } from '../enums/terminal-source.enum.js';
 import type {
   SaleBlockReason,
+  SaleCardOrderState,
+  SaleReceiverNameSource,
   SaleRemainderPolicy,
+  SaleStatementRejection,
+  SaleStatementStatus,
   TmaDepositStatus,
   TmaSaleStatus,
   TrustLevel,
@@ -666,4 +670,63 @@ export interface AdminOverviewDeltaEvent {
   /** Dotted path into {@link AdminOverviewRes}, e.g. `deposits.pending`. */
   readonly path: string;
   readonly delta: number;
+}
+
+/**
+ * One disputed card-sale order, as an operator finds it.
+ *
+ * **Built for one errand.** A dispute is worked in Transacto's own panel, where
+ * the order is a number and nothing else — no sale id, no user, no public code.
+ * Everything here exists to turn that number back into the thing an operator
+ * actually needs: who the seller is, what was denied, and whether a statement
+ * settled it.
+ *
+ * **No card number in any form, not even four digits.** An operator settling an
+ * appeal does not need one, and this row is rendered in a browser.
+ */
+export interface AdminCardOrderListItem {
+  /** Transacto's numeric order id — what the operator arrived with. */
+  readonly orderId: number;
+  readonly saleId: string;
+  /** The code the seller sees and quotes to support. */
+  readonly publicId: string;
+  readonly telegramId: number;
+  readonly state: SaleCardOrderState;
+  /** UAH kopecks the payer was routed to send. */
+  readonly amount: number;
+  readonly arrivedAt: string;
+  readonly confirmDeadlineAt: string;
+  readonly answeredAt: string | null;
+  /** The name the payer was shown, and whether a bank has confirmed it. */
+  readonly receiverName: string | null;
+  readonly receiverNameSource: SaleReceiverNameSource;
+  readonly bankType: BankProvider;
+  /**
+   * The statements uploaded against this order, oldest first.
+   *
+   * The file itself is fetched separately — see the download endpoint — so a
+   * list of a hundred rows does not carry a hundred documents.
+   */
+  readonly statements: readonly AdminCardOrderStatement[];
+}
+
+/** One uploaded statement, as the panel lists it. */
+export interface AdminCardOrderStatement {
+  readonly id: string;
+  readonly bank: BankProvider;
+  readonly status: SaleStatementStatus;
+  readonly rejection: SaleStatementRejection | null;
+  readonly uploadedAt: string;
+  readonly sizeBytes: number;
+  /** What the document says it covers, once it has been read. */
+  readonly periodFrom: string | null;
+  readonly periodTo: string | null;
+  /**
+   * The account holder as the bank states them.
+   *
+   * The one field worth an operator's eye on its own: a name here that is not
+   * the one the seller declared means money went to a card whose holder they
+   * described wrongly.
+   */
+  readonly ownerName: string | null;
 }

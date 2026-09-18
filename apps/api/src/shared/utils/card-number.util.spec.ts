@@ -1,4 +1,4 @@
-import { CARD_NUMBER_LENGTH, cardDigits } from '@transacto/contracts'
+import { CARD_NUMBER_LENGTH, cardDigits, formatCardNumber, isLuhnValid } from '@transacto/contracts'
 import { isSameCardNumber } from 'src/shared/utils/card-number.util'
 import { matchesMaskedCard } from '@transacto/contracts'
 
@@ -119,3 +119,60 @@ describe('matchesMaskedCard', () => {
   )
 })
 
+
+describe('formatCardNumber', () => {
+  it('groups sixteen digits the way a card prints them', () => {
+    expect(formatCardNumber('4444333322221111')).toBe('4444 3333 2222 1111')
+  })
+
+  it('groups a partial number without trailing space', () => {
+    expect(formatCardNumber('44443333')).toBe('4444 3333')
+  })
+
+  /** The commonest way this field is filled is a paste out of a banking app. */
+  it.each([
+    ['already spaced', '4444 3333 2222 1111'],
+    ['dashed', '4444-3333-2222-1111'],
+    ['run together with stray whitespace', '  4444333322221111 ']
+  ])('normalises a number pasted %s', (_case, pasted) => {
+    expect(formatCardNumber(pasted)).toBe('4444 3333 2222 1111')
+  })
+
+  /** Nothing past sixteen digits, however much is typed or pasted. */
+  it('never grows past one card', () => {
+    expect(formatCardNumber('4444333322221111999')).toBe('4444 3333 2222 1111')
+  })
+})
+
+describe('isLuhnValid', () => {
+  it('accepts a number whose check digit agrees', () => {
+    expect(isLuhnValid('4444333322221111')).toBe(true)
+  })
+
+  it('accepts it spaced exactly as the field shows it', () => {
+    expect(isLuhnValid('4444 3333 2222 1111')).toBe(true)
+  })
+
+  /**
+   * The two mistakes Luhn exists to catch, and the ones this field actually
+   * suffers: a single wrong digit and a transposed pair.
+   */
+  it.each([
+    ['one wrong digit', '4444333322221112'],
+    ['a transposed pair', '4444333322212111']
+  ])('refuses %s', (_case, typo) => {
+    expect(isLuhnValid(typo)).toBe(false)
+  })
+
+  /**
+   * Length is part of the verdict. A checksum that happens to pass on fifteen
+   * digits is an unfinished card, not another scheme — this field is for
+   * Ukrainian cards and those are sixteen.
+   */
+  it.each([['fifteen', '444433332222111'], ['seventeen', '44443333222211110'], ['empty', '']])(
+    'refuses %s digits whatever the sum does',
+    (_case, value) => {
+      expect(isLuhnValid(value)).toBe(false)
+    }
+  )
+})

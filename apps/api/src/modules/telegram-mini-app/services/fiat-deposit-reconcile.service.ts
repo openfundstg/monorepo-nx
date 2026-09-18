@@ -20,13 +20,13 @@ import {
   TransactoPanelCheckParseStatus,
   TransactoPayoutStatus
 } from 'src/shared/interfaces/transacto-panel.interface'
+import { MINUTE_MS } from 'src/shared/constants'
 import { describeError, panelAmountToKopecks } from 'src/shared/utils'
 import { REDIS_CLIENT } from 'src/shared/redis'
 import { RedisKeys } from 'src/shared/redis/redis.keys'
 import { TMA_DOMAIN_EVENT } from 'src/shared/interfaces'
 import type { TmaFiatDepositStuckEvent } from 'src/shared/interfaces'
 
-const MINUTE_MS = 60 * 1000
 
 /**
  * How long a receipt may sit in recognition before this service touches it.

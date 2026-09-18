@@ -17,7 +17,7 @@ import type { TransactoOrder as Order, TransactoWebhookOrder } from 'src/shared/
 import { BANK_SCRAPER_QUEUE_NAME } from 'src/shared/constants'
 
 import type { ScraperJobData } from 'src/shared/constants'
-import { getBankProvider, extractTargetId } from 'src/shared/utils'
+import { getBankProvider, extractTargetId, payerDeadlineFrom } from 'src/shared/utils'
 import { TerminalHistoryDbService } from 'src/modules/repositories/terminal-history-db/services'
 import { TerminalHistoryOrderEvent } from 'src/modules/repositories/terminal-history-db/schemas'
 
@@ -60,7 +60,50 @@ export class OrderPollingService {
     }
 
     const credential = await this.terminalDbService.findOne({ traderId: trader.traderId, cardId })
-    if (!credential?.cred3 || getBankProvider(credential.cred3) === null) {
+
+    if (!credential) {
+      this.logger.warn(
+        `Card ${cardId} belongs to no terminal of trader ${trader.traderId}. Order ${orderId} skipped.`
+      )
+      return
+    }
+
+    // **No jar behind this credential at all — a card payout.**
+    //
+    // Distinguished from the error case below on purpose. A terminal created
+    // for a card sale carries no `cred3`, because the money goes straight to
+    // somebody's card and there is nothing to read a balance from; one whose
+    // `cred3` is present but unreadable is a jar link we failed to parse, which
+    // is a fault. Collapsing the two would have quietly dropped every card
+    // sale's orders as a configuration error.
+    //
+    // Tracked and not queued: the order has to exist here so it can be
+    // confirmed, marked and audited, but there is no balance for a scrape loop
+    // to watch. What settles it is the seller saying the money arrived — see
+    // `SaleCardOrderService`, which is reached through the
+    // `terminal.state_changed` event `track` emits.
+    if (!credential.cred3) {
+      // The payer's window, carried through so the seller's screen can count it
+      // down and the sweep can dispute on it. Resolved here, where the delivery
+      // is — by the time this order reaches the sale it is a row in Mongo and
+      // the webhook's timestamps are gone.
+      await this.trackOnly(
+        trader,
+        orderId,
+        orderStringId,
+        amount,
+        cardId,
+        payerDeadlineFrom(orderPayload, new Date()) ?? undefined
+      )
+
+      this.logger.log(
+        `Order ${orderId} is on card terminal ${credential.terminalId}, which has no jar to ` +
+          'poll. Tracked; its seller confirms it.'
+      )
+      return
+    }
+
+    if (getBankProvider(credential.cred3) === null) {
       this.logger.warn(
         `No valid bank URL (cred3) found for trader ${trader.traderId}, card_id ${cardId}. Order ${orderId} skipped.`
       )
@@ -91,15 +134,7 @@ export class OrderPollingService {
     cardId: number,
     deferLog = false
   ): Promise<void> {
-    // Track order to prevent duplicates
-    const amountInKopecks = Math.round(amount * 100)
-    await this.trackedOrderDbService.track(
-      orderId,
-      orderStringId,
-      trader.traderId,
-      cardId,
-      amountInKopecks
-    )
+    await this.trackOnly(trader, orderId, orderStringId, amount, cardId)
 
     const targetId = extractTargetId(targetUrl)
     if (!targetId) {
@@ -151,6 +186,34 @@ export class OrderPollingService {
         `Started new polling loop for terminal ${terminalId}. Enqueued order ${orderId}.`
       )
     }
+  }
+
+  /**
+   * Records an order without queueing anything to watch it.
+   *
+   * The half of {@link enqueueOrderForPolling} that every order needs, jar or
+   * card: it is what stops a duplicate, and what emits `terminal.state_changed`
+   * — the event a Mini App sale is reached through.
+   *
+   * Amounts arrive from Transacto in hryvnia and are held here in kopecks,
+   * which is the unit the rest of the ledger speaks.
+   */
+  private async trackOnly(
+    trader: Trader,
+    orderId: number,
+    orderStringId: string,
+    amount: number,
+    cardId: number,
+    payerDeadlineAt?: Date
+  ): Promise<void> {
+    await this.trackedOrderDbService.track(
+      orderId,
+      orderStringId,
+      trader.traderId,
+      cardId,
+      Math.round(amount * 100),
+      payerDeadlineAt
+    )
   }
 
   /**
@@ -329,11 +392,26 @@ export class OrderPollingService {
     }
 
     const credential = await this.terminalDbService.findOne({ traderId: trader.traderId, cardId })
-    if (!credential?.cred3) {
+    if (!credential) {
       this.logger.debug(
-        `Fallback: No cred3 for trader ${trader.traderId}, card_id ${cardId}. Order ${order.id} skipped.`
+        `Fallback: card ${cardId} belongs to no terminal of trader ${trader.traderId}. ` +
+          `Order ${order.id} skipped.`
       )
       return null
+    }
+
+    // The same fork the webhook takes, and it has to be here too: the webhook
+    // is not guaranteed, and this sync is the net under it. A card sale whose
+    // `order.created` never landed would otherwise have an order upstream that
+    // this side has never heard of, and no question ever put to its seller.
+    if (!credential.cred3) {
+      await this.trackOnly(trader, order.id, order.order_id, order.amount, cardId)
+
+      return {
+        orderId: order.id,
+        amount: Math.round(order.amount * 100),
+        status: OrderStatus.PENDING
+      }
     }
 
     await this.enqueueOrderForPolling(

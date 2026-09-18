@@ -7,6 +7,8 @@ import { ExchangeRateModule } from 'src/modules/exchange-rate'
 import { SupportDbModule } from 'src/modules/repositories/support-db'
 import { TmaUserDbModule } from 'src/modules/repositories/tma-user-db/tma-user-db.module'
 import { TmaFiatDepositWatchDbModule } from 'src/modules/repositories/tma-fiat-deposit-watch-db/tma-fiat-deposit-watch-db.module'
+import { TmaSaleDbModule } from 'src/modules/repositories/tma-sale-db/tma-sale-db.module'
+import { TelegramMiniAppModule } from 'src/modules/telegram-mini-app'
 import {
   SupportConfig,
   TELEGRAM_API_BASE_URL
@@ -18,6 +20,7 @@ import { SupportAlbumWorker } from 'src/modules/support/workers/support-album.wo
 import {
   SupportAlbumService,
   SupportAlertsListener,
+  SupportCardSaleService,
   SupportConfigService,
   SupportFiatWatchService,
   SupportMenuService,
@@ -45,6 +48,18 @@ import {
     // sender can know it did. The Mini App owns the matching and must not know
     // this module exists, so what arrives from there is an event, not a call.
     TmaFiatDepositWatchDbModule,
+    // A card sale's orders, which this bot's inline keys answer.
+    //
+    // The one place the arrow points this way, and it points only this way:
+    // the Mini App never imports this module, and still learns that the bot
+    // exists only through a neutral domain event. What comes back the other
+    // way is a call, because a key press has to be answered now and its
+    // refusals have to reach the person who pressed it.
+    TelegramMiniAppModule,
+    // Resolving the sale behind a pressed key. The payload carries only the
+    // order id, deliberately — a `callback_data` a client can edit must not
+    // be able to name somebody else's sale.
+    TmaSaleDbModule,
     ExchangeRateModule,
     // The bot token lives in the base URL because that is where Telegram wants
     // it — `/bot<token>/<method>`. Consequence: the request path is a
@@ -76,6 +91,7 @@ import {
     SupportAlbumService,
     SupportUserService,
     SupportFiatWatchService,
+    SupportCardSaleService,
     SupportMenuService,
     SupportTopicService,
     SupportRelayService,

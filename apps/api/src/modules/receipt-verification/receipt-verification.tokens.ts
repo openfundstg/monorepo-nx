@@ -18,3 +18,15 @@ export const RECEIPT_CODE_STRATEGIES = 'RECEIPT_CODE_STRATEGIES'
  * code, in the order they should be asked.
  */
 export const RECEIPT_VERIFICATION_PROVIDERS = 'RECEIPT_VERIFICATION_PROVIDERS'
+
+/**
+ * `readonly StatementVerificationProvider[]` — every service that can vouch for
+ * a bank **statement**, in the order they should be asked.
+ *
+ * Its own token rather than a second use of the receipt one, because the two
+ * ports answer different questions: a receipt verifier says whether a payment
+ * happened, a statement verifier hands back a document the bank stands behind.
+ * A provider registered under the wrong token would type-check and then be
+ * asked something it cannot answer.
+ */
+export const STATEMENT_VERIFICATION_PROVIDERS = 'STATEMENT_VERIFICATION_PROVIDERS'

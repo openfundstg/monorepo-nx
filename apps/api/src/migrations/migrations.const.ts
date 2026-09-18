@@ -3,6 +3,7 @@ import { BackfillBalanceEntriesMigration } from 'src/migrations/scripts/0001-bac
 import { ReleaseOrphanedStakesMigration } from 'src/migrations/scripts/0002-release-orphaned-stakes.migration'
 import { RepriceOrdersAtSellRateMigration } from 'src/migrations/scripts/0003-reprice-orders-at-sell-rate.migration'
 import { RenameScrollOrdersToSalesMigration } from 'src/migrations/scripts/0004-rename-scroll-orders-to-sales.migration'
+import { BackfillSaleMethodMigration } from 'src/migrations/scripts/0005-backfill-sale-method.migration'
 import type { Migration } from 'src/migrations/interfaces'
 
 /** The DI token the runner receives the ordered list under. */
@@ -21,5 +22,6 @@ export const MIGRATION_CLASSES: readonly Type<Migration>[] = [
   BackfillBalanceEntriesMigration,
   ReleaseOrphanedStakesMigration,
   RepriceOrdersAtSellRateMigration,
-  RenameScrollOrdersToSalesMigration
+  RenameScrollOrdersToSalesMigration,
+  BackfillSaleMethodMigration
 ]

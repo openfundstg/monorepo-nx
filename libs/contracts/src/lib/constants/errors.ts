@@ -633,6 +633,140 @@ export const ERROR = {
      */
     CSRF_UNAVAILABLE: { code: 2501, message: 'The Transacto panel did not yield a CSRF token' },
   },
+
+  /**
+   * The card variant of a sale — where the seller, not the scraper, says the
+   * money arrived.
+   *
+   * Its own block rather than more members on {@link ERROR.SALE} because these
+   * are all about **one order inside a sale**, not about the sale: a user can be
+   * refused a confirmation on order 4 while orders 1 to 3 are settled and the
+   * sale itself is perfectly healthy. Mixing the two vocabularies is how a
+   * client ends up showing "sale not found" for an order that timed out.
+   */
+  SALE_CARD: {
+    /** The card variant is switched off for everyone. */
+    // 2600 is retired. Card sales were behind a kill switch while no verifier
+    // existed for a disputed order's statement; both banks on the list have one
+    // now, so the variant is simply part of the product and there is nothing
+    // left for a refusal to mean. The code is not reused — a client still
+    // holding a translation for it must not find it attached to something else.
+    /**
+     * A confirmation was sent for a sale that pays into a jar.
+     *
+     * A jar sale's orders are settled by an observed balance and there is
+     * nothing for a user to confirm, so this is a client asking the wrong
+     * question rather than a user doing something forbidden.
+     */
+    NOT_A_CARD_SALE: { code: 2601, message: 'This sale is not paid out to a card' },
+    ORDER_NOT_FOUND: { code: 2602, message: 'No such order on this sale' },
+    /**
+     * The order is not waiting for an answer.
+     *
+     * The ordinary way to reach it is the honest race this variant is built to
+     * expect: the seller presses the button in the Mini App and on the bot's
+     * inline keyboard, and whichever arrives second finds the order already
+     * settled. It is the right answer to that, and both surfaces treat it as
+     * "already done" rather than as a failure.
+     */
+    ORDER_NOT_AWAITING: { code: 2603, message: 'This order is not awaiting confirmation' },
+    /**
+     * Transacto will not execute it any more.
+     *
+     * Late is fine — `TransactoOrderStatus.OVERDUE` is executable, because a
+     * late payer's money is still money. This is the other one: an order that
+     * reached `EXPIRED_HOLD`, `CLIENT_CANCELLED` or `DECLINED` upstream cannot
+     * be confirmed by anybody, and an honest seller who pressed the button an
+     * hour late has to be told that rather than shown a silent no-op.
+     */
+    ORDER_NOT_EXECUTABLE: {
+      code: 2604,
+      message: 'This order can no longer be confirmed upstream',
+    },
+    /**
+     * A statement was uploaded against an order nobody is disputing.
+     *
+     * Statements answer denials. Accepting one here would store somebody's
+     * whole transaction history for no question — the most sensitive document
+     * this product handles, kept for nothing.
+     */
+    STATEMENT_NOT_REQUIRED: {
+      code: 2605,
+      message: 'This order is not waiting for a statement',
+    },
+    /** One is already being checked. Two at once would race on one verdict. */
+    STATEMENT_IN_FLIGHT: { code: 2606, message: 'A statement is already being checked' },
+    /**
+     * No verifier exists for the bank this sale pays into.
+     *
+     * A refusal, never a pass: a statement nothing can check is not a statement
+     * that passed, and treating it as one would make the whole proof optional
+     * for whichever bank we had not got to yet.
+     */
+    STATEMENT_UNSUPPORTED_BANK: {
+      code: 2607,
+      message: 'Statements from this bank cannot be checked yet',
+    },
+    STATEMENT_UNSUPPORTED_TYPE: { code: 2608, message: 'Statement must be a PDF' },
+    STATEMENT_TOO_LARGE: { code: 2609, message: 'Statement file is too large' },
+    /** A card sale needs a recipient name; nothing else can supply one. */
+    RECEIVER_NAME_REQUIRED: {
+      code: 2610,
+      message: 'A recipient name is required for a card sale',
+    },
+    /**
+     * The seller confirmed and Transacto refused the execution.
+     *
+     * Deliberately distinct from {@link ORDER_NOT_EXECUTABLE}: there the order
+     * was in a state that cannot be executed and the answer is final, here
+     * something went wrong on the way and trying again may work. Telling a user
+     * "no" when the truth is "not just now" costs them their own money.
+     */
+    CONFIRMATION_FAILED: {
+      code: 2611,
+      message: 'The confirmation could not be sent upstream',
+    },
+    /**
+     * Sixteen digits were expected and something else arrived.
+     *
+     * Length only. Luhn is checked by Transacto, which is the system that will
+     * actually route money to the number — a second implementation here could
+     * only ever disagree with the one that matters, and would do so by refusing
+     * a card that works.
+     */
+    INVALID_CARD_NUMBER: { code: 2612, message: 'A card number must be sixteen digits' },
+    /**
+     * "It did not arrive" — about a payment that is not late yet.
+     *
+     * A denial is not a complaint, it is an intervention: it stops routing to
+     * the terminal, so the rest of the sale takes no further money until a
+     * statement settles the question. Making that available while the payer
+     * still has time on the clock lets a seller halt their own sale over a
+     * transfer that is simply in flight.
+     *
+     * Enforced here rather than only on the screen, because there are two
+     * surfaces. The Mini App withholds the button until the deadline passes;
+     * the bot's inline keyboard is attached to a message sent on arrival and
+     * cannot withhold anything, so without this the same tap would be accepted
+     * from one place and refused from the other.
+     */
+    ORDER_NOT_OVERDUE: {
+      code: 2613,
+      message: 'This payment is not overdue yet and cannot be denied'
+    },
+    /**
+     * A seller claiming more arrived than was ever sent.
+     *
+     * A transfer fee takes money out of a payment; nothing puts money in. So a
+     * figure above the order's own amount is not a generous mistake, it is a
+     * number that cannot have happened — and accepting it would credit the
+     * target faster than the hryvnia actually arrived.
+     */
+    DECLARED_ABOVE_ORDER: {
+      code: 2614,
+      message: 'More cannot have arrived than the order was for'
+    },
+  },
 } as const;
 
 /** Shape of every leaf in {@link ERROR}, and of the body clients receive. */

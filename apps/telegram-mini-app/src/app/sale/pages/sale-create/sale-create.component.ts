@@ -4,7 +4,6 @@ import { FormsModule } from '@angular/forms'
 import {
   BankProvider,
   disclosesCardNumber,
-  ERROR,
   isSaleBankEnabled,
   cardDigits,
   isGoalWithinTolerance,
@@ -12,14 +11,15 @@ import {
   matchesMaskedCard,
   CENTS_PER_USDT,
   priceSale,
-  type SaleAwaitingJar,
   SaleRemainderPolicy,
-  targetForStake,
 } from '@transacto/contracts'
 import { TranslatePipe } from '@ngx-translate/core'
 import { ApiErrorService } from '../../../shared/services/api-error.service'
 import { BANK_NAME_KEY } from '../../../shared/constants/bank-name.const'
 import { SaleService } from '../../services/sale.service'
+import { SalePricingService } from '../../services/sale-pricing.service'
+import { SaleSubmitService } from '../../services/sale-submit.service'
+import { SaleAmountComponent } from '../../components/sale-amount/sale-amount.component'
 import { TmaService } from '../../../auth/services/tma.service'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
@@ -27,7 +27,6 @@ import { BankInstructionsComponent } from '../../components/bank-instructions/ba
 import {
   CARD_NUMBER_LENGTH,
   DEFAULT_BANK,
-  DEFAULT_MIN_ORDER_KOPECKS,
   DEFAULT_REMAINDER_POLICY,
   MIN_ORDER_USDT,
   REMAINDER_POLICY_OPTIONS,
@@ -35,7 +34,6 @@ import {
   isRemainderPolicyEnabled,
 } from '../../constants/sale-create.const'
 import { MetaPixelService } from '../../../shared/services/meta-pixel.service'
-import { PixelStandardEvent } from '../../../shared/enums/pixel-event.enum'
 import { TrackTapDirective } from '../../../shared/directives/track-tap.directive'
 import { ExchangeRateComponent } from '../../../shared/components/exchange-rate/exchange-rate.component'
 import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
@@ -49,8 +47,9 @@ import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
     UsdtPipe,
     BankInstructionsComponent,
     TrackTapDirective,
-    ExchangeRateComponent
-  ],
+    ExchangeRateComponent, SaleAmountComponent],
+  // Route-scoped state: two sale forms must not inherit each other's amount.
+  providers: [SalePricingService, SaleSubmitService],
   templateUrl: './sale-create.component.html',
   styleUrl: './sale-create.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -62,28 +61,39 @@ export class SaleCreateComponent implements OnInit {
   private readonly saleService = inject(SaleService)
   private readonly tma = inject(TmaService)
 
-  readonly usdtAmount = signal<number | null>(null)
-  readonly selectedBank = signal<BankProvider>(DEFAULT_BANK)
   /**
-   * The picker, in priority order — see {@link SALE_BANKS}. Rendered
-   * with `@for` rather than one block per bank, so the order and the recommended
+   * Everything both sale forms share — the config, the price and the three
+   * refusals derived from them.
+   *
+   * It moved out of this component when the card form arrived and copied it:
+   * the two had one statement of the price between them and two of everything
+   * around it, and two of those copies had already drifted apart. What stays
+   * here is what a jar sale asks that a card sale does not.
+   */
+  readonly pricing = inject(SalePricingService)
+
+  readonly selectedBank = signal<BankProvider>(DEFAULT_BANK)
+
+  /**
+   * The picker, in priority order — see {@link SALE_BANKS}. Rendered with
+   * `@for` rather than one block per bank, so the order and the recommended
    * badge are data rather than a template that has to be re-edited to reorder.
    */
   protected readonly banks = SALE_BANKS
   /** Exposed so the template can compare against enum members, not literals. */
   protected readonly BankProvider = BankProvider
   protected readonly PixelTapEvent = PixelTapEvent
-
-  /**
-   * Both read straight from the contract the server enforces, rather than
-   * from a list kept here. A picker offering a bank the server refuses would
-   * let a user fill in a whole form for nothing.
-   */
   /** The floor, named on screen rather than only enforced. */
   protected readonly minOrderUsdt = MIN_ORDER_USDT
 
+  /**
+   * Both read straight from the contract the server enforces, rather than from
+   * a list kept here. A picker offering a bank the server refuses would let a
+   * user fill in a whole form for nothing.
+   */
   protected readonly isBankEnabled = isSaleBankEnabled
   protected readonly bankDisclosesCard = disclosesCardNumber
+
   readonly dropLink = signal('')
   readonly cardNumber = signal('')
 
@@ -97,68 +107,8 @@ export class SaleCreateComponent implements OnInit {
   readonly remainderPolicy = signal<SaleRemainderPolicy>(DEFAULT_REMAINDER_POLICY)
   /** The picker, in the order it is rendered — see {@link REMAINDER_POLICY_OPTIONS}. */
   protected readonly remainderOptions = REMAINDER_POLICY_OPTIONS
-
-  /**
-   * The smallest order the pipeline will route, in UAH kopecks.
-   *
-   * Seeded from the contract and replaced by `GET /sales/config`, which
-   * carries whatever the server is actually configured with. The screen quotes
-   * this figure to the user — "anything under ₴300 comes back" — so a stale copy
-   * would be describing a different offer from the one the server settles.
-   */
-  readonly minOrderKopecks = signal(DEFAULT_MIN_ORDER_KOPECKS)
-
-  /** Seeded from `GET /sales/config`; the literal is only a first paint. */
-  /**
-   * How many sales this user's trust level allows at once, and how many
-   * of those are already running.
-   *
-   * Both come from `GET /sales/config`, so the form can refuse before a
-   * round trip rather than after the user has filled in a link, a card and an
-   * amount. The server checks again under a lock — this is the courtesy, not
-   * the enforcement.
-   */
-  readonly maxParallelOrders = signal(0)
-  readonly openOrders = signal(0)
-  /**
-   * The finished sales among those, and the jars still holding their slots.
-   *
-   * Kept as rows rather than a count because a count cannot be explained. A
-   * user whose only sale finished an hour ago reads "1 / 1 active" as a bug in
-   * the product — they can see nothing is running — and "finish the current
-   * one" as advice for a sale that is already finished. Naming the sale and its
-   * bank turns both into an instruction they can act on.
-   */
-  readonly awaitingJarClosure = signal<readonly SaleAwaitingJar[]>([])
-  /**
-   * Kopecks per USDT, and 0 until the server says otherwise.
-   *
-   * It used to start at a hardcoded ₴46.52. That was a third price in a system
-   * that should have one: the screen quoted it for a beat on every load, and
-   * kept quoting it for the whole session whenever the config call failed —
-   * while the order the server actually wrote priced off the live market.
-   */
-  readonly sellRateKopecks = signal(0)
-  /** The market could not be reached, so nothing on this screen can be priced. */
-  readonly rateUnavailable = signal(false)
-  /**
-   * The caller's **available** USDT cents, straight from the same config call —
-   * `freezeBalance` is already subtracted server-side, so no second request and
-   * no local arithmetic is needed to get to a spendable figure.
-   */
-  readonly balanceCents = signal(0)
-  readonly submitting = signal(false)
-  readonly errorMsg = signal('')
-  /**
-   * The submit was refused because the market moved, and the rate on screen has
-   * since been re-read.
-   *
-   * Its own flag rather than a reading of `errorMsg`: the message is a
-   * translated sentence and matching on one would break the day it is reworded.
-   * Cleared by taking the new amount, or by editing the one on screen — either
-   * way the user has answered it.
-   */
-  readonly rateMoved = signal(false)
+  /** The submit half both forms share — the post, the recovery, the three flags. */
+  readonly submit = inject(SaleSubmitService)
 
   /** In flight while the backend follows the bank's redirects. */
   readonly resolvingLink = signal(false)
@@ -216,7 +166,7 @@ export class SaleCreateComponent implements OnInit {
   readonly goalMismatch = computed(() => {
     const goal = this.jarGoal()
 
-    return goal !== null && !isGoalWithinTolerance(goal, this.targetKopecks())
+    return goal !== null && !isGoalWithinTolerance(goal, this.pricing.targetKopecks())
   })
 
   /**
@@ -239,9 +189,9 @@ export class SaleCreateComponent implements OnInit {
    */
   readonly suggestedUsdtCents = computed(() => {
     const goal = this.jarGoal()
-    if (goal === null || this.sellRateKopecks() <= 0) return null
+    if (goal === null || this.pricing.sellRateKopecks() <= 0) return null
 
-    const cents = priceSale(goal, this.sellRateKopecks())
+    const cents = priceSale(goal, this.pricing.sellRateKopecks())
       .requiredUsdtCents
 
     return cents > 0 ? cents : null
@@ -330,11 +280,9 @@ export class SaleCreateComponent implements OnInit {
    * bank, and banks take hryvnia — ₴9 490,08 is a figure nobody can enter, and
    * the backend blocks an order whose jar target does not match.
    */
-  readonly targetKopecks = computed(() =>
-    targetForStake(this.usdtAmount() ?? 0, this.sellRateKopecks()),
+  readonly quote = computed(() =>
+    priceSale(this.pricing.targetKopecks(), this.pricing.sellRateKopecks())
   )
-
-  readonly quote = computed(() => priceSale(this.targetKopecks(), this.sellRateKopecks()))
 
   /**
    * Whether the trust level's allowance is already spent.
@@ -361,12 +309,6 @@ export class SaleCreateComponent implements OnInit {
    * and the server answers 1314 — but nothing on the screen said so, so a user
    * who typed 5 saw a dead button and no reason for it.
    */
-  readonly belowMinimum = computed(() => {
-    const amount = this.usdtAmount() ?? 0
-
-    return amount > 0 && amount < MIN_ORDER_USDT
-  })
-
   readonly cardIsFromBank = computed(() => this.bankDisclosesCard(this.selectedBank()))
 
   /**
@@ -387,10 +329,6 @@ export class SaleCreateComponent implements OnInit {
    * config lands and grey out the form on every load. Nothing is exhausted
    * until the server has actually said what the allowance is.
    */
-  readonly slotsExhausted = computed(
-    () => this.maxParallelOrders() > 0 && this.openOrders() >= this.maxParallelOrders()
-  )
-
   /**
    * Whether an open jar is the reason — the only reason the user can act on.
    *
@@ -401,12 +339,12 @@ export class SaleCreateComponent implements OnInit {
    * second is telling them to wait forever.
    */
   readonly blockedByOpenJars = computed(
-    () => this.slotsExhausted() && this.awaitingJarClosure().length > 0
+    () => this.pricing.slotsExhausted() && this.pricing.awaitingJarClosure().length > 0
   )
 
   /** Slots held by sales that really are still running. */
   readonly runningOrders = computed(() =>
-    Math.max(0, this.openOrders() - this.awaitingJarClosure().length)
+    Math.max(0, this.pricing.openOrders() - this.pricing.awaitingJarClosure().length)
   )
 
   /**
@@ -421,10 +359,8 @@ export class SaleCreateComponent implements OnInit {
    */
   readonly requiredCents = computed(() => this.quote().requiredUsdtCents)
 
-  readonly hasSufficientBalance = computed(() => this.requiredCents() <= this.balanceCents())
-
   readonly isValid = computed(() => {
-    const amount = this.usdtAmount() ?? 0
+    const amount = this.pricing.usdtAmount() ?? 0
     const link = this.dropLink().trim()
     const card = this.cardNumber().replace(/\D/g, '')
 
@@ -432,14 +368,14 @@ export class SaleCreateComponent implements OnInit {
       amount >= MIN_ORDER_USDT &&
       // No rate, no quote: submitting would price the order at whatever the
       // server fetches, which is not the number the user was shown.
-      !this.rateUnavailable() &&
-      !this.slotsExhausted() &&
+      !this.pricing.rateUnavailable() &&
+      !this.pricing.slotsExhausted() &&
       this.isBankEnabled(this.selectedBank()) &&
       // For a disclosing bank the card must have come from the bank. The
       // length check below passes on an auto-filled one, but would also pass
       // on a stale value left behind by a previous link.
       (!this.cardIsFromBank() || this.dropCardNumber() !== null) &&
-      this.hasSufficientBalance() &&
+      this.pricing.hasSufficientBalance() &&
       !this.goalMismatch() &&
       !this.cardMismatch() &&
       link.startsWith('http') &&
@@ -457,35 +393,14 @@ export class SaleCreateComponent implements OnInit {
     void this.router.navigate(['/sale', saleId, 'status'])
   }
 
-  async ngOnInit(): Promise<void> {
+  ngOnInit(): void {
     this.tma.showBackButton(() => this.router.navigate(['/sale']))
-    await this.loadConfig()
+    // Already fetched, by the route's resolver. Nothing is awaited here, so the
+    // first frame this screen paints is the only one — no balance of 0.00 and
+    // no refusal that corrects itself a moment later.
+    this.pricing.seedFromRoute()
   }
 
-  /** Also the retry handler, so a passing outage costs one tap. */
-  async loadConfig(): Promise<void> {
-    this.rateUnavailable.set(false)
-    try {
-      const config = await this.saleService.getConfig()
-      this.maxParallelOrders.set(config.maxParallelOrders)
-      this.openOrders.set(config.openOrders)
-      // `?? []` for a server older than the field: an absent list is "we cannot
-      // tell you which", which must read as none rather than crash the form.
-      this.awaitingJarClosure.set(config.slotsAwaitingJarClosure ?? [])
-      this.balanceCents.set(config.balance)
-      this.sellRateKopecks.set(config.sellRate)
-      // Absent only on a server older than the field; the seeded default is the
-      // same number it would have sent.
-      this.minOrderKopecks.set(config.minOrderKopecks || DEFAULT_MIN_ORDER_KOPECKS)
-      // The whole config call 503s when the market is unreachable, so a rate of
-      // zero here means the same thing as the request failing outright.
-      this.rateUnavailable.set(!config.sellRate)
-    } catch (err) {
-      console.error('Failed to load sale config:', err)
-      this.sellRateKopecks.set(0)
-      this.rateUnavailable.set(true)
-    }
-  }
 
   /**
    * Works out what the pasted link really points at, as soon as the field is
@@ -571,8 +486,8 @@ export class SaleCreateComponent implements OnInit {
     const cents = this.suggestedUsdtCents()
     if (cents === null) return
 
-    this.usdtAmount.set(cents / CENTS_PER_USDT)
-    this.rateMoved.set(false)
+    this.pricing.usdtAmount.set(cents / CENTS_PER_USDT)
+    this.submit.clearRateMoved()
     this.tma.hapticFeedback('light')
   }
 
@@ -615,54 +530,25 @@ export class SaleCreateComponent implements OnInit {
     const cents = this.suggestedUsdtCents()
     if (cents === null) return
 
-    this.usdtAmount.set(cents / CENTS_PER_USDT)
-    this.rateMoved.set(false)
-    this.errorMsg.set('')
+    this.pricing.usdtAmount.set(cents / CENTS_PER_USDT)
+    this.submit.clearRateMoved()
+    this.submit.errorMsg.set('')
     this.tma.hapticFeedback('light')
   }
 
   async onSubmit(): Promise<void> {
     if (!this.isValid()) return
 
-    // The backend expects fiatAmount in kopecks. The targetKopecks is already in kopecks.
-    const amountKopecks = this.targetKopecks()
-    this.submitting.set(true)
-    this.errorMsg.set('')
-
-    try {
-      const result = await this.saleService.create({
-        fiatAmount: amountKopecks,
-        bankType: this.selectedBank(),
-        dropLink: this.dropLink().trim(),
-        cardNumber: this.cardNumber().replace(/\D/g, ''),
-        // The rate this total was worked out at. The market moves while a form
-        // is being filled, and the server refuses a quote it has moved out from
-        // under rather than freezing a stake against an unreachable target.
-        quotedRate: this.sellRateKopecks(),
-        remainderPolicy: this.remainderPolicy()
-      })
-      // The stake is frozen by the time this resolves, so the step is real
-      // rather than an intention. The completion that follows — if it does — is
-      // reported separately, from the status page.
-      this.metaPixel.trackConversion(PixelStandardEvent.INITIATE_CHECKOUT, amountKopecks)
-      this.tma.hapticFeedback('success')
-      this.router.navigate(['/sale', result.saleId, 'status'])
-    } catch (err: unknown) {
-      console.error('Failed to create sale:', err)
-      this.errorMsg.set(this.apiError.messageFor(err))
-      this.tma.hapticFeedback('error')
-
-      // The market moved between the quote and the submit. Refusing is right —
-      // a jar whose goal no longer matches can never fill — but leaving the
-      // screen holding the rate it was refused for is not: the form would go on
-      // deriving the same stale target, and the next tap fails the same way.
-      // So the rate is re-read and the user is offered the new amount.
-      if (this.apiError.codeOf(err) === ERROR.SALE.RATE_CHANGED.code) {
-        await this.loadConfig()
-        this.rateMoved.set(true)
-      }
-    } finally {
-      this.submitting.set(false)
-    }
+    await this.submit.submit(() => ({
+      fiatAmount: this.pricing.targetKopecks(),
+      bankType: this.selectedBank(),
+      dropLink: this.dropLink().trim(),
+      cardNumber: cardDigits(this.cardNumber()),
+      // The rate this total was worked out at. The market moves while a form is
+      // being filled, and the server refuses a quote it has moved out from
+      // under rather than freezing a stake against an unreachable target.
+      quotedRate: this.pricing.sellRateKopecks(),
+      remainderPolicy: this.remainderPolicy()
+    }))
   }
 }

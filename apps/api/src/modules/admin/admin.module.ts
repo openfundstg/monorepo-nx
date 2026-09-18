@@ -29,6 +29,7 @@ import {
   AdminAuthController,
   AdminDepositsController,
   AdminFiatDepositWatchesController,
+  AdminCardOrdersController,
   AdminFiatDepositsController,
   AdminOrdersController,
   AdminOverviewController,
@@ -46,6 +47,7 @@ import {
   AdminBroadcastService,
   AdminDepositsService,
   AdminFiatDepositWatchesService,
+  AdminCardOrdersService,
   AdminFiatDepositsService,
   AdminLoginService,
   AdminOverviewService,
@@ -116,6 +118,9 @@ import {
     AdminSalesController,
     AdminDepositsController,
     AdminFiatDepositsController,
+    // Card-sale disputes, addressed by Transacto's order number — the only
+    // identifier an operator arrives from their panel holding.
+    AdminCardOrdersController,
     AdminFiatDepositWatchesController,
     AdminTerminalsController,
     AdminOrdersController,
@@ -134,6 +139,7 @@ import {
     AdminSalesService,
     AdminDepositsService,
     AdminFiatDepositsService,
+    AdminCardOrdersService,
     AdminFiatDepositWatchesService,
     AdminTerminalsService,
     AdminTradersService,

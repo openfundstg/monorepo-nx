@@ -5,7 +5,7 @@ import { readSetCookie } from 'src/shared/utils/set-cookie.util'
 import {
   EgressChannel,
   ScraperWorkerMethod,
-  type PrivatbankDocumentType,
+  PrivatbankDocumentType,
   type PrivatbankFindDocumentResponse,
   type ReceiptFile
 } from 'src/shared/interfaces'
@@ -141,8 +141,17 @@ export class PrivatbankDocumentApiService {
   /**
    * Downloads the document a grant was issued for.
    *
-   * A plain PDF, unlike monobank's, which arrives wrapped in a PKCS#7 container
-   * — so there is nothing to unwrap here and the bytes go on as they came.
+   * **The type is a parameter because it appears three times** — in the lookup's
+   * `document[type]`, in this path, and in the name the bank gives the file.
+   * A hard-coded `receipt` segment here was correct while receipts were the only
+   * kind and would have quietly downloaded the wrong thing for a statement.
+   *
+   * **Both kinds come back as a plain PDF**, unlike monobank's receipts, which
+   * arrive wrapped in a PKCS#7 container — confirmed for a statement on
+   * 2026-09-17. Worth knowing because a statement saved by hand out of Privat24
+   * *is* a container, so the two routes to the same document differ in form:
+   * callers unwrap unconditionally with `extractSignedPdf`, which returns a
+   * plain PDF unchanged and is therefore right for either.
    *
    * **One attempt, never rotated.** The grant is bound to the session the lookup
    * opened, and that session was opened through one exit — asking again from
@@ -150,9 +159,13 @@ export class PrivatbankDocumentApiService {
    * mid-conversation rather than a retry. `maxAttempts: 1` on the same worker
    * session is what holds it to that one circuit.
    */
-  async downloadReceipt(id: string, grant: PrivatbankDocumentGrant): Promise<ReceiptFile> {
+  async downloadDocument(
+    type: PrivatbankDocumentType,
+    id: string,
+    grant: PrivatbankDocumentGrant
+  ): Promise<ReceiptFile> {
     const url =
-      `${BASE_URL}${DOWNLOAD_PATH}/receipt/${encodeURIComponent(id)}` +
+      `${BASE_URL}${DOWNLOAD_PATH}/${type}/${encodeURIComponent(id)}` +
       `?csrf=${encodeURIComponent(grant.token)}`
 
     const result = await this.scraperWorker.request(
@@ -171,12 +184,25 @@ export class PrivatbankDocumentApiService {
     if (result.upstreamStatus !== 200)
       throw new ServiceUnavailableException(`PrivatBank download answered ${result.upstreamStatus}`)
 
-    this.logger.debug(`PrivatBank served ${result.body.length} bytes for a receipt`)
+    this.logger.debug(`PrivatBank served ${result.body.length} bytes for a ${type}`)
 
     return {
       buffer: result.body,
-      fileName: `receipt-${id}.pdf`,
+      // The bank's own naming, `<type>-<id>.pdf`. Built rather than read off
+      // `document_name` so a download cannot be named by their response.
+      fileName: `${type}-${id}.pdf`,
       mimeType: 'application/pdf'
     }
+  }
+
+  /**
+   * The receipt behind a grant.
+   *
+   * Kept as its own name because every existing caller asks for a receipt and
+   * reads better saying so; it is {@link downloadDocument} with the type filled
+   * in and nothing else.
+   */
+  async downloadReceipt(id: string, grant: PrivatbankDocumentGrant): Promise<ReceiptFile> {
+    return this.downloadDocument(PrivatbankDocumentType.RECEIPT, id, grant)
   }
 }

@@ -15,12 +15,22 @@ export interface ReceiverNameSources {
   readonly telegramId: number
 }
 
-/** Collapses runs of whitespace and trims; empty becomes `null`. */
-const clean = (value: string | null | undefined): string | null => {
-  const trimmed = value?.replace(/\s+/g, ' ').trim()
+/**
+ * Collapses runs of whitespace and trims.
+ *
+ * Exported because the card sale's create path needs exactly this and had
+ * written it again: a name arrives from a form or from a bank with whatever
+ * spacing the sender used, and two spellings of one name must not read as two
+ * names. Returns `''` rather than `null`, which is the shape a caller checking
+ * a minimum length wants; `clean` is the nullable one this file's
+ * own fallback chain reads.
+ */
+export const collapseWhitespace = (value: string | null | undefined): string =>
+  value?.replace(/\s+/g, ' ').trim() ?? ''
 
-  return trimmed ? trimmed : null
-}
+/** The same, as `null` when there is nothing left — a source that had nothing to say. */
+const clean = (value: string | null | undefined): string | null =>
+  collapseWhitespace(value) || null
 
 /**
  * The name a payer sees as the recipient of their transfer.

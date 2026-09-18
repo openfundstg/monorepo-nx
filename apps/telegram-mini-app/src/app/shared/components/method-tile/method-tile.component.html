@@ -1,4 +1,9 @@
-<a class="method glass-card" [class.coming-soon]="comingSoon()" [routerLink]="target()">
+<a
+  class="method glass-card"
+  [class.coming-soon]="comingSoon()"
+  [routerLink]="target()"
+  (click)="onTap()"
+>
   <span class="method-icon" aria-hidden="true"><ng-content /></span>
   <span class="method-body">
     <span class="method-title">

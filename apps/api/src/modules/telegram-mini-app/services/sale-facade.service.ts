@@ -1,20 +1,20 @@
 import {
   ERROR,
-  disclosesCardNumber,
-  masksCardNumber,
-  matchesMaskedCard,
+  cardTail,
   isGoalWithinTolerance,
   isQuoteStillValid,
-  isSaleBankEnabled,
   MIN_USDT_AMOUNT,
   MIN_USDT_CENTS,
   priceSale,
   SaleEventType,
+  SaleMethod,
+  SaleReceiverNameSource,
   SaleRemainderPolicy,
   roundToWholeUah,
   sellRate,
   SaleBlockReason
 } from '@transacto/contracts'
+import type { CreateSaleReq } from '@transacto/contracts'
 import {
   BadRequestException,
   ConflictException,
@@ -34,7 +34,6 @@ import { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale-progress.service'
 import { ReferralService } from 'src/modules/telegram-mini-app/services/referral.service'
-import { DropLinkResolverService } from 'src/modules/telegram-mini-app/services/drop-link-resolver.service'
 import { ExchangeRateService } from 'src/modules/exchange-rate/services'
 import { SaleTerminalService } from 'src/modules/telegram-mini-app/services/sale-terminal.service'
 import { TmaServiceTraderService } from 'src/modules/telegram-mini-app/services/tma-service-trader.service'
@@ -42,16 +41,13 @@ import { TransactoApiService } from 'src/modules/transacto/services/transacto-ap
 import { TerminalDbService } from 'src/modules/repositories/terminal-db/services'
 import { TerminalBroadcastService } from 'src/modules/terminal'
 import { getTrustLevel, BANK_PAYMENT_METHOD_ID, BankProvider } from 'src/shared/constants'
-import {
-  describeError,
-  isSameCardNumber,
-  resolveReceiverName,
-  settleSale
-} from 'src/shared/utils'
+import { describeError, settleSale } from 'src/shared/utils'
 import { TerminalSource, TMA_TERMINAL_NAME_PREFIX } from '@transacto/contracts'
 import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
 import environments from 'src/environments'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
+import type { SaleDestinationStrategy } from 'src/modules/telegram-mini-app/interfaces/sale-destination-strategy.interface'
+import { SALE_DESTINATION_STRATEGIES } from 'src/shared/constants'
 
 /**
  * How long a user's create lock survives without being released.
@@ -83,15 +79,38 @@ export class SaleFacadeService {
     private readonly serviceTrader: TmaServiceTraderService,
     private readonly progressService: SaleProgressService,
     private readonly referralService: ReferralService,
-    private readonly dropLinkResolver: DropLinkResolverService,
     private readonly terminalService: SaleTerminalService,
     private readonly exchangeRateService: ExchangeRateService,
     private readonly tmaGateway: TmaGateway,
     private readonly eventEmitter: EventEmitter2,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly balanceLedger: BalanceLedgerService,
-    private readonly blockService: SaleBlockService
+    private readonly blockService: SaleBlockService,
+    @Inject(SALE_DESTINATION_STRATEGIES)
+    private readonly destinationStrategies: readonly SaleDestinationStrategy[]
   ) {}
+
+  /**
+   * The strategy that owns one variant.
+   *
+   * A lookup rather than a `switch`, so a third variant is a provider in the
+   * module's array and nothing here changes. An unknown method is an
+   * unsupported one, not a silent fall back to jar: falling back would create a
+   * jar terminal for somebody who asked for a card, with a `cred3` that does
+   * not exist and a stake already frozen against it.
+   */
+  private destinationFor(method: SaleMethod): SaleDestinationStrategy {
+    const strategy = this.destinationStrategies.find(
+      (candidate) => candidate.method === method
+    )
+
+    if (!strategy) {
+      this.logger.error(`No sale destination strategy is registered for ${method}`)
+      throw new BadRequestException(ERROR.SALE.UNSUPPORTED_BANK_TYPE)
+    }
+
+    return strategy
+  }
 
   /**
    * Creates a new sale:
@@ -103,96 +122,51 @@ export class SaleFacadeService {
    */
   async createSale(
     telegramId: number,
-    fiatAmount: number,
-    bankType: BankProvider,
-    dropLink: string,
-    cardNumber: string,
-    quotedRate: number,
-    remainderPolicy: SaleRemainderPolicy = SaleRemainderPolicy.WAIT_FOR_TOP_UP
+    request: CreateSaleReq
   ) {
-    // 0. Refuse a bank that is switched off, before a single call is made.
-    //
-    // The create form greys these out, but that is a courtesy: the request is
-    // trivially assembled by hand, and a Mini App left open from before the
-    // change knows nothing about it. Creation only — orders already running on
-    // a bank that is later switched off keep being scraped and settled.
-    if (!isSaleBankEnabled(bankType)) {
-      this.logger.warn(
-        `Refused a sale for telegramId ${telegramId}: ${bankType} is not open for new orders`
-      )
-      throw new BadRequestException(ERROR.SALE.BANK_UNAVAILABLE)
-    }
+    const { fiatAmount, bankType, cardNumber, quotedRate } = request
+    const remainderPolicy = request.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP
 
-    // 0b. Normalise the link before anything is written or sent upstream.
-    //
-    // The create form already resolves on blur, but this is what makes a short
-    // link work regardless of how the request arrived — and it is cheap, since
-    // a link that is already usable returns without a network call. Doing it
-    // here rather than in the controller means the resolved link is the only
-    // one the order, the terminal and Transacto ever see; storing the short one
-    // would produce a terminal that looks healthy and never scrapes.
-    const {
-      link: resolvedDropLink,
-      goal: observedGoal,
-      cardNumber: dropCardNumber,
-      cardNumberMask: dropCardMask,
-      ownerName: dropOwnerName
-    } = await this.dropLinkResolver.resolve(bankType, dropLink)
-
-    // 0c. Settle which card this order pays into.
-    //
-    // Where the bank names one, **the bank's answer is the card** and whatever
-    // the client sent is discarded. Checking the two for equality and then
-    // using the client's would leave the account resting on a comparison; using
-    // the bank's leaves it resting on the bank. The form no longer lets the
-    // field be edited for these banks, so a difference here means a stale or
-    // tampered client and is worth a line in the log, but it changes nothing.
-    //
-    // Truthiness rather than `!== null`: the precondition is "we know the
-    // card", and an empty string or a missing field satisfies that no better
-    // than an explicit null does.
-    const cardVerifiedByBank = Boolean(dropCardNumber)
-
-    if (disclosesCardNumber(bankType) && !cardVerifiedByBank) {
-      // Nothing to fall back to. Accepting the typed number would put an
-      // unverified account into the system through the one route built to make
-      // that impossible.
-      this.logger.warn(
-        `Refused a sale for telegramId ${telegramId}: ${bankType} named no card for this link`
-      )
-      throw new BadRequestException(ERROR.SALE.CARD_NOT_DISCLOSED)
-    }
-
-    if (cardVerifiedByBank && !isSameCardNumber(dropCardNumber as string, cardNumber)) {
-      this.logger.warn(
-        `Sale for telegramId ${telegramId}: the client sent a card the drop link does ` +
-          `not pay into; using the bank's own answer`
-      )
-    }
-
-    // A bank that publishes its card *partially* is checked here rather than
-    // trusted. The card stays the user's — a mask has four digits missing and
-    // cannot be paid into — but one that disagrees with the digits PUMB does
-    // show cannot be the right card, and refusing it now costs a form error
-    // where discovering it later costs three expired orders and a frozen stake.
-    if (masksCardNumber(bankType) && dropCardMask && !matchesMaskedCard(cardNumber, dropCardMask)) {
-      this.logger.warn(
-        `Refused a sale for telegramId ${telegramId}: the typed card does not fit the ` +
-          `mask ${bankType} publishes for this link`
-      )
-      throw new BadRequestException(ERROR.SALE.CARD_MASK_MISMATCH)
-    }
-
-    // Banks that disclose nothing — Monobank — and banks that disclose only a
-    // mask still rely on what the user typed, and their orders keep the
-    // dead-order fraud rule that exists precisely because of that. Four unknown
-    // digits are ten thousand candidates: a mask narrows the field, it does not
-    // close it.
-    const payoutCardNumber = cardVerifiedByBank ? (dropCardNumber as string) : cardNumber
+    // Absent means a jar sale, which is what every client that predates the
+    // choice is asking for and the only thing it could have meant.
+    const saleMethod = request.saleMethod ?? SaleMethod.JAR
+    const destinations = this.destinationFor(saleMethod)
 
     // 1. Load the user and their level.
+    //
+    // Before the destination rather than after it, because resolving one needs
+    // the seller: a jar sale falls back to their Telegram profile for the name
+    // a payer will see. One read either way.
     const user = await this.userDbService.findByTelegramId(telegramId)
     if (!user) throw new NotFoundException(ERROR.SALE.USER_NOT_FOUND)
+
+    // 1a. Settle where the money is going, and refuse what this variant cannot
+    // do — all of it before a single cent is frozen.
+    //
+    // Everything that differs between a jar sale and a card sale lives behind
+    // this call: which banks are open, whether there is a link to resolve, who
+    // names the card and who names the recipient. The rest of this method is
+    // the same money either way.
+    const destination = await destinations.resolve({
+      seller: {
+        telegramId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username
+      },
+      bankType,
+      dropLink: request.dropLink ?? '',
+      cardNumber,
+      receiverName: request.receiverName
+    })
+
+    const {
+      receiverName,
+      payoutCardNumber,
+      dropLink: resolvedDropLink,
+      cardVerifiedByBank,
+      observedGoal
+    } = destination
 
     const sellRateKopecks = await this.getSellRate()
 
@@ -289,14 +263,6 @@ export class SaleFacadeService {
         details: `Required: ${requiredUsdtCents / 100} USDT, available: ${user.balance / 100} USDT`
       })
     }
-    const receiverName = resolveReceiverName({
-      bankOwnerName: dropOwnerName,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      username: user.username,
-      telegramId
-    })
-
     // 3a. Take this user's create lock, and hold it across the slot check, the
     // freeze and the insert.
     //
@@ -344,13 +310,26 @@ export class SaleFacadeService {
         try {
           const created = await this.saleDbService.create({
             telegramId,
+            saleMethod,
             fiatAmount: target,
             exchangeRate: sellRateKopecks,
             frozenUsdt: requiredUsdtCents,
             bankType,
-            dropLink: resolvedDropLink,
+            // Empty on a card sale, which has no jar to route anybody to.
+            dropLink: resolvedDropLink ?? '',
             remainderPolicy,
             receiverName,
+            // Unchecked, on either variant: a jar's owner name and a seller's
+            // typed one are both assembled from what was available rather than
+            // read off the account the money lands on. Only a statement moves
+            // this, and only a card sale can produce one.
+            receiverNameSource: SaleReceiverNameSource.DECLARED,
+            // Four digits, never sixteen: enough to recognise the payout
+            // account on a statement and to name it on screen, and not a
+            // payment credential at rest. Only a card sale has one to keep —
+            // a jar sale's destination is its link.
+            payoutCardTail:
+              saleMethod === SaleMethod.CARD ? cardTail(payoutCardNumber) : null,
             cardVerifiedByBank
           })
 
@@ -395,16 +374,32 @@ export class SaleFacadeService {
       // that identifies the terminal in the Transacto panel.
       const terminalName = `${TMA_TERMINAL_NAME_PREFIX}${sale.publicId}`
 
+      // The knobs that differ per variant, in this codebase's own vocabulary;
+      // the mapping onto Transacto's field names happens here and nowhere else.
+      //
+      // For a card sale these three numbers are not tuning. They are what
+      // stands in for `SaleBlockReason.LEDGER_MISMATCH`, which cannot exist
+      // where the seller's word is the only record of the money — see
+      // `CardSaleDestinationService.credentialLimits`.
+      const limits = destinations.credentialLimits(target)
+
       const credentialResult = await this.transactoApiService.createCredential(apiToken, {
         terminal_name: terminalName,
         name: receiverName,
         payment_method_id: paymentMethodId,
         cred: payoutCardNumber,
-        cred3: resolvedDropLink,
+        // Omitted rather than sent empty on a card sale: `cred3` is "the jar",
+        // and an empty one is a jar that does not exist rather than no jar.
+        ...(resolvedDropLink !== null ? { cred3: resolvedDropLink } : {}),
         limit_by_day: fiatAmountUah,
         max_turnover: fiatAmountUah,
         max_turnover_daily: fiatAmountUah,
-        max_open_orders: 3,
+        max_open_orders: limits.maxOpenOrders,
+        ...(limits.minAmountUah !== undefined ? { min_amount: limits.minAmountUah } : {}),
+        ...(limits.maxAmountUah !== undefined ? { max_amount: limits.maxAmountUah } : {}),
+        ...(limits.maxTxCountTotal !== undefined
+          ? { max_tx_count_total: limits.maxTxCountTotal }
+          : {}),
         enabled: 1,
         enable_orders: 1
       })
@@ -422,6 +417,9 @@ export class SaleFacadeService {
             cardId: credentialResult.card_id,
             terminalId: credentialResult.terminal_id,
             terminalName,
+            // `null` on a card sale, and read that way downstream: the order
+            // poller treats a terminal with no jar link as one the scraper has
+            // no business queueing.
             cred3: resolvedDropLink,
             enabled: true,
             source: TerminalSource.TMA,

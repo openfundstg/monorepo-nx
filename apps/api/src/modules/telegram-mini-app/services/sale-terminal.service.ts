@@ -100,6 +100,33 @@ export class SaleTerminalService {
    * asked for it and is watching the answer; telling them the terminal is back
    * when it is not would leave an order marked live that no payer can reach.
    */
+  /**
+   * Lets payers be routed here again, without a full reactivation.
+   *
+   * The mirror of {@link stopRouting}, and the way a card sale comes back after
+   * a dispute is settled. The terminal never left service — only its
+   * `enable_orders` did — so this is the smaller of the two switches and the
+   * one that matches what was actually turned off.
+   *
+   * **Throws, like {@link enable} and unlike {@link stopRouting}**, for the same
+   * reason: this runs because somebody is waiting to be told the sale is taking
+   * money again, and saying so while it is not would leave them watching a
+   * terminal no payer can reach.
+   */
+  async resumeRouting(order: DisposableTerminal, context: string): Promise<void> {
+    const { cardId, traderId } = order
+    if (cardId === null || traderId === null) return
+
+    const { apiToken } = await this.serviceTrader.resolve()
+
+    await this.activation.resumeRouting({
+      traderId,
+      cardId,
+      reason: `${context} order ${order.publicId}`,
+      apiToken
+    })
+  }
+
   async enable(order: DisposableTerminal, context: string): Promise<void> {
     const { cardId, traderId } = order
     if (cardId === null || traderId === null) return

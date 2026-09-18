@@ -67,7 +67,7 @@
       },
       "SELL": {
         "title": "Sell",
-        "text": "Create a jar in your banking app and paste its link — payers fill it with hryvnia. The rate under the button is what you get per USDT: more than you paid."
+        "text": "Two ways to sell USDT: into a jar — paste its link and payers fill it with hryvnia; or straight onto your card — then you confirm each payment yourself. The rate under the button is what you get per USDT: more than you paid."
       },
       "ACTIVITY": {
         "title": "Your activity",
@@ -234,7 +234,7 @@
     }
   },
   "sale": {
-    "create": "Create a sale",
+    "create": "Sale to a jar",
     "method_title": "Sell USDT",
     "method_lead": "Choose where you will receive hryvnia.",
     "method_jar": "Jar",
@@ -353,7 +353,49 @@
     "rate_use_current": "The rate moved — update the amount to {{amount}} USDT",
     "awaiting_jar_title": "These jars are still open",
     "awaiting_jar_desc": "The sale is finished; the jar is not. While it is open the slot stays taken. Close it in your banking app and the slot is released automatically.",
-    "limit_blocked_by_jars": "Your level allows {{max}} sales at once, and {{jars}} of those slots are held by finished sales whose jars are still open. Close the jar and the slot comes back."
+    "limit_blocked_by_jars": "Your level allows {{max}} sales at once, and {{jars}} of those slots are held by finished sales whose jars are still open. Close the jar and the slot comes back.",
+    "card_create": "Sell to a card",
+    "card_unavailable": "Selling to a card is unavailable right now.",
+    "card_bank_label": "Card’s bank",
+    "card_number_placeholder": "0000 0000 0000 0000",
+    "card_number_hint": "The card the money will reach.",
+    "card_receiver_label": "Cardholder’s full name",
+    "card_receiver_placeholder": "Petrenko Roman Ivanovych",
+    "card_submit": "Sell to a card",
+    "rate_moved": "The rate moved — the amount has been updated.",
+    "card_orders_title": "Payments to your card",
+    "card_order_arrived": "Expected",
+    "card_order_confirm": "Money arrived",
+    "card_order_deny": "Nothing arrived",
+    "card_order_confirm_hint": "Only confirm once you can see the money on your card. One payment can arrive as several transfers — wait for all of them.",
+    "card_order_deadline": "Confirm by",
+    "card_statement_title": "Send your statement",
+    "card_statement_hint": "A PDF statement from the bank covering this payment. A screenshot will not do — we verify the bank’s signature.",
+    "card_statement_upload": "Choose a file",
+    "card_statement_uploading": "Checking…",
+    "card_order_deny_confirm": "Sure nothing arrived?",
+    "card_guide": {
+      "title": "How this works",
+      "terms_label": "You will receive",
+      "term_orders": "Payments, at most",
+      "term_per_order": "Each, at least",
+      "step_split": "The total is split into several payments — each payer sends their part separately.",
+      "step_payer": "The money arrives straight on your card. As soon as a payment is routed to you, we say so — in the app and in the bot.",
+      "step_confirm": "Once you see the money on your card, confirm the payment. The next one is only routed after that.",
+      "step_statement": "If a payment's time runs out and nothing arrived, tap «Nothing arrived» and send a PDF statement. We check the bank's signature ourselves.",
+      "warning": "Only confirm what you can actually see on your card."
+    },
+    "card_order_waiting": "The money should arrive within:",
+    "card_order_overdue": "This payment is now overdue.",
+    "card_order_deny_locked": "«Nothing arrived» becomes available once the payment is overdue.",
+    "card_number_invalid": "Check the card number — one of the digits looks wrong.",
+    "card_order_amend_open": "A different amount arrived?",
+    "card_order_amend_label": "How much arrived in total",
+    "card_order_amend_hint": "Add up every transfer for this payment and enter the total. If it is far short we will stop further payments and ask for a statement. We will ask for one at the end either way, to check the figures; until then the remainder stays frozen.",
+    "card_order_amend_submit": "Confirm this amount",
+    "card_order_declared": "You stated: {{amount}} UAH",
+    "card_checkpoint_title": "A statement is needed",
+    "card_checkpoint_hint": "You said one of the payments arrived short. Send a PDF statement for the card — we will check the amounts and release the remainder to your balance. Until then it stays frozen."
   },
   "SALE_EVENT": {
     "TERMINAL_CREATED": "Terminal created and ready to receive funds",
@@ -368,7 +410,11 @@
     "STOPPED_BY_USER": "Stopped early by you",
     "REMAINDER_REFUNDED": "Remainder returned to your balance: {{amount}} USDT",
     "RESUMED_BY_ADMIN": "An administrator lifted the block — the order is accepting funds again.",
-    "RELEASED_BY_ADMIN": "An administrator lifted the block and returned your stake to your balance."
+    "RELEASED_BY_ADMIN": "An administrator lifted the block and returned your stake to your balance.",
+    "ORDER_CONFIRMED": "Payment confirmed",
+    "ORDER_DISPUTED": "Payment not confirmed",
+    "STATEMENT_SUBMITTED": "Statement sent",
+    "STATEMENT_REJECTED": "Statement not accepted"
   },
   "status": {
     "created": "Created",
@@ -497,17 +543,33 @@
     "2409": "Reading the receipt did not finish in time. Try uploading it again.",
     "2410": "The previous receipt is still being processed. Give it a few seconds.",
     "2411": "That amount opens up after your first successful deposit.",
-    "2500": "The payment partner is unavailable right now. Try again in a minute.",
-    "2501": "The payment partner answered unexpectedly. We are looking into it.",
     "2412": "The window to upload a receipt has closed. File an appeal and an operator will check the payment.",
     "2415": "That range will not work. Check that “to” is not below “from”, and that the amounts are not too small.",
-    "2416": "These amounts open up after your first successful top-up. For now, pick a lower range."
+    "2416": "These amounts open up after your first successful top-up. For now, pick a lower range.",
+    "2500": "The payment partner is unavailable right now. Try again in a minute.",
+    "2501": "The payment partner answered unexpectedly. We are looking into it.",
+    "2600": "Card sales are unavailable right now.",
+    "2601": "This sale pays into a jar, not onto a card.",
+    "2602": "There is no such payment on this sale.",
+    "2603": "This payment has already been handled — nothing to do.",
+    "2604": "This payment can no longer be confirmed. Please contact support.",
+    "2605": "No statement is needed for this payment.",
+    "2606": "Your previous statement is still being checked. Please wait.",
+    "2607": "We cannot check statements from this bank yet.",
+    "2608": "The statement must be a PDF.",
+    "2609": "That file is too large. Please send a smaller statement.",
+    "2610": "Please enter the cardholder's name.",
+    "2611": "The confirmation could not be sent. Please try again.",
+    "2612": "A card number must be 16 digits.",
+    "2613": "This payment is not late yet — please wait.",
+    "2614": "More cannot have arrived than the order was for."
   },
   "BLOCK_REASON": {
     "GOAL_MISMATCH": "The jar target does not match the order amount. It must be exactly {{target}} ₴.",
     "ORDERS_EXPIRED": "Three orders in a row expired while the jar stayed empty. This usually means the card number does not belong to this jar.",
     "ADMIN_DECISION": "This order was stopped by an administrator. Contact support if you believe this is a mistake.",
-    "LEDGER_MISMATCH": "The credited orders do not add up to what actually reached the jar. The order is paused for an operator to check — your funds stay frozen."
+    "LEDGER_MISMATCH": "The credited orders do not add up to what actually reached the jar. The order is paused for an operator to check — your funds stay frozen.",
+    "ORDER_UNCONFIRMED": "A card payment was never confirmed, and the statement did not settle it. Please contact support."
   },
   "trust_page": {
     "title": "Trust levels",
@@ -524,5 +586,24 @@
     "title": "Open in Telegram",
     "text": "This app only works inside Telegram.",
     "open": "Open the bot"
+  },
+  "SALE_CARD_ORDER": {
+    "AWAITING_CONFIRMATION": "Awaiting confirmation",
+    "CONFIRMED": "Confirmed",
+    "DISPUTED": "Not confirmed",
+    "PROVEN_PAID": "Confirmed by statement",
+    "PROVEN_UNPAID": "The statement showed no such payment"
+  },
+  "SALE_STATEMENT": {
+    "SIGNATURE_INVALID": "The file carries no valid bank signature.",
+    "NOT_A_BANK_SIGNER": "It is signed, but not by the bank.",
+    "UNREADABLE": "The document could not be read in full.",
+    "PERIOD_TOO_SHORT": "Its period does not cover this payment.",
+    "WRONG_ACCOUNT": "The statement is for a different account.",
+    "CONTRADICTED": "The statement shows this payment arriving.",
+    "NOT_REGISTERED": "The bank does not know this document.",
+    "VERIFIER_UNAVAILABLE": "It could not be checked just now — we will look at it by hand.",
+    "UNSUPPORTED_TYPE": "A PDF statement from the bank is needed.",
+    "TOO_LARGE": "That file is too large — 10 MB at most."
   }
 }

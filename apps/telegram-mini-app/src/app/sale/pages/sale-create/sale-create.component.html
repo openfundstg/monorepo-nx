@@ -1,80 +1,29 @@
 <div class="sale-create">
   <h2 class="page-title">{{ 'sale.create' | translate }}</h2>
 
-  @if (rateUnavailable()) {
+  @if (pricing.rateUnavailable()) {
     <div class="validation-error">
       {{ 'common.rate_unavailable' | translate }}
-      <button class="link-btn" (click)="loadConfig()">{{ 'common.retry' | translate }}</button>
+      <button class="link-btn" (click)="pricing.load()">{{ 'common.retry' | translate }}</button>
     </div>
   }
 
-  <!-- Amount Input -->
-  <div class="input-group glass-card">
-    <label class="input-label">{{ 'sale.amount_usdt_label' | translate }}</label>
-    <div class="amount-input-wrap">
-      <input
-        type="number"
-        [placeholder]="'sale.amount_usdt_placeholder' | translate"
-        [(ngModel)]="usdtAmount"
-        (ngModelChange)="rateMoved.set(false)"
-        min="10"
-        step="10"
-        class="amount-input"
-        id="sale-amount-input"
-      />
-      <span class="input-suffix">{{ 'common.usdt' | translate }}</span>
-    </div>
-
-    <!--
-      First of the three, and shown before an amount is typed: it is the rate
-      the other two figures and the whole maths preview below are expressed in,
-      so a user who has not entered anything yet still knows what a USDT buys.
-    -->
-    @if (sellRateKopecks() > 0) {
-      <div class="limits-info">
-        <app-exchange-rate [rate]="sellRateKopecks()" />
-      </div>
-    }
-
-    <!--
-      The floor, stated rather than only enforced. It was enforced by `isValid()`
-      and by the server all along, but nothing named it — so an amount under it
-      produced a dead submit button and no explanation.
-    -->
-    <div class="limits-info">
-      <span class="limit-label">{{ 'sale.min_for_order' | translate }}:</span>
-      <span class="limit-value" [class.error]="belowMinimum()">
-        {{ minOrderUsdt }} {{ 'common.usdt' | translate }}
-      </span>
-    </div>
-
-    <div class="limits-info">
-      <span class="limit-label">{{ 'sale.available_balance' | translate }}:</span>
-      <span class="limit-value" [class.error]="!hasSufficientBalance()">
-        {{ balanceCents() | usdt }} {{ 'common.usdt' | translate }}
-      </span>
-    </div>
-
-    <div class="limits-info">
-      <span class="limit-label">{{ 'sale.parallel_for_level' | translate }}:</span>
-      <span class="limit-value" [class.error]="slotsExhausted()">
-        {{ openOrders() }} / {{ maxParallelOrders() }}
-      </span>
-    </div>
-
+  <app-sale-amount>
     <!--
       Which sales are taking the slots, whenever any of them is a finished one.
       Shown even with slots to spare: a user one sale away from the limit should
       find out now that a jar is holding a slot, not at the moment the form
-      refuses them.
+      refuses them. The card variant has no equivalent — its slots are held only
+      by sales that are actually running — which is why this is projected in
+      rather than living in the shared block.
     -->
-    @if (awaitingJarClosure().length > 0) {
+    @if (pricing.awaitingJarClosure().length > 0) {
       <div class="awaiting-jars" [class.blocking]="blockedByOpenJars()">
         <h4>{{ 'sale.awaiting_jar_title' | translate }}</h4>
         <p>{{ 'sale.awaiting_jar_desc' | translate }}</p>
 
         <ul>
-          @for (sale of awaitingJarClosure(); track sale.publicId) {
+          @for (sale of pricing.awaitingJarClosure(); track sale.publicId) {
             <li>
               <button type="button" class="awaiting-jar-row" (click)="openSale(sale.id)">
                 <span class="awaiting-jar-bank">{{ bankNameKey(sale.bankType) | translate }}</span>
@@ -86,53 +35,24 @@
       </div>
     }
 
-    @if (belowMinimum()) {
-      <div class="validation-error">
-        {{ 'sale.min_amount' | translate: { min: minOrderUsdt } }}
-      </div>
-    }
-
     <!--
       Two causes, two sentences. Slots held by running sales clear themselves;
       slots held by finished ones clear only when their owner closes the jar, so
       "finish the current one" is advice that can never be followed.
     -->
-    @if (slotsExhausted()) {
+    @if (pricing.slotsExhausted()) {
       <div class="validation-error">
         @if (blockedByOpenJars()) {
           {{
             'sale.limit_blocked_by_jars'
-              | translate: { max: maxParallelOrders(), jars: awaitingJarClosure().length }
+              | translate: { max: pricing.maxParallelOrders(), jars: pricing.awaitingJarClosure().length }
           }}
         } @else {
-          {{ 'sale.parallel_limit_reached' | translate: { max: maxParallelOrders() } }}
+          {{ 'sale.parallel_limit_reached' | translate: { max: pricing.maxParallelOrders() } }}
         }
       </div>
     }
-
-    @if (!hasSufficientBalance()) {
-      <div class="validation-error">
-        {{ 'sale.insufficient_balance' | translate }}
-      </div>
-    }
-
-    @if ((usdtAmount() ?? 0) > 0 && !rateUnavailable()) {
-      <div class="math-preview">
-        <!--
-          The total, and only the total. The rate is stated once at the top of
-          this screen and repeating it here was two labels for one number —
-          left over from when the form was given a market rate and a markup and
-          had to show what it made of them.
-        -->
-        <div class="math-row total">
-          <span>{{ usdtAmount() }} {{ 'common.usdt' | translate }} =</span>
-          <span class="math-val"
-            >{{ targetKopecks() | uah: true }} {{ 'common.uah' | translate }}</span
-          >
-        </div>
-      </div>
-    }
-  </div>
+  </app-sale-amount>
 
   <!-- Bank Selection -->
   <div class="bank-section glass-card">
@@ -181,7 +101,7 @@
       the bank so switching the selection above rebuilds the whole guide, rather
       than leaving Monobank's steps under a PUMB order.
     -->
-    <app-bank-instructions [bank]="selectedBank()" [targetAmount]="targetKopecks()" />
+    <app-bank-instructions [bank]="selectedBank()" [targetAmount]="pricing.targetKopecks()" />
 
     <label class="input-label mt-3">{{ 'sale.paste_link' | translate }}</label>
     <input
@@ -212,7 +132,7 @@
         {{
           'sale.goal_mismatch'
             | translate
-              : { actual: (jarGoal() | uah: true), required: (targetKopecks() | uah: true) }
+              : { actual: (jarGoal() | uah: true), required: (pricing.targetKopecks() | uah: true) }
         }}
       </p>
       <!--
@@ -314,7 +234,7 @@
               }
             </span>
             <span class="remainder-desc">
-              {{ option.descriptionKey | translate: { amount: minOrderKopecks() / 100 } }}
+              {{ option.descriptionKey | translate: { amount: pricing.minOrderKopecks() / 100 } }}
             </span>
           </div>
         </div>
@@ -323,13 +243,15 @@
   </div>
 
   <!-- Submit -->
+  <!-- Static `disabled` as well as the binding — see deposit-create for why. -->
   <button
     class="primary-btn"
-    [disabled]="submitting() || !isValid() || !hasSufficientBalance()"
+    disabled
+    [disabled]="submit.submitting() || !isValid() || !pricing.hasSufficientBalance()"
     (click)="onSubmit()"
   >
     <span class="btn-text">
-      @if (submitting()) {
+      @if (submit.submitting()) {
         <div class="btn-spinner"></div>
       } @else {
         {{ 'sale.confirm' | translate }}
@@ -337,8 +259,8 @@
     </span>
   </button>
 
-  @if (errorMsg()) {
-    <p class="error-msg">{{ errorMsg() }}</p>
+  @if (submit.errorMsg()) {
+    <p class="error-msg">{{ submit.errorMsg() }}</p>
   }
 
   <!--
@@ -351,7 +273,7 @@
     Only offered when the jar published a goal to aim at; without one there is
     nothing to derive an amount from and the message stands on its own.
   -->
-  @if (rateMoved() && suggestedUsdtCents(); as suggested) {
+  @if (submit.rateMoved() && suggestedUsdtCents(); as suggested) {
     <button type="button" class="primary-btn rate-fix" (click)="useCurrentRate()">
       {{ 'sale.rate_use_current' | translate: { amount: suggested | usdt } }}
     </button>

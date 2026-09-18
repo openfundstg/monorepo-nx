@@ -1,15 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { Types } from 'mongoose'
 import { SaleBlockReason, SaleEventType } from '@transacto/contracts'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
 import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale-progress.service'
 import { SaleTerminalService } from 'src/modules/telegram-mini-app/services/sale-terminal.service'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 
 /** A lean order document plus its id — what the checks hand over. */
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 
 /**
  * Stops a sale that broke a rule, and takes its terminal down with it.

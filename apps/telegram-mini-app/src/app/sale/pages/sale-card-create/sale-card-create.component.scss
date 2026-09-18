@@ -1,0 +1,25 @@
+/*
+  Nothing but this screen's own frame.
+
+  Every shape on it — the labels, the amount field, the figures under it, the
+  bank picker, the errors — is the same object the jar form uses, so it is
+  defined once in `styles/_form.scss` and the guide panel in
+  `styles/_guide.scss`. This file used to restate all of them under invented
+  token names (`--text-primary`, `--surface-2`, `--radius-md`), which resolve to
+  nothing and rendered the form flat and unpadded; the fix is not to correct the
+  names but to stop having a second copy to correct.
+*/
+
+/* A sub-flow: no bottom nav, so only the gesture bar needs reserving. */
+:host {
+  display: block;
+  padding: var(--page-pad) var(--page-pad) calc(24px + var(--app-safe-bottom, 0px));
+}
+
+.page-title {
+  margin-bottom: 20px;
+}
+
+.glass-card {
+  margin-bottom: 20px;
+}

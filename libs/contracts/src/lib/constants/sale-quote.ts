@@ -211,3 +211,141 @@ export const usdtCentsForKopecks = (
 
 /** Kopecks → whole hryvnia, the unit every goal check speaks. */
 export const toWholeUah = (kopecks: number): number => Math.round(kopecks / KOPECKS_PER_UAH);
+
+/**
+ * How short a recipient name a card sale will accept.
+ *
+ * Here rather than on either side, because both enforce it: the form disables
+ * its button and `CardSaleDestinationService` refuses the request. That is
+ * exactly the arrangement the root `CLAUDE.md` names — a rule the screen shows
+ * and the backend enforces for real may not be stated twice — and it was,
+ * briefly, in two files whose comments each pointed at the other.
+ *
+ * Three, which is a surname and an initial rather than a length anybody has
+ * measured. What it excludes is an empty box and a stray character, not a short
+ * name: it is a guard against nothing being typed, and the statement is what
+ * actually establishes who the account belongs to.
+ */
+export const MIN_RECEIVER_NAME_LENGTH = 3;
+
+/**
+ * How many Transacto orders a card sale may ever be split into.
+ *
+ * A card sale has no scraper behind it: the only record that hryvnia arrived is
+ * the seller pressing a button. `SaleBlockReason.LEDGER_MISMATCH` — the guard
+ * that catches money counted twice — compares two independent records and so
+ * cannot exist here at all.
+ *
+ * This number is what stands in its place. Together with
+ * {@link saleCardMinOrderKopecks} and a credential capped at one open order, it
+ * bounds what a single unnoticed mistake can cost at roughly a seventh of the
+ * sale rather than the whole of it. It is not a tuning knob, and raising it
+ * widens that blast radius in exact proportion.
+ */
+export const SALE_CARD_MAX_ORDERS = 7;
+
+/**
+ * The smallest order a card sale will accept, in kopecks.
+ *
+ * An equal share of the target, floored to a whole hryvnia, but never below the
+ * pipeline's own floor. Transacto enforces it as `min_amount` on the credential,
+ * so this is not advice to a payer — it is the number that stops an eighth order
+ * from ever being routed.
+ *
+ * **It floors, and the direction is load-bearing.** Let `t` be the target in
+ * hryvnia and `m = floor(t / 7)`. Then `t = 7m + r` with `0 ≤ r < 7`, so
+ * `floor(t / m) = 7 + floor(r / m)`, and `floor(r / m)` is zero for every `m`
+ * above six — which the ₴300 pipeline floor guarantees by two orders of
+ * magnitude. Exactly seven orders fit, with at most ₴6 left over.
+ *
+ * Rounding **up** looks equally defensible and quietly costs a whole order:
+ * `ceil(10 000 / 7) = 1 429`, seven of which is ₴10 003 — so only six fit, and
+ * ₴1 426 of the sale becomes an unfillable tail the user gets back as USDT
+ * instead of the hryvnia they asked for.
+ *
+ * The floor argument is taken the other way, **up** to a whole hryvnia, because
+ * it is somebody else's minimum: rounding a ₴300.50 floor down to ₴300 would
+ * publish a minimum Transacto refuses to route.
+ */
+export const saleCardMinOrderKopecks = (
+  targetKopecks: number,
+  floorKopecks: number,
+): number =>
+  // `|| pipelineFloorKopecks` because the two answer different questions. This
+  // one is printed on the create form and sent as the credential's `min_amount`
+  // — "the smallest order a sale this size will take" — and has an answer even
+  // for a target too small to route at all, which is the pipeline's own floor.
+  // The general form returns `0` there instead, because its caller has to *act*
+  // on nothing being routable.
+  saleCardOrderFloorKopecks(targetKopecks, floorKopecks, SALE_CARD_MAX_ORDERS) ||
+  pipelineFloorKopecks(floorKopecks);
+
+/**
+ * The pipeline's own floor, taken up to a whole hryvnia.
+ *
+ * **Up, not down, because it is somebody else's minimum:** rounding a ₴300.50
+ * floor down to ₴300 would publish a figure Transacto refuses to route.
+ */
+export const pipelineFloorKopecks = (floorKopecks: number): number =>
+  Math.ceil(floorKopecks / KOPECKS_PER_UAH) * KOPECKS_PER_UAH;
+
+/**
+ * The same figure, for a sale that is already part-filled.
+ *
+ * **A card sale's minimum is not fixed for its lifetime, and treating it as one
+ * strands money.** Suppose a ₴10 000 sale, minimum ₴1 428, seven orders. Two
+ * payers send ₴4 500 each: ₴9 000 has arrived, ₴1 000 is left, and five of the
+ * seven slots are unused — but nothing under ₴1 428 can be routed, so the ₴1 000
+ * is unreachable and the sale simply stops. The user asked for ₴10 000, received
+ * ₴9 000, and the rest comes back as USDT they did not want.
+ *
+ * So the share is taken again after every order that settles, over what is
+ * actually left and the slots that are actually free: ₴1 000 across five slots
+ * is ₴200, which the ₴300 pipeline floor then lifts to ₴300 — three more orders
+ * instead of none.
+ *
+ * **It is not a ratchet, and an earlier draft of this comment claimed it was.**
+ * The minimum can rise a little: flooring to whole hryvnia leaves up to ₴1 of
+ * each order's true share in the remainder, and that residue divided by fewer
+ * slots can come out above the opening figure. A ₴10 000 sale opens at ₴1 428
+ * and reaches ₴1 429 by its fourth order. What is actually guaranteed is
+ * weaker and is the property that matters: the minimum is never more than what
+ * is left, so the split always stays feasible.
+ *
+ * Returns `0` when nothing more can be routed at all: no slots left, or a
+ * remainder smaller than the pipeline will carry. That is a real state and the
+ * caller has to act on it — the tail becomes a refund or an operator's transfer
+ * — rather than a minimum of zero, which would mean "any amount".
+ */
+export const saleCardOrderFloorKopecks = (
+  remainingKopecks: number,
+  floorKopecks: number,
+  ordersLeft: number,
+): number => {
+  const pipelineFloor = pipelineFloorKopecks(floorKopecks);
+
+  if (ordersLeft <= 0 || remainingKopecks < pipelineFloor) return 0;
+
+  const equalShare = floorToWholeUah(remainingKopecks / ordersLeft);
+
+  return Math.max(pipelineFloor, equalShare);
+};
+
+/**
+ * How many orders a given target will actually be split into, at most.
+ *
+ * {@link SALE_CARD_MAX_ORDERS} whenever the equal share clears the pipeline
+ * floor, and fewer below that: a ₴1 000 sale cannot be seven ₴142 orders because
+ * nothing under ₴300 is routable, so it is at most three.
+ *
+ * The Mini App names this figure on the create form. A user who is told "up to 7
+ * transfers" and receives three has been told something false about how their
+ * money arrives, and the same arithmetic has to produce both that sentence and
+ * the credential's limits or they will disagree.
+ */
+export const saleCardMaxOrders = (targetKopecks: number, floorKopecks: number): number => {
+  const min = saleCardMinOrderKopecks(targetKopecks, floorKopecks);
+  if (min <= 0 || targetKopecks < min) return 0;
+
+  return Math.min(SALE_CARD_MAX_ORDERS, Math.floor(targetKopecks / min));
+};

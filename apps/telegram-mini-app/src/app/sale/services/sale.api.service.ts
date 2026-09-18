@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import type {
+  ConfirmCardOrderReq,
   BankProvider,
   CancelSaleRes,
   CreateSaleResponse,
@@ -60,5 +61,49 @@ export class SaleApiService {
   /** The live snapshot the status page renders — same shape as the WS push. */
   getProgress(id: string): Observable<SaleProgress> {
     return this.http.get<SaleProgress>(`${this.base}/${id}/progress`);
+  }
+
+  /**
+   * The seller says one card order's money reached their card.
+   *
+   * Answers with the same `SaleProgress` the socket pushes, so the screen the
+   * button was pressed on updates from the response rather than waiting for a
+   * round trip through the gateway.
+   */
+  confirmOrder(
+    id: string,
+    orderId: number,
+    receivedAmount?: number,
+  ): Observable<SaleProgress> {
+    // An empty body is the ordinary answer and means the whole order arrived —
+    // the same thing the bot's inline key says, which cannot carry a number.
+    const body: ConfirmCardOrderReq = receivedAmount === undefined ? {} : { receivedAmount };
+
+    return this.http.post<SaleProgress>(`${this.base}/${id}/orders/${orderId}/confirm`, body);
+  }
+
+  /** …and says it did not, which pauses the sale and asks for a statement. */
+  denyOrder(id: string, orderId: number): Observable<SaleProgress> {
+    return this.http.post<SaleProgress>(`${this.base}/${id}/orders/${orderId}/deny`, {});
+  }
+
+  /**
+   * Sends the bank statement that settles a denied order.
+   *
+   * No `Content-Type` is set by hand: the browser has to add the multipart
+   * boundary, and setting it here produces a body the server cannot parse.
+   *
+   * Answers with the progress snapshot whatever the statement turned out to
+   * say — accepted, refused, or contradicting the seller are all ordinary
+   * outcomes the screen renders rather than errors.
+   */
+  uploadStatement(id: string, orderId: number, file: File): Observable<SaleProgress> {
+    const form = new FormData();
+    form.append('file', file);
+
+    return this.http.post<SaleProgress>(
+      `${this.base}/${id}/orders/${orderId}/statement`,
+      form,
+    );
   }
 }

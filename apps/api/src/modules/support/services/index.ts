@@ -1,5 +1,6 @@
 export * from './support-album.service'
 export * from './support-alerts.listener'
+export * from './support-card-sale.service'
 export * from './support-config.service'
 export * from './support-fiat-watch.service'
 export * from './support-menu.service'

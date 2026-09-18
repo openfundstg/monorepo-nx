@@ -1,15 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
-import { Types } from 'mongoose'
 import { SaleEventType, TmaSaleStatus } from '@transacto/contracts'
 import { BankScraperService } from 'src/modules/bank-scraper'
 import { TerminalDbService } from 'src/modules/repositories/terminal-db/services'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-cancel.service'
 import { describeError, isDeadJarError } from 'src/shared/utils'
 
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 
 /**
  * Asks the bank about the jars nobody is watching, and unsticks what it finds.

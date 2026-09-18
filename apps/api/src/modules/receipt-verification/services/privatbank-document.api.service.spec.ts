@@ -90,4 +90,54 @@ describe('PrivatbankDocumentApiService', () => {
       await expect(service.downloadReceipt(CODE, grant)).rejects.toThrow()
     })
   })
+
+  /**
+   * The type is the whole vocabulary: it is the lookup's `document[type]`, the
+   * download's path segment and the prefix of the name the bank gives the file.
+   * A hard-coded `receipt` segment was correct while receipts were the only kind
+   * and would have quietly downloaded the wrong thing for a statement.
+   */
+  describe('downloadDocument', () => {
+    const grant: PrivatbankDocumentGrant = { token: 'tok', cookie: 'abc', session: 'privat:fixed' }
+
+    /** Invented to the captured shape — `QB` and fourteen more. */
+    const STATEMENT = 'QB00ABCDEFGH0000'
+
+    it.each([
+      [PrivatbankDocumentType.RECEIPT, CODE],
+      [PrivatbankDocumentType.STATEMENT, STATEMENT]
+    ])('puts %p in the path and in the file name', async (type, id) => {
+      request.mockResolvedValue(
+        result({ body: Buffer.from('%PDF-1.7'), contentType: 'application/pdf' })
+      )
+
+      const file = await service.downloadDocument(type, id, grant)
+
+      const [req] = request.mock.calls[0]
+      expect(req).toMatchObject({
+        url: `https://privatbank.ua/pb/get-doc/download/${type}/${id}?csrf=tok`
+      })
+      expect(file.fileName).toBe(`${type}-${id}.pdf`)
+    })
+
+    /**
+     * A statement's lookup is the same call with the same shape — only the type
+     * differs, which is the point of the capture that added it.
+     */
+    it('asks for a statement by its own number', async () => {
+      request.mockResolvedValue(
+        result({
+          body: Buffer.from(JSON.stringify({ status: true, token: 'tok' })),
+          setCookie: ['PHPSESSID=abc; path=/']
+        })
+      )
+
+      await service.findDocument(PrivatbankDocumentType.STATEMENT, STATEMENT)
+
+      const [req] = request.mock.calls[0]
+      expect(req).toMatchObject({
+        body: `document%5Btype%5D=statement&document%5Bid%5D=${STATEMENT}`
+      })
+    })
+  })
 })

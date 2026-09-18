@@ -2,46 +2,25 @@ import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import {
   SaleEventType,
-  SaleRemainderPolicy,
+  SaleMethod,
   TerminalSource,
   WsEventNames
 } from '@transacto/contracts'
 import type { TerminalBalanceUpdatedDto } from '@transacto/contracts'
-import {
-  classifyTerminalSource,
-  isRemainderRefundable,
-  isSaleFunded,
-  parseMinOrderKopecks
-} from 'src/shared/utils'
-import environments from 'src/environments'
+import { classifyTerminalSource } from 'src/shared/utils'
 import { OrderStatus, OrderExecutionReason } from 'src/modules/repositories/order-db'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { OrderDbService } from 'src/modules/repositories/order-db'
 import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-facade.service'
 import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale-progress.service'
 import { SaleComplianceService } from 'src/modules/telegram-mini-app/services/sale-compliance.service'
+import { SaleSettlementService } from 'src/modules/telegram-mini-app/services/sale-settlement.service'
+import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
 import {
   TERMINAL_ORDERS_EXECUTED,
   TraderWsEvent,
   TerminalOrdersExecutedEvent
 } from 'src/shared/interfaces'
-
-/**
- * The fields the settlement decision is made on.
- *
- * Widened past `{ receivedAmount, fiatAmount, jarBalance }` because the
- * remainder rule needs three more: the opening balance the delivered figure is
- * measured from, the policy the order was created under, and the card, so
- * anything still in flight on it can be checked before a tail is written off.
- */
-interface SettleableOrder {
-  receivedAmount: number
-  fiatAmount: number
-  jarBalance?: number | null
-  openingJarBalance?: number | null
-  remainderPolicy?: SaleRemainderPolicy | null
-  cardId?: number | null
-}
 
 /** Payload of the in-process `terminal.state_changed` channel. */
 interface TerminalStateChangedEvent {
@@ -83,7 +62,9 @@ export class SaleProgressListener {
     private readonly progressService: SaleProgressService,
     private readonly saleFacade: SaleFacadeService,
     private readonly compliance: SaleComplianceService,
-    private readonly orderDbService: OrderDbService
+    private readonly orderDbService: OrderDbService,
+    private readonly settlement: SaleSettlementService,
+    private readonly cardOrders: SaleCardOrderService
   ) {}
 
   /**
@@ -137,7 +118,7 @@ export class SaleProgressListener {
       // This is also the only path that notices the last stretch arriving. The
       // tail is too small for Transacto to route an order for, so the user pays
       // it in themselves — which produces a balance change and nothing else.
-      if (await this.settleIfFinished(saleId, latest)) return
+      if (await this.settlement.settleIfFinished(saleId, latest)) return
 
       // This scrape carries both figures the two post-creation rules are judged
       // on — the jar's target and its balance — and a blocked order must not go
@@ -189,8 +170,17 @@ export class SaleProgressListener {
         if (settledUpstream) {
           // Credited through the deduplicating path, because the scraper may
           // also report this same order and only one of the two may count.
-          const credited = await this.creditSettledOrder(saleId, orderEvent)
+          const credited = await this.settlement.creditSettledOrder(saleId, orderEvent)
           if (credited) latest = credited
+
+          // A card sale's order was answered by somebody other than its seller
+          // — an operator, in Transacto's panel. Closing the question here is
+          // what stops the sweep disputing an order that is already paid and
+          // stopping a terminal with nothing wrong with it.
+          if (latest.saleMethod === SaleMethod.CARD && typeof orderEvent.orderId === 'number') {
+            const closed = await this.cardOrders.markSettledUpstream(latest, orderEvent.orderId)
+            if (closed) latest = closed
+          }
           continue
         }
 
@@ -201,8 +191,21 @@ export class SaleProgressListener {
 
         // A cancelled order is not progress, so it must not move the order into
         // AWAITING_FIAT — only an incoming one does.
-        if (type === SaleEventType.ORDER_RECEIVED)
+        if (type === SaleEventType.ORDER_RECEIVED) {
           await this.saleDbService.markAwaitingFiat(saleId)
+
+          // On a card sale the arrival is also a question put to a person: no
+          // scraper will ever see this money, so the seller has to say whether
+          // it came. `recordArrival` is idempotent, and it is what puts the
+          // order on the sale's screen and in front of the bot.
+          if (latest.saleMethod === SaleMethod.CARD && typeof orderEvent.orderId === 'number') {
+            const recorded = await this.cardOrders.recordArrival(latest, {
+              orderId: orderEvent.orderId,
+              amount: orderEvent.amount ?? 0
+            })
+            if (recorded) latest = recorded
+          }
+        }
 
         const appended = await this.saleDbService.appendEvent(saleId, {
           type,
@@ -213,7 +216,7 @@ export class SaleProgressListener {
         if (appended) latest = appended
       }
 
-      if (await this.settleIfFinished(saleId, latest)) return
+      if (await this.settlement.settleIfFinished(saleId, latest)) return
 
       await this.progressService.emit(latest)
     } catch (error) {
@@ -242,98 +245,16 @@ export class SaleProgressListener {
       let latest = order
 
       for (const executed of event.orders) {
-        const credited = await this.creditSettledOrder(saleId, executed)
+        const credited = await this.settlement.creditSettledOrder(saleId, executed)
         if (credited) latest = credited
       }
 
-      if (await this.settleIfFinished(saleId, latest)) return
+      if (await this.settlement.settleIfFinished(saleId, latest)) return
 
       await this.progressService.emit(latest)
     } catch (error) {
       this.warn('executed orders', error)
     }
-  }
-
-  /**
-   * Credits one settled order, ignoring a repeat report of the same order id.
-   *
-   * Returns the updated document, or `null` when the order was already counted
-   * or carried no usable amount — a state change with no numeric amount is a
-   * status flip we cannot price, and guessing would corrupt the total.
-   */
-  private async creditSettledOrder(
-    saleId: string,
-    settled: { orderId?: number; amount?: number }
-  ) {
-    if (typeof settled.orderId !== 'number' || typeof settled.amount !== 'number') return null
-
-    return this.saleDbService.creditExecutedOrder(
-      saleId,
-      settled.orderId,
-      settled.amount,
-      Date.now()
-    )
-  }
-
-  /**
-   * Closes the order once nothing more is coming — for either of two reasons.
-   *
-   * **Funded** is the ordinary one: the target has arrived, by matched orders or
-   * by a trader's top-up. {@link isSaleFunded} is where the distinction
-   * between matched money and money merely sitting in the jar is explained.
-   *
-   * **Refundable** is the new one, and only for an order created with
-   * `REFUND_TO_BALANCE`: the gap left is smaller than any order the pipeline can
-   * route, so it will never be filled by a payment. Rather than wait for someone
-   * to pay it in by hand, the tail goes back to the user as USDT and the order
-   * closes successfully. See {@link isRemainderRefundable}.
-   *
-   * Funded is checked first, deliberately. A jar that actually reached its
-   * target settles as a full fill with no refund at all, whatever policy the
-   * order carries — the two are not alternatives, and asking in the other order
-   * would refund a tail that had already been paid.
-   *
-   * All three handlers come through here, so whichever signal notices first
-   * closes the order. `completeSale` is idempotent and emits its own
-   * progress snapshot, so a `true` return means the announcement is handled.
-   */
-  private async settleIfFinished(
-    saleId: string,
-    latest: SettleableOrder
-  ): Promise<boolean> {
-    const minOrderKopecks = this.minOrderKopecks()
-
-    if (isSaleFunded(latest, minOrderKopecks))
-      return this.saleFacade.completeSale(saleId)
-
-    if (!isRemainderRefundable(latest, minOrderKopecks)) return false
-
-    // Nothing may still be in flight.
-    //
-    // The arithmetic says no order this small can exist, so in principle there
-    // is nothing to wait for. But an order raised while there *was* room and
-    // still unsettled — one under appeal, above all — can resolve into money
-    // later, and by then this order would be closed, its tail already refunded
-    // and its terminal retired. The user would keep both. The same check the
-    // cancellation path makes, for the same reason, and it costs one indexed
-    // lookup at the one moment an order closes.
-    if (latest.cardId !== null && latest.cardId !== undefined) {
-      const unsettled = await this.orderDbService.findUnsettledByCard(latest.cardId)
-      if (unsettled.length > 0) {
-        this.logger.debug(
-          `Sale ${saleId} has an unfillable tail but ${unsettled.length} ` +
-            `order(s) are still open on card ${latest.cardId}; not refunding yet`
-        )
-        return false
-      }
-    }
-
-    return this.saleFacade.completeSale(saleId)
-  }
-
-  /** The smallest order Transacto will route, and so the width of the tail. */
-  private minOrderKopecks(): number {
-    return parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS)
   }
 
   private warn(context: string, error: unknown): void {

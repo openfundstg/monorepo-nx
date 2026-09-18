@@ -14,12 +14,10 @@ import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale
 import { SaleTerminalService } from 'src/modules/telegram-mini-app/services/sale-terminal.service'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { saleDeliveredFiat, saleRefundSplit } from 'src/shared/utils'
-import type { Types } from 'mongoose'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
 
 /** A stored sale plus its id — what both halves of a stop work on. */
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 
 /**
  * Stops a sale early, at the user's request, and gives back what is

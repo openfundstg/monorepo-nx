@@ -78,7 +78,17 @@ export const SupportConfig = {
    * belonging to whoever pressed the key, and a request id in a payload a
    * client can edit would be a request id somebody else could cancel.
    */
-  FIAT_WATCH_OFF_CALLBACK: 'fiatwatch:off'
+  FIAT_WATCH_OFF_CALLBACK: 'fiatwatch:off',
+  /**
+   * The two card-sale keys, each followed by Transacto's numeric order id.
+   *
+   * Namespaced like the language prefix, and short on purpose: `callback_data`
+   * is capped at 64 bytes, and an order id is the whole payload — the sale is
+   * looked up from it rather than carried, so the presser cannot name a sale
+   * and the key cannot be edited into one belonging to somebody else.
+   */
+  CARD_SALE_CONFIRM_PREFIX: 'csale:ok:',
+  CARD_SALE_DENY_PREFIX: 'csale:no:'
 } as const
 
 /**

@@ -1,0 +1,83 @@
+<div class="input-group glass-card">
+  <label class="input-label" for="sale-amount-input">
+    {{ 'sale.amount_usdt_label' | translate }}
+  </label>
+  <div class="amount-input-wrap">
+    <input
+      id="sale-amount-input"
+      type="number"
+      [placeholder]="'sale.amount_usdt_placeholder' | translate"
+      [(ngModel)]="pricing.usdtAmount"
+      (ngModelChange)="submit.clearRateMoved()"
+      min="10"
+      step="10"
+      class="amount-input"
+    />
+    <span class="input-suffix">{{ 'common.usdt' | translate }}</span>
+  </div>
+
+  <!--
+    First of the figures, and shown before an amount is typed: it is the rate the
+    other three and the total below are expressed in, so a user who has entered
+    nothing yet still knows what a USDT buys.
+  -->
+  @if (pricing.sellRateKopecks() > 0) {
+    <div class="limits-info">
+      <app-exchange-rate [rate]="pricing.sellRateKopecks()" />
+    </div>
+  }
+
+  <!--
+    The floor, stated rather than only enforced. It was enforced by the form and
+    by the server all along, but nothing named it — so an amount under it
+    produced a dead submit button and no explanation.
+  -->
+  <div class="limits-info">
+    <span class="limit-label">{{ 'sale.min_for_order' | translate }}:</span>
+    <span class="limit-value" [class.error]="pricing.belowMinimum()">
+      {{ minOrderUsdt }} {{ 'common.usdt' | translate }}
+    </span>
+  </div>
+
+  <div class="limits-info">
+    <span class="limit-label">{{ 'sale.available_balance' | translate }}:</span>
+    <span class="limit-value" [class.error]="!pricing.hasSufficientBalance()">
+      {{ pricing.balanceCents() | usdt }} {{ 'common.usdt' | translate }}
+    </span>
+  </div>
+
+  <div class="limits-info">
+    <span class="limit-label">{{ 'sale.parallel_for_level' | translate }}:</span>
+    <span class="limit-value" [class.error]="pricing.slotsExhausted()">
+      {{ pricing.openOrders() }} / {{ pricing.maxParallelOrders() }}
+    </span>
+  </div>
+
+  <!-- Whatever this form has to say about its own figures. -->
+  <ng-content />
+
+  @if (pricing.belowMinimum()) {
+    <div class="validation-error">
+      {{ 'sale.min_amount' | translate: { min: minOrderUsdt } }}
+    </div>
+  }
+
+  @if (!pricing.hasSufficientBalance()) {
+    <div class="validation-error">{{ 'sale.insufficient_balance' | translate }}</div>
+  }
+
+  @if ((pricing.usdtAmount() ?? 0) > 0 && !pricing.rateUnavailable()) {
+    <div class="math-preview">
+      <!--
+        The total, and only the total. The rate is stated once above and
+        repeating it here was two labels for one number.
+      -->
+      <div class="math-row total">
+        <span>{{ pricing.usdtAmount() }} {{ 'common.usdt' | translate }} =</span>
+        <span class="math-val"
+          >{{ pricing.targetKopecks() | uah: true }} {{ 'common.uah' | translate }}</span
+        >
+      </div>
+    </div>
+  }
+</div>

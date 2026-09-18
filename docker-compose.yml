@@ -82,6 +82,35 @@ services:
       - tor
     env_file:
       - ./apps/api/src/environments/.env
+    # **The only state this container has, and the reason it has any.**
+    #
+    # Everything else the API handles is forwarded and forgotten — a fiat
+    # receipt goes to Transacto and leaves nothing behind. A card sale's bank
+    # statement cannot work that way: nobody downstream judges it, so an
+    # operator has to be able to open the exact document a dispute was settled
+    # on, months later. Without this volume every one of them is lost on the
+    # next deploy, along with the only evidence that dispute had.
+    #
+    # Deliberately **not** mounted into `receipt-checker`. That container parses
+    # what strangers upload and its network is `internal`; handing it the store
+    # as well would give the one sealed thing here a door. The bytes reach it
+    # the same way a receipt's do, over the multipart call it already answers.
+    #
+    # It holds somebody's whole transaction history, so it is the one path in
+    # this file worth treating like a safe: back it up deliberately or not at
+    # all, and give it a retention sweep before the first one is a year old.
+    #
+    # **The path is written out rather than interpolated from
+    # `SALE_STATEMENT_STORAGE_DIR`, and that is not an oversight.** Compose
+    # interpolates `${…}` from the shell and the compose-level `.env` only — it
+    # does **not** read `env_file`, which is where that variable lives. Written
+    # as `${SALE_STATEMENT_STORAGE_DIR:-…}` it would silently always take the
+    # default, so a deployment that changed the variable would mount one path
+    # and write to another, and lose every statement while appearing to work.
+    #
+    # The API's default is this same path. Changing one means changing both.
+    volumes:
+      - statements_data:/var/lib/transacto/statements
 
   receipt-checker:
     # An OCR engine, kept out of the API's image.
@@ -225,3 +254,6 @@ volumes:
   mongodb_data:
   redis_data:
   tor_data:
+  # Uploaded bank statements — see the `api` service's own note, including why
+  # its mount path is written out instead of interpolated.
+  statements_data:

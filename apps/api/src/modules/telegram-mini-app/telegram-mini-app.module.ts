@@ -5,7 +5,21 @@ import { BullModule, getQueueToken } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 
 // Shared
-import { TMA_DEPOSIT_EXPIRY_QUEUE, BLOCKCHAIN_VERIFICATION_STRATEGY } from 'src/shared/constants'
+import {
+  TMA_DEPOSIT_EXPIRY_QUEUE,
+  BLOCKCHAIN_VERIFICATION_STRATEGY,
+  SALE_DESTINATION_STRATEGIES
+} from 'src/shared/constants'
+import { JarSaleDestinationService } from 'src/modules/telegram-mini-app/services/jar-sale-destination.service'
+import { CardSaleDestinationService } from 'src/modules/telegram-mini-app/services/card-sale-destination.service'
+import type { SaleDestinationStrategy } from 'src/modules/telegram-mini-app/interfaces/sale-destination-strategy.interface'
+import { SaleSettlementService } from 'src/modules/telegram-mini-app/services/sale-settlement.service'
+import { SaleCardLimitsService } from 'src/modules/telegram-mini-app/services/sale-card-limits.service'
+import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
+import { SaleCardWatchService } from 'src/modules/telegram-mini-app/services/sale-card-watch.service'
+import { SaleStatementService } from 'src/modules/telegram-mini-app/services/sale-statement.service'
+import { SaleStatementStorageService } from 'src/modules/telegram-mini-app/services/sale-statement-storage.service'
+import { SaleStatementRetentionService } from 'src/modules/telegram-mini-app/services/sale-statement-retention.service'
 
 // Repository modules — schemas and DB services live here, never in this module
 import { TmaUserDbModule } from 'src/modules/repositories/tma-user-db/tma-user-db.module'
@@ -129,6 +143,21 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
   providers: [
     // Strategy / Adapter (DI token → concrete class)
     { provide: BLOCKCHAIN_VERIFICATION_STRATEGY, useClass: TronTrc20Adapter },
+    // Where a sale's hryvnia goes, one strategy per variant.
+    //
+    // An array rather than a token per variant, so `SaleFacadeService` looks one
+    // up by `method` and never switches on it. The two differ in the only thing
+    // that matters: a jar sale is proven by the bank, a card sale by the seller.
+    JarSaleDestinationService,
+    CardSaleDestinationService,
+    {
+      provide: SALE_DESTINATION_STRATEGIES,
+      useFactory: (
+        jar: JarSaleDestinationService,
+        card: CardSaleDestinationService
+      ): readonly SaleDestinationStrategy[] => [jar, card],
+      inject: [JarSaleDestinationService, CardSaleDestinationService]
+    },
     // Business Services
     TestTransactionService,
     TmaServiceTraderService,
@@ -142,6 +171,20 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     // that translates trader-side pipeline events into it.
     SaleProgressService,
     SaleProgressListener,
+    // When a sale is finished, shared by the scraper's listener and the card
+    // variant's confirmation path — two ways to notice, one set of rules.
+    SaleSettlementService,
+    // The card variant's unit of work: one order, one question, one answer.
+    SaleCardLimitsService,
+    SaleCardOrderService,
+    // …and what notices when the question goes unanswered.
+    SaleCardWatchService,
+    // The document a denied order is settled with, and the only bytes this API
+    // keeps anywhere.
+    SaleStatementService,
+    SaleStatementStorageService,
+    // …and the one sweep here whose purpose is to destroy data.
+    SaleStatementRetentionService,
     // Retiring a terminal — shared by every way an order ends: completed,
     // blocked, or cancelled.
     SaleTerminalService,
@@ -188,6 +231,14 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     SaleBlockService,
     SaleFacadeService,
     SaleReviewService,
+    // Exported for the support bot, whose inline keys answer a card sale's
+    // orders. One-way: the Mini App still learns of the bot only through a
+    // neutral domain event.
+    SaleCardOrderService,
+    // Exported for the admin panel, which serves an operator the statement a
+    // dispute was settled on. Reading the store is the panel's only business
+    // with it — nothing there writes one.
+    SaleStatementStorageService,
     // The fiat top-up's settlement path, exported for the admin panel — which
     // performs the same interventions on an operator's say-so.
     FiatDepositSettlementService,

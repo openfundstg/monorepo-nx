@@ -1,6 +1,7 @@
 import {
   AlertStatus,
   FiatDepositWatchMode,
+  SaleCardOrderState,
   SupportTopicStatus,
   TmaDepositStatus,
   TmaFiatDepositStatus,
@@ -52,6 +53,28 @@ const DEPOSIT_TONES: Readonly<Record<TmaDepositStatus, ChipTone>> = {
  * `CANCELLED` are ordinary endings — a payout went back to the book and nobody
  * lost anything.
  */
+/**
+ * Where one card-sale order stands, toned by who is waiting on what.
+ *
+ * `DISPUTED` is a warning rather than a danger: somebody denied a payment and
+ * the product is asking them for a document, which is the process working. What
+ * turns danger is `PROVEN_UNPAID` — a statement covering the window showed no
+ * such credit, so a payer's money is somewhere and an appeal is coming.
+ *
+ * `PROVEN_PAID` is positive and deliberately not neutral: the order settled. It
+ * also means the seller denied money they had received, which is a fact about
+ * them rather than about this row, and the row is not where that is raised.
+ */
+const CARD_ORDER_TONES: Readonly<Record<SaleCardOrderState, ChipTone>> = {
+  [SaleCardOrderState.AWAITING_CONFIRMATION]: ChipTone.NEUTRAL,
+  [SaleCardOrderState.CONFIRMED]: ChipTone.POSITIVE,
+  [SaleCardOrderState.DISPUTED]: ChipTone.WARNING,
+  [SaleCardOrderState.PROVEN_PAID]: ChipTone.POSITIVE,
+  [SaleCardOrderState.PROVEN_UNPAID]: ChipTone.DANGER,
+}
+
+export const cardOrderTone = (state: SaleCardOrderState): ChipTone => CARD_ORDER_TONES[state]
+
 const FIAT_DEPOSIT_TONES: Readonly<Record<TmaFiatDepositStatus, ChipTone>> = {
   [TmaFiatDepositStatus.RESERVED]: ChipTone.WARNING,
   [TmaFiatDepositStatus.PARTIALLY_PAID]: ChipTone.WARNING,

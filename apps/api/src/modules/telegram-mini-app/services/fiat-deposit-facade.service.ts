@@ -29,9 +29,9 @@ import {
 import type { TmaFiatDepositRecord } from 'src/modules/repositories/tma-fiat-deposit-db/interfaces'
 import type { TransactoPanelPayoutRow } from 'src/shared/interfaces/transacto-panel.interface'
 import { describeError, ensure, isDuplicateKeyOn } from 'src/shared/utils'
+import { MINUTE_MS } from 'src/shared/constants'
 import environments from 'src/environments'
 
-const MINUTE_MS = 60 * 1000
 
 /** What the panel answers when an action worked. Its only success value. */
 const PANEL_OK = 'ok'

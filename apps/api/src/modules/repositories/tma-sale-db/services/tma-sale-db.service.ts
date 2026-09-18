@@ -1,4 +1,14 @@
-import { ERROR, SaleEventType, SaleRemainderPolicy } from '@transacto/contracts'
+import {
+  BankProvider,
+  ERROR,
+  SaleCardOrderState,
+  SaleEventType,
+  SaleMethod,
+  SaleReceiverNameSource,
+  SaleRemainderPolicy,
+  SaleStatementRejection,
+  SaleStatementStatus
+} from '@transacto/contracts'
 import {
   ConflictException,
   Injectable,
@@ -102,13 +112,23 @@ export class TmaSaleDbService {
    */
   async create(data: {
     telegramId: number
+    saleMethod: SaleMethod
     fiatAmount: number
     exchangeRate: number
     frozenUsdt: number
     bankType: string
+    /** The resolved jar link, or `''` on a card sale. */
     dropLink: string
     remainderPolicy: SaleRemainderPolicy
     receiverName: string
+    receiverNameSource: SaleReceiverNameSource
+    /**
+     * The last four digits of the payout card, on a card sale.
+     *
+     * `null` on a jar sale. Four and not sixteen — nothing here stores a full
+     * PAN; see `cardTail`.
+     */
+    payoutCardTail: string | null
     /** Whether the bank itself named the card this order pays into. */
     cardVerifiedByBank: boolean
   }): Promise<TmaSale & { _id: Types.ObjectId }> {
@@ -489,6 +509,29 @@ export class TmaSaleDbService {
    * that never had it — a fresh install — is the same case. Returns whether it
    * actually moved anything.
    */
+  /**
+   * Writes {@link SaleMethod.JAR} onto every sale that predates the variant.
+   *
+   * Every one of them was a jar sale — the card variant did not exist — so this
+   * states a fact rather than choosing a default. It has to be stated because
+   * `.lean()` does not apply Mongoose defaults: without it, `saleMethod` reads
+   * as `undefined` on historical documents, and every place that switches on it
+   * would need a `?? JAR` that one of them will eventually be written without.
+   *
+   * Idempotent by filter: it matches only documents with no value, which the
+   * update itself gives one. A second run finds nothing and says so.
+   *
+   * Returns how many were written.
+   */
+  async backfillSaleMethod(): Promise<number> {
+    const result = await this.saleModel.updateMany(
+      { saleMethod: { $exists: false } },
+      { $set: { saleMethod: SaleMethod.JAR } }
+    )
+
+    return result.modifiedCount
+  }
+
   async adoptLegacyCollection(): Promise<boolean> {
     const connection = this.saleModel.db
     const target = this.saleModel.collection.name
@@ -633,6 +676,42 @@ export class TmaSaleDbService {
    * Returns `null` when this order was already credited, which is a normal
    * outcome and not an error.
    */
+  /**
+   * Moves the sale's checkpoint forward, and corrects what a seller understated.
+   *
+   * One write, because the two halves are one fact: this document has been read
+   * and everything it covers is now settled. Recording the checkpoint without
+   * the correction would declare the claims checked while leaving the figures
+   * wrong; recording the correction without the checkpoint would apply it again
+   * on the next statement covering the same period.
+   *
+   * `correctionKopecks` is what the bank showed above what the seller claimed,
+   * summed across the orders the document reaches. Zero is the ordinary case —
+   * a seller who told the truth — and still writes the checkpoint, because
+   * having been checked is the fact that matters.
+   *
+   * Not guarded on the checkpoint moving forward. A statement covering an
+   * earlier period cannot produce a correction for orders it does not reach, so
+   * the correction is zero by construction; letting the date go backwards would
+   * only re-open claims that have already been settled by a later document.
+   */
+  async applyStatementCheckpoint(
+    id: string,
+    checkpointAt: Date,
+    correctionKopecks: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, statementCheckpointAt: { $not: { $gte: checkpointAt } } },
+        {
+          $set: { statementCheckpointAt: checkpointAt },
+          ...(correctionKopecks > 0 ? { $inc: { receivedAmount: correctionKopecks } } : {})
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
   async creditExecutedOrder(
     id: string,
     orderId: number,
@@ -651,6 +730,268 @@ export class TmaSaleDbService {
         },
         { returnDocument: 'after' }
       )
+      .lean()
+  }
+
+  /**
+   * Records a Transacto order against a card sale, exactly once.
+   *
+   * The `cardOrders.orderId: { $ne: orderId }` filter is the idempotency key,
+   * in the manner of {@link creditExecutedOrder}: the same order can be
+   * reported twice — a webhook and the thirty-second sync both see it — and a
+   * second row would ask the seller the same question again and let one
+   * confirmation settle the other.
+   *
+   * Returns `null` when the order was already recorded, which is an ordinary
+   * outcome and not an error.
+   */
+  async pushCardOrder(
+    id: string,
+    order: { orderId: number; amount: number; confirmDeadlineAt: Date }
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, saleMethod: SaleMethod.CARD, 'cardOrders.orderId': { $ne: order.orderId } },
+        {
+          $push: {
+            cardOrders: {
+              orderId: order.orderId,
+              amount: order.amount,
+              state: SaleCardOrderState.AWAITING_CONFIRMATION,
+              arrivedAt: new Date(),
+              confirmDeadlineAt: order.confirmDeadlineAt,
+              answeredAt: null,
+              statements: []
+            }
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Moves one card order from one of the states it may be in to another.
+   *
+   * **The `from` filter is the idempotency key, and it is doing real work
+   * here.** Both surfaces that can answer an order — the sale's page and the
+   * bot's inline keyboard — call the same method, and a seller who taps one and
+   * then the other is the expected case rather than the exotic one. Whichever
+   * arrives second matches nothing and returns `null`, which the caller reads
+   * as "already answered" rather than as a failure.
+   *
+   * `null` is therefore never on its own evidence that the order does not
+   * exist. A caller that needs to tell those apart reads the sale first.
+   */
+  async moveCardOrder(
+    id: string,
+    orderId: number,
+    from: readonly SaleCardOrderState[],
+    to: SaleCardOrderState,
+    options: { readonly answered?: boolean; readonly declaredAmount?: number } = {}
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          saleMethod: SaleMethod.CARD,
+          cardOrders: { $elemMatch: { orderId, state: { $in: [...from] } } }
+        },
+        {
+          $set: {
+            'cardOrders.$.state': to,
+            ...(options.answered === true ? { 'cardOrders.$.answeredAt': new Date() } : {}),
+            // Spread rather than assigned: an `undefined` here would be written
+            // as `null` and read back as "the seller declared nothing", which is
+            // a different claim from "the seller declared the whole amount".
+            ...(typeof options.declaredAmount === 'number'
+              ? { 'cardOrders.$.declaredAmount': options.declaredAmount }
+              : {})
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Records an uploaded statement against one disputed order.
+   *
+   * **The id is minted by the caller**, not by Mongo, because the file on disk
+   * is named after it: a `$push` that let the database choose would leave the
+   * bytes written under a name nothing yet knew. Guarded on the order actually
+   * being disputed, so a statement cannot attach itself to a settled one.
+   */
+  async pushStatement(
+    id: string,
+    orderId: number,
+    statement: {
+      _id: Types.ObjectId
+      bank: BankProvider
+      storedName: string
+      sizeBytes: number
+    }
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          saleMethod: SaleMethod.CARD,
+          cardOrders: { $elemMatch: { orderId, state: SaleCardOrderState.DISPUTED } }
+        },
+        {
+          $push: {
+            'cardOrders.$.statements': {
+              ...statement,
+              status: SaleStatementStatus.PARSING,
+              rejection: null,
+              uploadedAt: new Date(),
+              periodFrom: null,
+              periodTo: null,
+              ownerName: null,
+              accountTail: null
+            }
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Writes a verdict onto one statement.
+   *
+   * Addressed by its own id through the array filter rather than by position:
+   * a second statement can be uploaded while the first is still being checked,
+   * and `cardOrders.$.statements.$` cannot express two levels anyway.
+   */
+  async markStatementParsed(
+    id: string,
+    statementId: Types.ObjectId,
+    verdict: {
+      status: SaleStatementStatus
+      rejection: SaleStatementRejection | null
+      periodFrom?: Date | null
+      periodTo?: Date | null
+      ownerName?: string | null
+      accountTail?: string | null
+    }
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id },
+        {
+          $set: {
+            'cardOrders.$[].statements.$[statement].status': verdict.status,
+            'cardOrders.$[].statements.$[statement].rejection': verdict.rejection,
+            'cardOrders.$[].statements.$[statement].periodFrom': verdict.periodFrom ?? null,
+            'cardOrders.$[].statements.$[statement].periodTo': verdict.periodTo ?? null,
+            'cardOrders.$[].statements.$[statement].ownerName': verdict.ownerName ?? null,
+            'cardOrders.$[].statements.$[statement].accountTail': verdict.accountTail ?? null
+          }
+        },
+        { returnDocument: 'after', arrayFilters: [{ 'statement._id': statementId }] }
+      )
+      .lean()
+  }
+
+  /**
+   * Replaces the recipient's name with the one a bank stated.
+   *
+   * Only ever moves `DECLARED` to `STATEMENT`, never back and never between two
+   * statements: the first accepted document settles who the account belongs to,
+   * and a later one disagreeing is an operator's question rather than another
+   * overwrite. The filter is what makes that true rather than remembered.
+   */
+  async rewriteReceiverName(
+    id: string,
+    receiverName: string
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, receiverNameSource: SaleReceiverNameSource.DECLARED },
+        {
+          $set: {
+            receiverName,
+            receiverNameSource: SaleReceiverNameSource.STATEMENT
+          }
+        },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /**
+   * Sales holding a statement whose bytes are older than the cut-off.
+   *
+   * Whole sales rather than statements: they are nested two levels deep, the
+   * set is small, and an aggregation to flatten it would be more machinery than
+   * the sweep it feeds. The caller picks the statements out.
+   */
+  async findSalesWithStatementsBefore(
+    cutoff: Date
+  ): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    return this.saleModel
+      .find({
+        saleMethod: SaleMethod.CARD,
+        cardOrders: {
+          $elemMatch: {
+            statements: { $elemMatch: { uploadedAt: { $lt: cutoff }, purgedAt: null } }
+          }
+        }
+      })
+      .lean()
+  }
+
+  /**
+   * Records that one statement's bytes are gone.
+   *
+   * Written **after** the file is removed, never before: a row claiming a purge
+   * that did not happen leaves the document on disk with nothing pointing at
+   * it, which is the one outcome a retention sweep must not produce.
+   */
+  async markStatementPurged(id: string, statementId: Types.ObjectId): Promise<boolean> {
+    const result = await this.saleModel.updateOne(
+      { _id: id },
+      { $set: { 'cardOrders.$[].statements.$[statement].purgedAt': new Date() } },
+      { arrayFilters: [{ 'statement._id': statementId, 'statement.purgedAt': null }] }
+    )
+
+    return result.modifiedCount > 0
+  }
+
+  /**
+   * The sale one Transacto order belongs to.
+   *
+   * **How an operator gets from a dispute to the evidence.** A dispute is
+   * worked in Transacto's own panel, where the order is a number and nothing
+   * else — no sale id, no user, no public code. Served by the
+   * `{ 'cardOrders.orderId': 1 }` index; without it this is a collection scan,
+   * which is the same as not having the feature at three in the morning.
+   */
+  async findByCardOrderId(orderId: number): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel.findOne({ 'cardOrders.orderId': orderId }).lean()
+  }
+
+  /**
+   * Card orders whose confirmation window has run out, across every sale.
+   *
+   * Returns whole sales rather than orders, because the sweep has to act on
+   * both: the order becomes a dispute and the sale's terminal stops routing.
+   * A sale may hold only one unanswered order at a time — the credential is
+   * capped at one open order — so there is no ambiguity about which.
+   */
+  async findCardOrdersPastDeadline(now: Date): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    return this.saleModel
+      .find({
+        saleMethod: SaleMethod.CARD,
+        cardOrders: {
+          $elemMatch: {
+            state: SaleCardOrderState.AWAITING_CONFIRMATION,
+            confirmDeadlineAt: { $lte: now }
+          }
+        }
+      })
       .lean()
   }
 

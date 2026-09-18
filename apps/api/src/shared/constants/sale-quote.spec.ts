@@ -1,9 +1,14 @@
 import {
   CentRounding,
+  DEFAULT_MIN_ORDER_KOPECKS,
   isQuoteStillValid,
   priceSale,
+  SALE_CARD_MAX_ORDERS,
+  saleCardMaxOrders,
+  saleCardMinOrderKopecks,
   targetForStake,
   usdtCentsForKopecks,
+  saleCardOrderFloorKopecks
 } from '@transacto/contracts'
 
 /**
@@ -167,5 +172,146 @@ describe('usdtCentsForKopecks', () => {
     const { targetKopecks, requiredUsdtCents } = priceSale(404_000, 4_745)
 
     expect(usdtCentsForKopecks(targetKopecks, 4_745)).toBe(requiredUsdtCents)
+  })
+})
+
+/**
+ * The card variant's only guard.
+ *
+ * A card sale has no scraper and therefore no second record of the money, so
+ * `SaleBlockReason.LEDGER_MISMATCH` cannot be built for it. These three numbers
+ * are what stands in its place, and every assertion below is really about the
+ * same thing: how much one unnoticed mistake can cost.
+ */
+describe('card sale order limits', () => {
+  /** The pipeline floor, and what the backend passes in from configuration. */
+  const FLOOR = DEFAULT_MIN_ORDER_KOPECKS
+
+  describe('saleCardMinOrderKopecks', () => {
+    /** The example the rule was specified with: ₴10 000 ÷ 7 = ₴1 428,57. */
+    it('takes an equal share of the target, floored to a whole hryvnia', () => {
+      expect(saleCardMinOrderKopecks(10_000_00, FLOOR)).toBe(1_428_00)
+    })
+
+    /**
+     * The whole reason the share is floored rather than rounded up.
+     *
+     * `ceil(10 000 / 7)` is ₴1 429, and seven of those is ₴10 003 — above the
+     * target, so only six orders could ever be routed and ₴1 426 of the sale
+     * would come back as USDT instead of the hryvnia the user asked for.
+     */
+    it('leaves room for every one of the seven orders', () => {
+      for (let target = 2_100_00; target <= 500_000_00; target += 1_237_00) {
+        expect(saleCardMinOrderKopecks(target, FLOOR) * SALE_CARD_MAX_ORDERS).toBeLessThanOrEqual(
+          target
+        )
+      }
+    })
+
+    /** Below ₴2 100 an equal share is under the floor, and the floor wins. */
+    it('never goes under the pipeline floor', () => {
+      expect(saleCardMinOrderKopecks(1_000_00, FLOOR)).toBe(FLOOR)
+      expect(saleCardMinOrderKopecks(10_00, FLOOR)).toBe(FLOOR)
+    })
+
+    /**
+     * The floor is somebody else's minimum, so it is taken **up** to a whole
+     * hryvnia. Flooring it would publish a minimum Transacto refuses to route.
+     */
+    it('rounds a fractional floor up rather than down', () => {
+      expect(saleCardMinOrderKopecks(1_000_00, 300_50)).toBe(301_00)
+    })
+  })
+
+  describe('saleCardMaxOrders', () => {
+    /**
+     * Seven, exactly, for every target the equal share governs — the property
+     * the floored share was chosen to give: with `t = 7m + r` and `r < 7`,
+     * `floor(t / m)` is 7 for every `m` above six.
+     */
+    it('splits into exactly seven wherever the share clears the floor', () => {
+      for (let target = 2_100_00; target <= 500_000_00; target += 1_237_00) {
+        expect(saleCardMaxOrders(target, FLOOR)).toBe(SALE_CARD_MAX_ORDERS)
+      }
+    })
+
+    /** …and fewer below that, because nothing under ₴300 is routable. */
+    it('splits into fewer when the floor governs', () => {
+      expect(saleCardMaxOrders(1_000_00, FLOOR)).toBe(3)
+      expect(saleCardMaxOrders(600_00, FLOOR)).toBe(2)
+    })
+
+    /** A target no single order could fill is not one order — it is none. */
+    it('is zero for a target under the floor', () => {
+      expect(saleCardMaxOrders(299_00, FLOOR)).toBe(0)
+    })
+  })
+})
+
+describe('saleCardOrderFloorKopecks', () => {
+  /** ₴300, the smallest order the pipeline will route. */
+  const FLOOR = 30_000
+
+  /**
+   * The case a fixed minimum strands.
+   *
+   * A ₴10 000 sale opens at ₴1 428 across seven slots. Two payers send ₴4 500
+   * each: ₴1 000 is left and five slots are free, but nothing under ₴1 428 can
+   * be routed — so the sale stops with ₴1 000 it was perfectly able to collect,
+   * and the user gets USDT back instead of the hryvnia they asked for.
+   */
+  it('reopens a sale a fixed minimum would have stranded', () => {
+    expect(saleCardMinOrderKopecks(1_000_000, FLOOR)).toBe(142_800)
+
+    // ₴1 000 left across five free slots is ₴200, which the ₴300 floor lifts.
+    expect(saleCardOrderFloorKopecks(100_000, FLOOR, 5)).toBe(FLOOR)
+  })
+
+  it('divides what is left by the slots that are free', () => {
+    expect(saleCardOrderFloorKopecks(500_000, FLOOR, 4)).toBe(125_000)
+  })
+
+  /**
+   * **The split always stays feasible**, which is the property that matters —
+   * and is weaker than the one an earlier version of this claimed.
+   *
+   * The minimum is not monotonic. Flooring to whole hryvnia leaves up to ₴1 of
+   * each order's true share behind, and that residue divided by fewer slots can
+   * come out above the opening figure: a ₴10 000 sale opens at ₴1 428 and
+   * reaches ₴1 429 by its fourth order. What must never happen is a minimum
+   * larger than what is left, because that is the state where the remainder is
+   * unreachable — the exact failure this recomputation exists to prevent.
+   */
+  it('never asks for more than is left, at any point in a sale', () => {
+    const opening = saleCardMinOrderKopecks(1_000_000, FLOOR)
+
+    for (let settled = 1; settled < 7; settled += 1) {
+      const remaining = 1_000_000 - settled * opening
+      const min = saleCardOrderFloorKopecks(remaining, FLOOR, 7 - settled)
+
+      expect(min).toBeLessThanOrEqual(remaining)
+    }
+  })
+
+  /**
+   * `0` is a real state and not a minimum of zero, which would mean "any amount
+   * at all". The caller has to act on it — the tail becomes a refund or an
+   * operator's transfer.
+   */
+  it.each([
+    ['no slots left', 100_000, 0],
+    ['a remainder under the pipeline floor', 29_999, 5],
+    ['nothing left at all', 0, 5]
+  ])('routes nothing when there is %s', (_case, remaining, ordersLeft) => {
+    expect(saleCardOrderFloorKopecks(remaining, FLOOR, ordersLeft)).toBe(0)
+  })
+
+  /** The opening figure is this function with every slot free — one statement of it. */
+  it('is what the opening minimum is made of', () => {
+    for (const target of [500_000, 1_000_000, 4_000_000]) {
+      expect(saleCardMinOrderKopecks(target, FLOOR)).toBe(
+        saleCardOrderFloorKopecks(target, FLOOR, SALE_CARD_MAX_ORDERS)
+      )
+    }
   })
 })

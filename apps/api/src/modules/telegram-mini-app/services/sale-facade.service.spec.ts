@@ -13,6 +13,8 @@ import {
   TmaSaleStatus,
 } from '@transacto/contracts'
 import { SaleFacadeService } from './sale-facade.service'
+import { JarSaleDestinationService } from './jar-sale-destination.service'
+import type { SaleBlockService } from './sale-block.service'
 import type { BalanceLedgerService } from './balance-ledger.service'
 import type { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import type { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
@@ -157,6 +159,11 @@ describe('SaleFacadeService', () => {
     rates = { getRate: jest.fn().mockResolvedValue(MARKET) }
     emitter = { emit: jest.fn(), emitAsync: jest.fn().mockResolvedValue([]) }
 
+    // Never exercised here — the ledger guard has its own file — but the
+    // constructor takes it, and `undefined` in a positional list is how the
+    // next reordering goes unnoticed.
+    const blockService = { block: jest.fn(async () => true) }
+
     facade = new SaleFacadeService(
       db as unknown as TmaSaleDbService,
       users as unknown as TmaUserDbService,
@@ -171,13 +178,19 @@ describe('SaleFacadeService', () => {
       } as unknown as TmaServiceTraderService,
       progress as unknown as SaleProgressService,
       referrals as unknown as ReferralService,
-      dropLinks as unknown as DropLinkResolverService,
       terminals as unknown as SaleTerminalService,
       rates as unknown as ExchangeRateService,
       gateway as unknown as TmaGateway,
       emitter as unknown as EventEmitter2,
       redis as unknown as Redis,
       ledger as unknown as BalanceLedgerService,
+      blockService as unknown as SaleBlockService,
+      // The real jar strategy over the same drop-link double this file has
+      // always used. Every assertion below about the receiver name, the card
+      // the bank names and the mask it publishes is now testing that class
+      // through the facade, which is where those decisions moved — a stub here
+      // would leave all of them passing against nothing.
+      [new JarSaleDestinationService(dropLinks as unknown as DropLinkResolverService)],
     )
   })
 
@@ -505,14 +518,7 @@ describe('SaleFacadeService', () => {
       })
 
       await expect(
-        facade.createSale(
-          TELEGRAM_ID,
-          100_000,
-          'PRIVAT' as never,
-          PRIVAT_LINK,
-          DROP_CARD,
-        RATE,
-        ),
+        facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE }),
       ).rejects.toBeInstanceOf(ServiceUnavailableException)
 
       expect(ledger.freeze).not.toHaveBeenCalled()
@@ -527,14 +533,7 @@ describe('SaleFacadeService', () => {
    */
   describe('the parallel-order allowance', () => {
     const create = () =>
-      facade.createSale(
-        TELEGRAM_ID,
-        100_000,
-        'PRIVAT' as never,
-        PRIVAT_LINK,
-        DROP_CARD,
-        RATE,
-      )
+      facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE })
 
     const withTurnover = (totalTurnover: number) => {
       users.findByTelegramId.mockResolvedValue({
@@ -714,14 +713,7 @@ describe('SaleFacadeService', () => {
      * order, and the user watched an empty jar until their order expired.
      */
     it('asks Transacto for a terminal that is live and taking orders', async () => {
-      await facade.createSale(
-        TELEGRAM_ID,
-        100_000,
-        'PRIVAT' as never,
-        PRIVAT_LINK,
-        DROP_CARD,
-        RATE,
-      )
+      await facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE })
 
       expect(transacto.createCredential).toHaveBeenCalledWith(
         't',
@@ -737,14 +729,7 @@ describe('SaleFacadeService', () => {
      */
     describe('the receiver name', () => {
       const create = () =>
-        facade.createSale(
-          TELEGRAM_ID,
-          100_000,
-          'PRIVAT' as never,
-          PRIVAT_LINK,
-          DROP_CARD,
-          RATE,
-        )
+        facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE })
 
       it('is the account holder when the bank names one', async () => {
         dropLinks.resolve.mockResolvedValue({
@@ -826,14 +811,7 @@ describe('SaleFacadeService', () => {
    */
   describe('a quote the market has moved out from under', () => {
     const submit = (quotedRate: number) =>
-      facade.createSale(
-        TELEGRAM_ID,
-        100_000,
-        'PRIVAT' as never,
-        PRIVAT_LINK,
-        DROP_CARD,
-        quotedRate,
-      )
+      facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: quotedRate })
 
     it('accepts a quote at the live rate', async () => {
       await submit(RATE).catch(() => undefined)
@@ -883,14 +861,7 @@ describe('SaleFacadeService', () => {
 
     /** 100 USDT at the stubbed rate — whatever it comes to. */
     const create = (fiatAmount: number) =>
-      facade.createSale(
-        TELEGRAM_ID,
-        fiatAmount,
-        'PRIVAT' as never,
-        PRIVAT_LINK,
-        DROP_CARD,
-        RATE,
-      )
+      facade.createSale(TELEGRAM_ID, { fiatAmount: fiatAmount, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE })
 
     it.each([
       ['a hryvnia high', 100_100],
@@ -954,7 +925,7 @@ describe('SaleFacadeService', () => {
     }
 
     const create = (typedCard: string, bank = 'PRIVAT') =>
-      facade.createSale(TELEGRAM_ID, 100_000, bank as never, PRIVAT_LINK, typedCard, RATE)
+      facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: bank as never, dropLink: PRIVAT_LINK, cardNumber: typedCard, quotedRate: RATE })
 
     /**
      * The bank's answer *is* the account, not something a typed number is
@@ -1045,7 +1016,7 @@ describe('SaleFacadeService', () => {
     })
 
     const createOn = (bank: string) =>
-      facade.createSale(TELEGRAM_ID, 100_000, bank as never, PRIVAT_LINK, DROP_CARD, RATE)
+      facade.createSale(TELEGRAM_ID, { fiatAmount: 100_000, bankType: bank as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE })
 
     it('refuses a new order on MONO', async () => {
       await expect(createOn('MONO')).rejects.toBeInstanceOf(BadRequestException)
@@ -1145,14 +1116,7 @@ describe('SaleFacadeService', () => {
       const target = Math.round(9 * 4652 * 1.02 / 100) * 100
 
       await expect(
-        facade.createSale(
-          TELEGRAM_ID,
-          target,
-          'PRIVAT' as never,
-          PRIVAT_LINK,
-          DROP_CARD,
-          RATE,
-        ),
+        facade.createSale(TELEGRAM_ID, { fiatAmount: target, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE }),
       ).rejects.toBeInstanceOf(BadRequestException)
 
       // Nothing was frozen and no order was written.
@@ -1170,14 +1134,7 @@ describe('SaleFacadeService', () => {
       const target = Math.round(10 * 4652 / 100) * 100
 
       await expect(
-        facade.createSale(
-          TELEGRAM_ID,
-          target,
-          'PRIVAT' as never,
-          PRIVAT_LINK,
-          DROP_CARD,
-          RATE,
-        ),
+        facade.createSale(TELEGRAM_ID, { fiatAmount: target, bankType: 'PRIVAT' as never, dropLink: PRIVAT_LINK, cardNumber: DROP_CARD, quotedRate: RATE }),
       ).rejects.toBeInstanceOf(BadRequestException)
       expect(ledger.freeze).not.toHaveBeenCalled()
     })
@@ -1187,14 +1144,13 @@ describe('SaleFacadeService', () => {
       const target = Math.round(10 * 4652 * 1.02 / 100) * 100
 
       await facade
-        .createSale(
-          TELEGRAM_ID,
-          target,
-          'PRIVAT' as never,
-          PRIVAT_LINK,
-          DROP_CARD,
-          RATE,
-        )
+        .createSale(TELEGRAM_ID, {
+          fiatAmount: target,
+          bankType: 'PRIVAT' as never,
+          dropLink: PRIVAT_LINK,
+          cardNumber: DROP_CARD,
+          quotedRate: RATE,
+        })
         .catch(() => undefined) // the Transacto leg is not stubbed; the freeze is what matters
 
       expect(ledger.freeze).toHaveBeenCalled()

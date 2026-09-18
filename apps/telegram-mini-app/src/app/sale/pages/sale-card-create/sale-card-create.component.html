@@ -1,0 +1,114 @@
+<h2 class="page-title">{{ 'sale.card_create' | translate }}</h2>
+
+@if (pricing.rateUnavailable()) {
+  <div class="validation-error">
+    {{ 'common.rate_unavailable' | translate }}
+    <button class="link-btn" (click)="pricing.load()">{{ 'common.retry' | translate }}</button>
+  </div>
+}
+
+<app-sale-amount>
+  @if (pricing.slotsExhausted()) {
+    <div class="validation-error">
+      {{ 'sale.parallel_limit_reached' | translate: { max: pricing.maxParallelOrders() } }}
+    </div>
+  }
+</app-sale-amount>
+
+<!--
+  Bank picker — the jar form's tiles exactly, because they are the same object.
+  Only the banks whose statements something can read, omitted rather than greyed
+  out: a card sale on PUMB has never existed, so there is nothing for a greyed
+  row to explain the absence of.
+-->
+<div class="bank-section glass-card">
+  <label class="input-label">{{ 'sale.card_bank_label' | translate }}</label>
+  <div class="bank-options">
+    @for (bank of banks; track bank.provider) {
+      <div
+        class="bank-option {{ bank.modifier }}"
+        [class.active]="selectedBank() === bank.provider"
+        (click)="selectedBank.set(bank.provider)"
+      >
+        <img [src]="bank.icon" class="bank-icon-img" [alt]="bank.nameKey | translate" />
+        <span class="bank-name">{{ bank.nameKey | translate }}</span>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Card and name -->
+<div class="card-section glass-card">
+  <label class="input-label" for="card-sale-card">
+    {{ 'sale.card_number_label' | translate }}
+  </label>
+  <!--
+    Bound one way and regrouped on every keystroke, so the field shows the card
+    the way a card is printed. `maxlength` is 19 rather than 16: the four groups
+    carry three spaces, and the shorter limit would stop the user at the
+    fifteenth digit.
+  -->
+  <input
+    id="card-sale-card"
+    type="text"
+    inputmode="numeric"
+    autocomplete="off"
+    [placeholder]="'sale.card_number_placeholder' | translate"
+    [value]="cardNumber()"
+    (input)="onCardInput($event)"
+    class="text-input"
+    [class.invalid]="cardInvalid()"
+    maxlength="19"
+  />
+  @if (cardInvalid()) {
+    <p class="field-error">{{ 'sale.card_number_invalid' | translate }}</p>
+  } @else {
+    <p class="field-hint">{{ 'sale.card_number_hint' | translate }}</p>
+  }
+
+  <label class="input-label mt-3" for="card-sale-name">
+    {{ 'sale.card_receiver_label' | translate }}
+  </label>
+  <input
+    id="card-sale-name"
+    type="text"
+    autocomplete="off"
+    [placeholder]="'sale.card_receiver_placeholder' | translate"
+    [(ngModel)]="receiverName"
+    class="text-input"
+  />
+</div>
+
+<!--
+  What this variant asks of the seller, said before they agree to it rather than
+  learnt from the first message. Collapsible, like the jar's guide: the figures
+  inside it are the ones that go upstream onto the credential.
+-->
+@if (pricing.targetKopecks() > 0 && maxOrders() > 0) {
+  <div class="guide-section glass-card">
+    <app-card-instructions
+      [totalKopecks]="pricing.targetKopecks()"
+      [orders]="maxOrders()"
+      [perOrderKopecks]="perOrderKopecks()"
+    />
+  </div>
+}
+
+@if (submit.rateMoved()) {
+  <div class="validation-error">{{ 'sale.rate_moved' | translate }}</div>
+}
+
+@if (submit.errorMsg()) {
+  <div class="validation-error">{{ submit.errorMsg() }}</div>
+}
+
+<!-- Static `disabled` as well as the binding — see deposit-create for why. -->
+<button class="primary-btn" disabled [disabled]="!isValid()" (click)="onSubmit()">
+  <span class="btn-text">
+    @if (submit.submitting()) {
+      <div class="btn-spinner"></div>
+    } @else {
+      {{ 'sale.card_submit' | translate }}
+    }
+  </span>
+</button>

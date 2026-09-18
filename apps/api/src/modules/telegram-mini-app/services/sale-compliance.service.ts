@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { Types } from 'mongoose'
 import {
   isGoalWithinTolerance,
   KOPECKS_PER_UAH,
@@ -7,11 +6,10 @@ import {
 } from '@transacto/contracts'
 import { OrderDbService, OrderStatus } from 'src/modules/repositories/order-db'
 import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { SaleBlockService } from 'src/modules/telegram-mini-app/services/sale-block.service'
 
 /** A lean order document plus its id. */
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 
 /**
  * How many dead orders in a row condemn a terminal.

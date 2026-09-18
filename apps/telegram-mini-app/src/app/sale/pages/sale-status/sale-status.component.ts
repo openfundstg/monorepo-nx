@@ -10,18 +10,25 @@ import {
   signal,
 } from '@angular/core'
 import { ActivatedRoute, Router } from '@angular/router'
-import { TranslatePipe } from '@ngx-translate/core'
+import { FormsModule } from '@angular/forms'
+import { TranslatePipe, TranslateService } from '@ngx-translate/core'
 import {
+  isAcceptedStatementFile,
+  SALE_STATEMENT_MAX_BYTES,
+  SaleCardOrderState,
   SaleEventType,
+  KOPECKS_PER_UAH,
   SaleRemainderPolicy,
   TmaSaleStatus,
   sellRate
 } from '@transacto/contracts'
-import type { SaleProgress, TmaSale } from '@transacto/contracts'
+import type { SaleCardOrder, SaleProgress, TmaSale } from '@transacto/contracts'
 import { SaleService } from '../../services/sale.service'
 import { TmaService } from '../../../auth/services/tma.service'
 import { WsService } from '../../../realtime/services/ws.service'
 import { ApiErrorService } from '../../../shared/services/api-error.service'
+import { ClockService } from '../../../shared/services/clock.service'
+import { formatRemaining } from '../../../shared/utils/format.util'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
 import { DateTimePipe } from '../../../shared/pipes/date-time.pipe'
@@ -59,7 +66,7 @@ const USDT_AMOUNT_EVENTS: ReadonlySet<SaleEventType> = new Set([
 
 @Component({
   selector: 'app-sale-status',
-  imports: [TranslatePipe, UahPipe, DateTimePipe, UsdtPipe, TrackTapDirective],
+  imports: [FormsModule, TranslatePipe, UahPipe, DateTimePipe, UsdtPipe, TrackTapDirective],
   templateUrl: './sale-status.component.html',
   styleUrl: './sale-status.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -72,6 +79,8 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router)
   private readonly saleService = inject(SaleService)
   private readonly apiError = inject(ApiErrorService)
+  private readonly clock = inject(ClockService)
+  private readonly translate = inject(TranslateService)
   private readonly tma = inject(TmaService)
   private readonly metaPixel = inject(MetaPixelService)
   /** Public: the template reads `ws.connected()` for the live indicator. */
@@ -414,6 +423,264 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
     } finally {
       this.cancelling.set(false)
       this.cancelArmed.set(false)
+    }
+  }
+
+  /**
+   * The payments a card sale's seller has to answer, oldest first.
+   *
+   * Empty on a jar sale, whose orders the scraper settles without anybody being
+   * asked. Read off the progress snapshot rather than the sale document,
+   * because an order arrives while this page is open and the document is
+   * fetched once.
+   */
+  readonly cardOrders = computed<readonly SaleCardOrder[]>(
+    () => this.progress()?.cardOrders ?? []
+  )
+
+  /**
+   * The one order, if any, that is still a question.
+   *
+   * At most one can be: the credential is created with `max_open_orders: 1`, so
+   * a seller is never asked about two amounts at once — which is the whole
+   * point, since "did some money arrive" is a question nobody can answer about
+   * a card that sees more than one transfer a day.
+   */
+  readonly openCardOrder = computed<SaleCardOrder | null>(
+    () =>
+      this.cardOrders().find(
+        (order) => order.state === SaleCardOrderState.AWAITING_CONFIRMATION
+      ) ?? null
+  )
+
+  /** …and the one waiting on a statement, for the same reason. */
+  readonly disputedCardOrder = computed<SaleCardOrder | null>(
+    () => this.cardOrders().find((order) => order.state === SaleCardOrderState.DISPUTED) ?? null
+  )
+
+  /**
+   * Whether the tail of this sale is being held for a bank statement.
+   *
+   * The server's answer, not a rule restated here: it depends on which claims
+   * have been through a statement and how far the last one reached, and a
+   * second implementation of that could only ever disagree with the one that
+   * decides whether the money moves.
+   */
+  readonly statementRequired = computed(() => this.progress()?.statementRequired === true)
+
+  /**
+   * The order a checkpoint statement is filed against — the most recent claim.
+   *
+   * A statement settles every claim in its period, so which order it is
+   * addressed to changes nothing about what it proves. It decides where the
+   * document is stored and how an operator finds it, and the newest claim is
+   * the one they will be looking for.
+   */
+  readonly shortfallOrder = computed<SaleCardOrder | null>(
+    () =>
+      [...this.cardOrders()]
+        .reverse()
+        .find((order) => typeof order.declaredAmount === 'number') ?? null
+  )
+
+  readonly answeringOrderId = signal<number | null>(null)
+  /** Which order, if any, has its "a different amount arrived" field open. */
+  readonly amendingOrderId = signal<number | null>(null)
+  /** What is typed into it, in whole hryvnia as a person writes them. */
+  readonly amendedUah = signal('')
+  readonly denyArmed = signal<number | null>(null)
+  readonly cardOrderError = signal('')
+
+  /**
+   * How long the payer still has on one payment, in milliseconds.
+   *
+   * Negative once the moment has passed. Reads the shared clock, so every row
+   * showing a countdown re-renders each second off one interval rather than
+   * one of its own.
+   */
+  remainingMs(order: SaleCardOrder): number {
+    return new Date(order.confirmDeadlineAt).getTime() - this.clock.now()
+  }
+
+  countdown(order: SaleCardOrder): string {
+    return formatRemaining(this.remainingMs(order))
+  }
+
+  /**
+   * Whether this payment's window has run out.
+   *
+   * **The one thing that decides whether a denial may be made at all.** Before
+   * the deadline there is nothing to deny: the payer has time left, and a
+   * seller pressing "nothing arrived" would be reporting the absence of money
+   * that is not late yet — stopping their own terminal, and their own sale,
+   * over a payment still in flight. After it, the money is genuinely overdue
+   * and the question is a real one.
+   *
+   * Derived on the client from a deadline the server set, and the server does
+   * not rely on this: the sweep disputes on the same instant within thirty
+   * seconds, and `deny` is refused upstream for an order that is not open. This
+   * is the screen agreeing with the rule, not enforcing it.
+   */
+  isOverdue(order: SaleCardOrder): boolean {
+    return this.remainingMs(order) <= 0
+  }
+
+  /**
+   * The seller says one payment reached their card.
+   *
+   * One tap, unlike stopping the sale: this is the ordinary path and it is the
+   * answer that costs nothing to get right. It is also testimony against the
+   * teller's own interest — confirming money that never came spends their own
+   * stake — which is what makes a single tap safe here and two taps necessary
+   * on the denial.
+   */
+  async onConfirmCardOrder(orderId: number, receivedKopecks?: number): Promise<void> {
+    if (this.answeringOrderId() !== null) return
+
+    this.answeringOrderId.set(orderId)
+    this.cardOrderError.set('')
+
+    try {
+      this.progress.set(
+        await this.saleService.confirmOrder(this.orderId, orderId, receivedKopecks)
+      )
+      this.tma.hapticFeedback('success')
+      this.amendingOrderId.set(null)
+      this.amendedUah.set('')
+    } catch (error: unknown) {
+      this.cardOrderError.set(this.apiError.messageFor(error))
+      this.tma.hapticFeedback('error')
+    } finally {
+      this.answeringOrderId.set(null)
+      this.denyArmed.set(null)
+    }
+  }
+
+  /**
+   * Opens the "a different amount arrived" field for one order.
+   *
+   * Behind a second tap rather than always on screen, because the ordinary
+   * answer is that the whole payment arrived and a field beside the button
+   * invites people to fill it in. What it is for is the case a bank fee took a
+   * few hryvnia on the way — and the seller is the only witness a card sale has.
+   */
+  startAmending(orderId: number, amount: number): void {
+    this.amendingOrderId.set(orderId)
+    this.amendedUah.set((amount / KOPECKS_PER_UAH).toFixed(2))
+  }
+
+  cancelAmending(): void {
+    this.amendingOrderId.set(null)
+    this.amendedUah.set('')
+  }
+
+  /**
+   * What the typed figure comes to in kopecks, or `null` if it is not a figure.
+   *
+   * Refused rather than clamped when it is above the order: more cannot have
+   * arrived than was sent, and quietly reading that as "the whole order" would
+   * hide a typo that the seller meant to be a smaller number.
+   */
+  readonly amendedKopecks = computed<number | null>(() => {
+    const uah = Number.parseFloat(this.amendedUah().replace(',', '.'))
+    if (!Number.isFinite(uah) || uah <= 0) return null
+
+    return Math.round(uah * KOPECKS_PER_UAH)
+  })
+
+  amendedValidFor(order: SaleCardOrder): boolean {
+    const kopecks = this.amendedKopecks()
+
+    return kopecks !== null && kopecks > 0 && kopecks <= order.amount
+  }
+
+  /**
+   * …and says it did not.
+   *
+   * Two taps, because this one stops the sale taking any more money and asks
+   * the seller for a bank statement — a mis-tap costs them the rest of their
+   * sale until they produce a document. The same two-tap shape as stopping,
+   * for the same reason: the Mini App SDK has no native confirm dialog.
+   */
+  async onDenyCardOrder(orderId: number): Promise<void> {
+    if (this.answeringOrderId() !== null) return
+
+    if (this.denyArmed() !== orderId) {
+      this.denyArmed.set(orderId)
+      this.tma.hapticFeedback('warning')
+
+      return
+    }
+
+    this.answeringOrderId.set(orderId)
+    this.cardOrderError.set('')
+
+    try {
+      this.progress.set(await this.saleService.denyOrder(this.orderId, orderId))
+      this.tma.hapticFeedback('warning')
+    } catch (error: unknown) {
+      this.cardOrderError.set(this.apiError.messageFor(error))
+      this.tma.hapticFeedback('error')
+    } finally {
+      this.answeringOrderId.set(null)
+      this.denyArmed.set(null)
+    }
+  }
+
+  readonly uploadingStatement = signal(false)
+
+  /**
+   * Sends the statement that settles a denied order.
+   *
+   * The response is the new snapshot whatever the document turned out to say,
+   * so the screen updates from it: a refusal renders its own reason beside the
+   * order, and a statement that contradicts the seller settles the order in
+   * front of them. None of those is an error, and treating a refusal as one
+   * would leave the user with a red message and no idea which statement to send
+   * instead.
+   */
+  async onStatementPicked(event: Event, orderId: number): Promise<void> {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+
+    if (file === undefined || this.uploadingStatement()) return
+
+    // Checked here as well as by the server, and the point is *where*: a
+    // statement is the largest thing this product asks anybody to upload, and
+    // sending ten megabytes over a phone connection to be told it was the wrong
+    // type is the slowest possible way to learn. The `accept` attribute is a
+    // hint the file picker may ignore; these are the rule, and they are the same
+    // two the backend refuses on.
+    if (!isAcceptedStatementFile({ fileName: file.name, mimeType: file.type })) {
+      this.cardOrderError.set(this.translate.instant('SALE_STATEMENT.UNSUPPORTED_TYPE'))
+      this.tma.hapticFeedback('error')
+      input.value = ''
+
+      return
+    }
+
+    if (file.size > SALE_STATEMENT_MAX_BYTES) {
+      this.cardOrderError.set(this.translate.instant('SALE_STATEMENT.TOO_LARGE'))
+      this.tma.hapticFeedback('error')
+      input.value = ''
+
+      return
+    }
+
+    this.uploadingStatement.set(true)
+    this.cardOrderError.set('')
+
+    try {
+      this.progress.set(await this.saleService.uploadStatement(this.orderId, orderId, file))
+      this.tma.hapticFeedback('success')
+    } catch (error: unknown) {
+      this.cardOrderError.set(this.apiError.messageFor(error))
+      this.tma.hapticFeedback('error')
+    } finally {
+      this.uploadingStatement.set(false)
+      // So picking the same file again fires `change` — a user who re-sends the
+      // document after being told what was wrong with it picks the same one.
+      input.value = ''
     }
   }
 

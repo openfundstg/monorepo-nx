@@ -69,3 +69,23 @@ export const formatPercent = (percent: number): string =>
 /** ISO string or epoch millis → `12.08.2026, 19:54`. */
 export const formatDateTime = (value: string | number | Date): string =>
   new Date(value).toLocaleString(LOCALE, DATE_FORMAT);
+
+/**
+ * A countdown, as `m:ss` — or `h:mm:ss` once there is an hour to show.
+ *
+ * Takes milliseconds and floors at zero: a deadline that has passed reads
+ * `0:00` rather than counting upwards into negative time. The caller decides
+ * what a passed deadline *means*; this only refuses to render it as a number
+ * nobody can act on.
+ */
+export const formatRemaining = (ms: number): string => {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const seconds = total % 60;
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+
+  const mm = hours > 0 ? String(minutes).padStart(2, '0') : String(minutes);
+  const ss = String(seconds).padStart(2, '0');
+
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+};

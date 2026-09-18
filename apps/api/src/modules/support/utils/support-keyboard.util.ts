@@ -126,3 +126,79 @@ export const buildFiatWatchKeyboard = (
 /** Whether a pressed key is the one that cancels a standing request. */
 export const isFiatWatchOffCallback = (data: string | undefined): boolean =>
   data === SupportConfig.FIAT_WATCH_OFF_CALLBACK
+
+/**
+ * The keys under a card sale's question.
+ *
+ * Each carries only Transacto's numeric order id, which keeps the payload far
+ * inside Telegram's 64-byte cap and — more to the point — means the presser
+ * cannot name a sale. The sale is looked up from the order, and ownership is
+ * proven server-side regardless.
+ *
+ * `canDeny` is false once the order is already disputed: a key offering to deny
+ * it could only ever answer "that is where it already is", exactly as the
+ * unsubscribe key is withheld from a one-off request.
+ *
+ * `appUrl` is optional because the message must survive a deployment with no
+ * `TELEGRAM_BOT_USERNAME` — a missing shortcut is a worse message, an unsent
+ * one is no message at all.
+ */
+export const buildCardOrderKeyboard = (
+  locale: SupportLocale,
+  options: {
+    readonly orderId: number
+    readonly canDeny: boolean
+    readonly appUrl: string | null
+  }
+): TelegramInlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [
+      {
+        text: inlineLabel(locale, SupportInlineButton.CARD_SALE_CONFIRM),
+        callback_data: `${SupportConfig.CARD_SALE_CONFIRM_PREFIX}${options.orderId}`
+      },
+      ...(options.canDeny
+        ? [
+            {
+              text: inlineLabel(locale, SupportInlineButton.CARD_SALE_DENY),
+              callback_data: `${SupportConfig.CARD_SALE_DENY_PREFIX}${options.orderId}`
+            }
+          ]
+        : [])
+    ],
+    ...(options.appUrl === null
+      ? []
+      : [[{ text: inlineLabel(locale, SupportInlineButton.OPEN_SALE), url: options.appUrl }]])
+  ]
+})
+
+/**
+ * The order id behind a pressed key, or `null` for a payload this feature did
+ * not send — an old keyboard, another feature's key, or a forgery.
+ *
+ * Parsed strictly. `Number('')` is `0`, and `Number('12abc')` is `NaN`, so an
+ * emptied or edited payload must not read as order zero — the same rule the
+ * panel table parser keeps, for the same reason.
+ */
+const orderIdAfter = (prefix: string, data: string | undefined): number | null => {
+  if (!data?.startsWith(prefix)) return null
+
+  const digits = data.slice(prefix.length)
+  if (!/^[0-9]+$/.test(digits)) return null
+
+  const orderId = Number(digits)
+
+  return Number.isSafeInteger(orderId) && orderId > 0 ? orderId : null
+}
+
+/** The order a "money arrived" key answers for, if that is what was pressed. */
+export const cardSaleConfirmOrderId = (data: string | undefined): number | null =>
+  orderIdAfter(SupportConfig.CARD_SALE_CONFIRM_PREFIX, data)
+
+/** …and the same for "nothing arrived". */
+export const cardSaleDenyOrderId = (data: string | undefined): number | null =>
+  orderIdAfter(SupportConfig.CARD_SALE_DENY_PREFIX, data)
+
+/** Whether a pressed key belongs to a card sale at all. */
+export const isCardSaleCallback = (data: string | undefined): boolean =>
+  cardSaleConfirmOrderId(data) !== null || cardSaleDenyOrderId(data) !== null

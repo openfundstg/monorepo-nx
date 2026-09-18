@@ -1,3 +1,4 @@
+import type { TmaSaleCardOrder } from 'src/modules/repositories/tma-sale-db/schemas'
 import type { BankProvider, SaleAwaitingJar } from '@transacto/contracts'
 import type { Types } from 'mongoose'
 import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
@@ -26,3 +27,18 @@ export const toAwaitingJar = (
   bankType: order.bankType as BankProvider,
   endedAt: new Date(order.updatedAt).toISOString()
 })
+
+/**
+ * One card order of a sale, by Transacto's number for it.
+ *
+ * Three call sites had this inline — the confirm path, the statement path and
+ * the admin panel's download — and it is the lookup every card-sale path starts
+ * from. One statement of it is worth the line, not because `find` is hard but
+ * because the *key* is a decision: Transacto's own numeric id, never our own,
+ * because that is the only identifier every one of those three arrives holding.
+ */
+export const cardOrderOf = (
+  sale: { readonly cardOrders?: readonly TmaSaleCardOrder[] },
+  orderId: number
+): TmaSaleCardOrder | undefined =>
+  sale.cardOrders?.find((candidate) => candidate.orderId === orderId)

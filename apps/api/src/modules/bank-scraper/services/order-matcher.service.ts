@@ -13,8 +13,7 @@ import {
   TerminalOrdersExecutedEvent
 } from 'src/shared/interfaces'
 import { AlertType, AlertDocument } from 'src/modules/repositories/alerts-db/schemas'
-import { isGoalClosingTopUp, parseMinOrderKopecks } from 'src/shared/utils'
-import environments from 'src/environments'
+import { isGoalClosingTopUp, transactoOrderFloorKopecks } from 'src/shared/utils'
 
 import {
   TerminalHistoryOrderEvent,
@@ -413,6 +412,6 @@ export class OrderMatcherService {
 
   /** The smallest order Transacto will route, and so the width of the tail. */
   private minOrderKopecks(): number {
-    return parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS)
+    return transactoOrderFloorKopecks()
   }
 }

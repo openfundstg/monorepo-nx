@@ -53,4 +53,19 @@ export class SaleService {
   getProgress(id: string): Promise<SaleProgress> {
     return firstValueFrom(this.api.getProgress(id));
   }
+
+  /** See {@link SaleApiService.confirmOrder}. */
+  confirmOrder(id: string, orderId: number, receivedAmount?: number): Promise<SaleProgress> {
+    return firstValueFrom(this.api.confirmOrder(id, orderId, receivedAmount));
+  }
+
+  /** See {@link SaleApiService.denyOrder}. */
+  denyOrder(id: string, orderId: number): Promise<SaleProgress> {
+    return firstValueFrom(this.api.denyOrder(id, orderId));
+  }
+
+  /** See {@link SaleApiService.uploadStatement}. */
+  uploadStatement(id: string, orderId: number, file: File): Promise<SaleProgress> {
+    return firstValueFrom(this.api.uploadStatement(id, orderId, file));
+  }
 }

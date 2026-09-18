@@ -35,6 +35,19 @@ export class Order {
   @Prop({ type: Date, default: () => new Date() })
   lastSyncAt: Date
 
+  /**
+   * When Transacto's window for the payer closes.
+   *
+   * Their `deadline`, resolved onto our clock — see `payerWindowMs` for why it
+   * is carried as a window rather than as their timestamp. Only a card sale
+   * reads it: a jar order is settled by the scraper seeing the money, and a
+   * deadline it passed changes nothing, while a card order's whole lifecycle
+   * turns on it. Absent when the delivery carried no usable pair of
+   * timestamps, and the card order then falls back to a configured window.
+   */
+  @Prop({ type: Date, required: false })
+  payerDeadlineAt?: Date
+
   @Prop({ type: String, enum: OrderStatus, default: OrderStatus.PENDING })
   status: OrderStatus
 

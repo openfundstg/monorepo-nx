@@ -11,6 +11,36 @@ export enum TmaDepositStatus {
   PAID_LATE = 'PAID_LATE',
 }
 
+/**
+ * Where a sale delivers the hryvnia, and therefore what proves it arrived.
+ *
+ * The two variants differ in one thing that changes everything downstream:
+ * **who says the money landed.**
+ *
+ * - {@link JAR} is proven by the bank. The user's jar is registered as the
+ *   Transacto credential, `bank-scraper` reads its balance, and the matcher
+ *   settles an order against an observed increase. Two independent records of
+ *   the same hryvnia exist — `receivedAmount` and the terminal's baseline — and
+ *   {@link SaleBlockReason.LEDGER_MISMATCH} refuses a completion where they
+ *   disagree.
+ * - {@link CARD} is proven by the user. Money goes straight to their card,
+ *   nothing scrapes anything, and the only record is the seller pressing a
+ *   button. The ledger guard is not merely switched off here — it is
+ *   **unbuildable**, because there is no second record to compare against.
+ *
+ * What replaces it is arithmetic, not observation: a card sale's credential is
+ * capped at one open order, `SALE_CARD_MAX_ORDERS` transactions in total,
+ * and a minimum order of `target / SALE_CARD_MAX_ORDERS`. Those three numbers
+ * are the blast radius of a single unnoticed mistake, which is why they are a
+ * contract and not a tuning knob.
+ */
+export enum SaleMethod {
+  /** Into the user's bank jar, watched by the scraper. */
+  JAR = 'JAR',
+  /** Straight to the user's card, confirmed by the user. */
+  CARD = 'CARD',
+}
+
 export enum TmaSaleStatus {
   CREATED = 'CREATED',
   TERMINAL_READY = 'TERMINAL_READY',
@@ -96,6 +126,19 @@ export enum SaleBlockReason {
    * to resolve, not a rule the user broke.
    */
   LEDGER_MISMATCH = 'LEDGER_MISMATCH',
+  /**
+   * A {@link SaleMethod.CARD} order ran out of time without the seller saying
+   * whether the money arrived, and the statement they were asked for did not
+   * settle it either.
+   *
+   * Only reachable on the card variant, where a confirmation is the only record
+   * of the hryvnia. Routing was already stopped when the order was disputed;
+   * this is the sale itself coming to rest so a person can look at it.
+   *
+   * Like the others the stake stays frozen — the seller may still be owed it,
+   * and they may equally be holding both halves.
+   */
+  ORDER_UNCONFIRMED = 'ORDER_UNCONFIRMED',
 }
 
 /**
@@ -126,6 +169,160 @@ export enum SaleRemainderPolicy {
    * to top up a jar by hand for the sake of a few hryvnia.
    */
   REFUND_TO_BALANCE = 'REFUND_TO_BALANCE',
+}
+
+/**
+ * Where one Transacto order of a {@link SaleMethod.CARD} sale stands.
+ *
+ * The whole variant turns on an asymmetry worth stating once: **a seller has a
+ * motive to lie in exactly one direction.** Saying "it did not arrive" when it
+ * did leaves them holding both the hryvnia and the USDT; saying "it arrived"
+ * when it did not costs them their own stake. So a confirmation is taken at
+ * face value — it is testimony against interest — and a denial is never taken
+ * at all without a document behind it.
+ *
+ * That is why {@link CONFIRMED} is reached by a button and {@link PROVEN_UNPAID}
+ * is not.
+ */
+export enum SaleCardOrderState {
+  /**
+   * A payer was routed here and the seller has not answered yet.
+   *
+   * Both surfaces that can answer — the sale's page and the bot's inline
+   * keyboard — call the same method, so whichever arrives second is a no-op
+   * rather than a second confirmation.
+   */
+  AWAITING_CONFIRMATION = 'AWAITING_CONFIRMATION',
+  /** The seller said the money landed, and the order was executed upstream. */
+  CONFIRMED = 'CONFIRMED',
+  /**
+   * The seller said it did not land, or said nothing until the deadline passed.
+   *
+   * Routing to the terminal stops the moment this is reached — not as a
+   * punishment, but because more money must not arrive somewhere a dispute is
+   * already open. The way out is a confirmation or a statement.
+   */
+  DISPUTED = 'DISPUTED',
+  /**
+   * A statement showed the money *did* arrive, contradicting the denial.
+   *
+   * The order is executed on the document's word rather than the seller's, with
+   * {@link OrderExecutionReason.STATEMENT_PROVEN} recording which it was. The
+   * contradiction itself is a fact about the seller, and it goes to an operator.
+   */
+  PROVEN_PAID = 'PROVEN_PAID',
+  /**
+   * A statement covering the whole window showed no such credit.
+   *
+   * Nothing is executed. The order rests here with its statement attached and
+   * waits for an operator, who settles the dispute in Transacto's own panel —
+   * this codebase deliberately does not close appeals.
+   */
+  PROVEN_UNPAID = 'PROVEN_UNPAID',
+}
+
+/**
+ * How much the recipient's name on a sale has been proven.
+ *
+ * Two states, not a list of sources, because only one distinction matters: has
+ * a bank document replaced what was assembled at creation, or not.
+ *
+ * At creation the name comes from whichever source was available — the bank
+ * behind a jar link, the seller's Telegram profile, or the seller typing it for
+ * a card sale — and none of those is checked against the account the money
+ * actually lands on. A statement is.
+ *
+ * The rewrite is worth recording rather than doing quietly. If the name on the
+ * statement is not the name that was there, money has already gone to a card
+ * whose holder was described wrongly, and that is an operator's question rather
+ * than a field update.
+ */
+export enum SaleReceiverNameSource {
+  /**
+   * Whatever was available when the sale was created, and unchecked since.
+   *
+   * The starting value for every sale of either variant.
+   */
+  DECLARED = 'DECLARED',
+  /** Replaced by a signed bank statement, which outranks all of the above. */
+  STATEMENT = 'STATEMENT',
+}
+
+/** How far one uploaded statement has got. */
+export enum SaleStatementStatus {
+  /** Stored, signature not checked yet. */
+  UPLOADED = 'UPLOADED',
+  /** Signature held; the document is being read. */
+  PARSING = 'PARSING',
+  /** Read, and its verdict applied to the order it answers. */
+  ACCEPTED = 'ACCEPTED',
+  /** Refused — see {@link SaleStatementRejection}. */
+  REJECTED = 'REJECTED',
+}
+
+/**
+ * Why a statement proved nothing.
+ *
+ * **A statement is asked to prove a negative**, which a receipt never is, and
+ * that makes every one of these a refusal rather than a verdict. A document
+ * that does not cover the order's window, or that has a row nobody could read,
+ * is not evidence of absence — reading it as "no credit found" is the failure
+ * mode this enum exists to make impossible.
+ *
+ * Keys, not sentences: the Mini App renders `'SALE_STATEMENT.' + rejection`.
+ */
+export enum SaleStatementRejection {
+  /**
+   * The file carries no valid signature, so it is a file and not a bank
+   * document. A screenshot or a re-printed PDF lands here.
+   */
+  SIGNATURE_INVALID = 'SIGNATURE_INVALID',
+  /**
+   * The signature is valid and the signer is not the bank.
+   *
+   * A qualified certificate can be bought by anybody, so a forger signs their
+   * own invented statement and the service confirms — truthfully — that the
+   * signature holds. Without this check the whole path is a forgery laundry.
+   */
+  NOT_A_BANK_SIGNER = 'NOT_A_BANK_SIGNER',
+  /**
+   * The document's layout could not be read in full.
+   *
+   * Includes a table with rows that parsed and rows that did not: a partially
+   * read statement is not a shorter statement, it is an unknown one.
+   */
+  UNREADABLE = 'UNREADABLE',
+  /** Its period does not contain the whole window the order was open for. */
+  PERIOD_TOO_SHORT = 'PERIOD_TOO_SHORT',
+  /** It is for a different card or account than the sale pays out to. */
+  WRONG_ACCOUNT = 'WRONG_ACCOUNT',
+  /**
+   * It is for the right account and the right window, and it shows the credit
+   * the seller denied receiving.
+   *
+   * The one member that is not a defect in the document — the document is fine,
+   * and it disagrees with the person who sent it.
+   */
+  CONTRADICTED = 'CONTRADICTED',
+  /**
+   * The bank does not know this document.
+   *
+   * Only reachable where a bank is asked about a statement by its own number
+   * rather than about the bytes — PrivatBank today. It is the strongest refusal
+   * available: not "this looks wrong" but "the institution that would have
+   * issued it says it did not".
+   */
+  NOT_REGISTERED = 'NOT_REGISTERED',
+  /**
+   * Nothing could be established, because the check itself could not run.
+   *
+   * **Not the sender's fault, and it must never read as one.** The certification
+   * service was unreachable, the bank's lookup timed out, the text extractor was
+   * down. The statement is kept and an operator decides; telling somebody their
+   * document was refused because our own dependency was unwell is the one
+   * message this enum must not be able to produce.
+   */
+  VERIFIER_UNAVAILABLE = 'VERIFIER_UNAVAILABLE',
 }
 
 /**
@@ -209,4 +406,28 @@ export enum SaleEventType {
    * which an operator may have set by hand.
    */
   RELEASED_BY_ADMIN = 'RELEASED_BY_ADMIN',
+  /**
+   * The seller confirmed one {@link SaleMethod.CARD} order's money reached
+   * their card. Carries `amount` in kopecks and the `orderId` it answers.
+   *
+   * Deliberately not {@link PAYMENT_MATCHED}, which would be very nearly true
+   * and therefore worse: matching is something the scraper does against an
+   * observed balance, and saying so on a card sale would tell the user a machine
+   * checked when a person asserted. The distinction is the same one
+   * {@link OrderExecutionReason} draws, and it is user-visible on both.
+   */
+  ORDER_CONFIRMED = 'ORDER_CONFIRMED',
+  /**
+   * One order was denied by the seller, or ran out of time unanswered. Carries
+   * `amount` and `orderId`. Routing stopped when this was written.
+   */
+  ORDER_DISPUTED = 'ORDER_DISPUTED',
+  /** A statement was uploaded against a disputed order. Carries `orderId`. */
+  STATEMENT_SUBMITTED = 'STATEMENT_SUBMITTED',
+  /**
+   * A statement was refused and the dispute is where it was. Carries `orderId`;
+   * the reason is on the statement, because a timeline entry has no room for one
+   * and the upload card is where the user is looking.
+   */
+  STATEMENT_REJECTED = 'STATEMENT_REJECTED',
 }

@@ -10,10 +10,12 @@ import { SupportRelayService } from 'src/modules/support/services/support-relay.
 import { SupportTopicService } from 'src/modules/support/services/support-topic.service'
 import { SupportUserService } from 'src/modules/support/services/support-user.service'
 import { SupportFiatWatchService } from 'src/modules/support/services/support-fiat-watch.service'
+import { SupportCardSaleService } from 'src/modules/support/services/support-card-sale.service'
 import {
   buttonOf,
   classifyUpdate,
   commandOf,
+  isCardSaleCallback,
   isFiatWatchOffCallback,
   type ClassifiedUpdate
 } from 'src/modules/support/utils'
@@ -39,6 +41,7 @@ export class SupportService {
     private readonly menuService: SupportMenuService,
     private readonly userService: SupportUserService,
     private readonly fiatWatchService: SupportFiatWatchService,
+    private readonly cardSaleService: SupportCardSaleService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis
   ) {}
 
@@ -91,6 +94,9 @@ export class SupportService {
       // feature added without this branch would have inherited that silence.
       if (isFiatWatchOffCallback(classified.query.data))
         return this.fiatWatchService.handleUnsubscribe(classified.query)
+
+      if (isCardSaleCallback(classified.query.data))
+        return this.cardSaleService.handleAnswer(classified.query)
 
       return this.menuService.handleLanguageChoice(classified.query)
     }

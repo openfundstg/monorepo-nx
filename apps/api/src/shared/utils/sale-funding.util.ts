@@ -339,3 +339,46 @@ export const saleDisposal = (
     deliveredFiat: settlement.settledFiat
   }
 }
+
+/** The part of a sale that decides whether its claims have been checked. */
+export interface SaleClaims {
+  readonly statementCheckpointAt?: Date | null
+  readonly cardOrders?: readonly {
+    readonly declaredAmount?: number
+    readonly answeredAt?: Date | null
+  }[]
+}
+
+/**
+ * Whether this sale is holding a claim no statement has been through yet.
+ *
+ * True when a seller said some payment arrived short and no accepted statement
+ * reaches as far as the moment they said it.
+ *
+ * **What it gates is the tail, and that is the whole design.** A shortfall is
+ * the one claim on a card sale a seller profits by making — ₴5 understated is
+ * ₴5 more of the target outstanding, another order routed, and more hryvnia for
+ * the same stake. Refusing the claim outright would punish every honest seller
+ * whose bank took a fee; taking it on trust would pay for every dishonest one.
+ *
+ * So the claim is taken, the sale runs on, and what is withheld is the
+ * remainder at the end — which cannot be collected until a statement says what
+ * really landed. A seller who told the truth loses nothing and waits for one
+ * document; a seller who did not finds the difference taken out of exactly the
+ * money they were trying to keep.
+ *
+ * Empty on every jar sale: they have no card orders, so nothing is ever
+ * claimed and nothing is ever held.
+ */
+export const awaitsStatementCheckpoint = (sale: SaleClaims): boolean => {
+  const checkpoint = sale.statementCheckpointAt ?? null
+
+  return (sale.cardOrders ?? []).some((order) => {
+    if (typeof order.declaredAmount !== 'number') return false
+    if (checkpoint === null) return true
+
+    // An order answered before the checkpoint has been read; one answered after
+    // it — or with no answer time at all — has not.
+    return !order.answeredAt || order.answeredAt > checkpoint
+  })
+}

@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, booleanAttribute, computed, input } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  booleanAttribute,
+  computed,
+  input,
+  output
+} from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { TranslatePipe } from '@ngx-translate/core'
 
@@ -35,6 +42,16 @@ export class MethodTileComponent {
   readonly comingSoon = input(false, { transform: booleanAttribute })
 
   /**
+   * Somebody tapped a tile that is going nowhere.
+   *
+   * Emitted only while {@link comingSoon} is set, because a live tile's tap is
+   * the router's business and not this component's. A screen can do whatever it
+   * likes with it — say something, or count.
+   */
+  readonly blockedTap = output<void>()
+
+
+  /**
    * `null` for a method that is coming soon, whatever link it was handed.
    *
    * `routerLink` bound to `null` removes the `href`, so the grey is not the
@@ -42,4 +59,8 @@ export class MethodTileComponent {
    * is nothing left to follow.
    */
   protected readonly target = computed(() => (this.comingSoon() ? null : this.link()))
+
+  protected onTap(): void {
+    if (this.comingSoon()) this.blockedTap.emit()
+  }
 }

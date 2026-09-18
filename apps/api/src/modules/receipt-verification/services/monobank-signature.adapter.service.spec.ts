@@ -53,6 +53,10 @@ const signature = (organization: string, issuer: string, valid = true) => ({
   signatureFormat: 'CAdES-BES',
   signType: 'Кваліфікований',
   signerCert: {
+    // Invented. The real certificate names a bank officer, and nothing here
+    // reads the name — `MONOBANK_SIGNERS` matches on the organisation and the
+    // issuer — so a real one in a fixture was a person's name kept in the
+    // repository for no purpose at all. See the root `CLAUDE.md`.
     commonName: 'Петренко Олена Іванівна',
     organization,
     serialNumber: '10FF',

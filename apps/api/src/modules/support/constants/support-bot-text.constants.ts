@@ -9,7 +9,7 @@ import {
 } from '@transacto/contracts'
 import environments from 'src/environments'
 import { SupportLocale } from 'src/shared/constants'
-import { parseMinOrderKopecks } from 'src/shared/utils'
+import { transactoOrderFloorKopecks } from 'src/shared/utils'
 import { SupportButton, SupportInlineButton } from 'src/modules/support/enums'
 import { formatPercent } from 'src/modules/support/utils/format-percent.util'
 import { formatUahKopecks } from 'src/modules/support/utils/format-uah.util'
@@ -135,7 +135,39 @@ export enum SupportUserText {
    * the chat forever, so it is pressed on last week's notification by somebody
    * who unsubscribed in the Mini App days ago.
    */
-  FIAT_WATCH_ALREADY_OFF = 'FIAT_WATCH_ALREADY_OFF'
+  FIAT_WATCH_ALREADY_OFF = 'FIAT_WATCH_ALREADY_OFF',
+  /** The seller confirmed a card order's money. */
+  CARD_ORDER_CONFIRMED = 'CARD_ORDER_CONFIRMED',
+  /** …or said it never came, which stops the sale and asks for a statement. */
+  CARD_ORDER_DENIED = 'CARD_ORDER_DENIED',
+  /**
+   * A key pressed on an order somebody has already answered.
+   *
+   * Ordinary rather than exceptional: the message stays in the chat forever,
+   * and the same order can be answered on the sale's own screen.
+   */
+  CARD_ORDER_ALREADY_ANSWERED = 'CARD_ORDER_ALREADY_ANSWERED',
+  /** Denied from an old keyboard, before the payment was late. */
+  CARD_ORDER_NOT_OVERDUE = 'CARD_ORDER_NOT_OVERDUE',
+  /** Transacto will not execute it any more — too late, or cancelled upstream. */
+  CARD_ORDER_NOT_EXECUTABLE = 'CARD_ORDER_NOT_EXECUTABLE',
+  /** Something was down. Distinct from the above: trying again may work. */
+  CARD_ORDER_FAILED = 'CARD_ORDER_FAILED',
+  /** The key pressed on an order that is not this person's to answer. */
+  CARD_ORDER_NOT_FOUND = 'CARD_ORDER_NOT_FOUND'
+}
+
+/**
+ * One card order, as a message about it needs it.
+ *
+ * **No card number, in any form.** The seller knows which of their cards it is,
+ * and a chat message is the last place a payment credential should reach.
+ */
+export interface SupportCardOrderView {
+  /** UAH kopecks the payer was routed to send. */
+  readonly amount: number
+  /** The code the seller sees on the sale, and quotes to support. */
+  readonly publicId: string
 }
 
 /**
@@ -232,6 +264,10 @@ export interface SupportDictionary {
    * that eventually quotes the wrong ones, and this one did.
    */
   readonly guide: (figures: SupportGuideFigures) => string
+  /** Asks the seller whether one card order's money arrived. */
+  readonly cardOrderAwaiting: (view: SupportCardOrderView) => string
+  /** …and tells them the sale is paused because nobody said. */
+  readonly cardOrderDisputed: (view: SupportCardOrderView) => string
 }
 
 const UK: SupportDictionary = {
@@ -260,11 +296,27 @@ const UK: SupportDictionary = {
     FIAT_WATCH_CANCELLED:
       '🔕 Готово — більше не повідомлятимемо про суми. ' +
       'Підписатися знову можна в застосунку, на екрані поповнення гривнею.',
-    FIAT_WATCH_ALREADY_OFF: '🔕 Підписки вже немає — повідомлень про суми ви не отримуєте.'
+    FIAT_WATCH_ALREADY_OFF: '🔕 Підписки вже немає — повідомлень про суми ви не отримуєте.',
+    CARD_ORDER_CONFIRMED: '✅ Дякуємо! Зарахування підтверджено, продаж триває.',
+    CARD_ORDER_DENIED:
+      '⚠️ Записали. Нові платежі по цій заявці зупинено.\n\n' +
+      'Якщо гроші все ж надійдуть — підтвердьте у застосунку. ' +
+      'Якщо ні — надішліть там виписку по картці, ми перевіримо самі.',
+    CARD_ORDER_ALREADY_ANSWERED: 'Цей платіж уже опрацьовано — робити нічого не треба.',
+    CARD_ORDER_NOT_OVERDUE:
+      'Час на цей платіж ще не вийшов — зачекайте. Якщо гроші так і не надійдуть, ми запитаємо вас самі.',
+    CARD_ORDER_NOT_EXECUTABLE:
+      '⚠️ Цей платіж уже не можна підтвердити автоматично. Натисніть «Підтримка», ' +
+      'і оператор розбереться вручну.',
+    CARD_ORDER_FAILED: 'Не вдалося опрацювати зараз. Спробуйте ще раз за хвилину.',
+    CARD_ORDER_NOT_FOUND: 'Не знайшли цей платіж серед ваших заявок.'
   },
   inlineButtons: {
     [SupportInlineButton.FIAT_WATCH_OFF]: '🔕 Відписатися',
-    [SupportInlineButton.OPEN_MINI_APP]: '💳 Поповнити'
+    [SupportInlineButton.OPEN_MINI_APP]: '💳 Поповнити',
+    [SupportInlineButton.CARD_SALE_CONFIRM]: '✅ Гроші надійшли',
+    [SupportInlineButton.CARD_SALE_DENY]: '❌ Не надійшли',
+    [SupportInlineButton.OPEN_SALE]: '📄 Відкрити заявку'
   },
   fiatAmountsAvailable: ({ amountsUah, minAmountUah, maxAmountUah, once }) =>
     `🔔 <b>Зʼявилася сума для поповнення</b>\n\n` +
@@ -284,6 +336,18 @@ const UK: SupportDictionary = {
       : `\n\n📉 Купити: <b>${formatUahKopecks(rates.buy)} грн</b> за 1 USDT` +
         `\n📈 Продати: <b>${formatUahKopecks(rates.sell)} грн</b> за 1 USDT` +
         spreadLine(rates, (uah, percent) => `\n\n💰 Ваш профіт: <b>${uah} грн</b> (${percent}%) з кожного USDT`)),
+  cardOrderAwaiting: ({ amount, publicId }) =>
+    `💳 <b>Очікується зарахування</b>\n\n` +
+    `На вашу картку має надійти <b>${formatUahKopecks(amount)} грн</b> ` +
+    `за заявкою <b>${publicId}</b>.\n\n` +
+    `Щойно побачите гроші — натисніть «Гроші надійшли». ` +
+    `Якщо не надійдуть — натисніть «Не надійшли», і ми зупинимо заявку.`,
+  cardOrderDisputed: ({ amount, publicId }) =>
+    `⏸ <b>Заявку призупинено</b>\n\n` +
+    `Зарахування <b>${formatUahKopecks(amount)} грн</b> за заявкою <b>${publicId}</b> ` +
+    `не підтверджено, тому нові платежі на вашу картку зупинено.\n\n` +
+    `Якщо гроші все ж надійшли — підтвердьте кнопкою нижче. ` +
+    `Якщо ні — відкрийте заявку і надішліть виписку по картці: ми перевіримо самі.`,
   guide: ({ minUsdt, remainderUah, banks, payWindowMinutes }) =>
     `📖 <b>Як працює ${BRAND}</b>\n\n` +
     `<b>1. Поповніть баланс.</b> Двома способами, на вибір:\n\n` +
@@ -338,11 +402,27 @@ const RU: SupportDictionary = {
     FIAT_WATCH_CANCELLED:
       '🔕 Готово — больше не будем сообщать о суммах. ' +
       'Подписаться снова можно в приложении, на экране пополнения гривной.',
-    FIAT_WATCH_ALREADY_OFF: '🔕 Подписки уже нет — уведомления о суммах вам не приходят.'
+    FIAT_WATCH_ALREADY_OFF: '🔕 Подписки уже нет — уведомления о суммах вам не приходят.',
+    CARD_ORDER_CONFIRMED: '✅ Спасибо! Зачисление подтверждено, продажа продолжается.',
+    CARD_ORDER_DENIED:
+      '⚠️ Записали. Новые платежи по этой заявке остановлены.\n\n' +
+      'Если деньги всё же придут — подтвердите в приложении. ' +
+      'Если нет — отправьте там выписку по карте, мы проверим сами.',
+    CARD_ORDER_ALREADY_ANSWERED: 'Этот платёж уже обработан — делать ничего не нужно.',
+    CARD_ORDER_NOT_OVERDUE:
+      'Время на этот платёж ещё не вышло — подождите. Если деньги так и не придут, мы спросим вас сами.',
+    CARD_ORDER_NOT_EXECUTABLE:
+      '⚠️ Этот платёж уже нельзя подтвердить автоматически. Нажмите «Поддержка», ' +
+      'и оператор разберётся вручную.',
+    CARD_ORDER_FAILED: 'Не удалось обработать сейчас. Попробуйте ещё раз через минуту.',
+    CARD_ORDER_NOT_FOUND: 'Не нашли этот платёж среди ваших заявок.'
   },
   inlineButtons: {
     [SupportInlineButton.FIAT_WATCH_OFF]: '🔕 Отписаться',
-    [SupportInlineButton.OPEN_MINI_APP]: '💳 Пополнить'
+    [SupportInlineButton.OPEN_MINI_APP]: '💳 Пополнить',
+    [SupportInlineButton.CARD_SALE_CONFIRM]: '✅ Деньги пришли',
+    [SupportInlineButton.CARD_SALE_DENY]: '❌ Не пришли',
+    [SupportInlineButton.OPEN_SALE]: '📄 Открыть заявку'
   },
   fiatAmountsAvailable: ({ amountsUah, minAmountUah, maxAmountUah, once }) =>
     `🔔 <b>Появилась сумма для пополнения</b>\n\n` +
@@ -362,6 +442,18 @@ const RU: SupportDictionary = {
       : `\n\n📉 Купить: <b>${formatUahKopecks(rates.buy)} грн</b> за 1 USDT` +
         `\n📈 Продать: <b>${formatUahKopecks(rates.sell)} грн</b> за 1 USDT` +
         spreadLine(rates, (uah, percent) => `\n\n💰 Ваш профит: <b>${uah} грн</b> (${percent}%) с каждого USDT`)),
+  cardOrderAwaiting: ({ amount, publicId }) =>
+    `💳 <b>Ожидается зачисление</b>\n\n` +
+    `На вашу карту должно прийти <b>${formatUahKopecks(amount)} грн</b> ` +
+    `по заявке <b>${publicId}</b>.\n\n` +
+    `Как только увидите деньги — нажмите «Деньги пришли». ` +
+    `Если не придут — нажмите «Не пришли», и мы остановим заявку.`,
+  cardOrderDisputed: ({ amount, publicId }) =>
+    `⏸ <b>Заявка приостановлена</b>\n\n` +
+    `Зачисление <b>${formatUahKopecks(amount)} грн</b> по заявке <b>${publicId}</b> ` +
+    `не подтверждено, поэтому новые платежи на вашу карту остановлены.\n\n` +
+    `Если деньги всё же пришли — подтвердите кнопкой ниже. ` +
+    `Если нет — откройте заявку и отправьте выписку по карте: мы проверим сами.`,
   guide: ({ minUsdt, remainderUah, banks, payWindowMinutes }) =>
     `📖 <b>Как работает ${BRAND}</b>\n\n` +
     `<b>1. Пополните баланс.</b> Двумя способами, на выбор:\n\n` +
@@ -415,11 +507,27 @@ const EN: SupportDictionary = {
     FIAT_WATCH_CANCELLED:
       '🔕 Done — we will not write about amounts any more. ' +
       'You can subscribe again in the app, on the hryvnia top-up screen.',
-    FIAT_WATCH_ALREADY_OFF: '🔕 There is no subscription left — you are not being notified.'
+    FIAT_WATCH_ALREADY_OFF: '🔕 There is no subscription left — you are not being notified.',
+    CARD_ORDER_CONFIRMED: '✅ Thank you. The payment is confirmed and the sale continues.',
+    CARD_ORDER_DENIED:
+      '⚠️ Noted. No further payments will be sent to this sale.\n\n' +
+      'If the money does arrive after all, confirm it in the app. ' +
+      'If it does not, send your card statement there and we will check it ourselves.',
+    CARD_ORDER_ALREADY_ANSWERED: 'This payment has already been handled — nothing to do.',
+    CARD_ORDER_NOT_OVERDUE:
+      'This payment is not late yet — please wait. If the money never arrives, we will ask you.',
+    CARD_ORDER_NOT_EXECUTABLE:
+      '⚠️ This payment can no longer be confirmed automatically. Press “Support” and ' +
+      'an operator will sort it out by hand.',
+    CARD_ORDER_FAILED: 'That could not be processed just now. Please try again in a minute.',
+    CARD_ORDER_NOT_FOUND: 'We could not find that payment among your sales.'
   },
   inlineButtons: {
     [SupportInlineButton.FIAT_WATCH_OFF]: '🔕 Unsubscribe',
-    [SupportInlineButton.OPEN_MINI_APP]: '💳 Top up'
+    [SupportInlineButton.OPEN_MINI_APP]: '💳 Top up',
+    [SupportInlineButton.CARD_SALE_CONFIRM]: '✅ Money arrived',
+    [SupportInlineButton.CARD_SALE_DENY]: '❌ Nothing arrived',
+    [SupportInlineButton.OPEN_SALE]: '📄 Open the sale'
   },
   fiatAmountsAvailable: ({ amountsUah, minAmountUah, maxAmountUah, once }) =>
     `🔔 <b>An amount you asked about is available</b>\n\n` +
@@ -439,6 +547,17 @@ const EN: SupportDictionary = {
       : `\n\n📉 Buy: <b>₴${formatUahKopecks(rates.buy)}</b> per 1 USDT` +
         `\n📈 Sell: <b>₴${formatUahKopecks(rates.sell)}</b> per 1 USDT` +
         spreadLine(rates, (uah, percent) => `\n\n💰 Your profit: <b>₴${uah}</b> (${percent}%) on every USDT`)),
+  cardOrderAwaiting: ({ amount, publicId }) =>
+    `💳 <b>A payment is on its way</b>\n\n` +
+    `<b>₴${formatUahKopecks(amount)}</b> should reach your card for sale <b>${publicId}</b>.\n\n` +
+    `As soon as you see the money, press \u201cMoney arrived\u201d. ` +
+    `If it never comes, press \u201cNothing arrived\u201d and we will pause the sale.`,
+  cardOrderDisputed: ({ amount, publicId }) =>
+    `⏸ <b>The sale is paused</b>\n\n` +
+    `<b>₴${formatUahKopecks(amount)}</b> for sale <b>${publicId}</b> was not confirmed, so no ` +
+    `further payments are being sent to your card.\n\n` +
+    `If the money did arrive, confirm it with the button below. If it did not, open the sale ` +
+    `and send your card statement: we will check it ourselves.`,
   guide: ({ minUsdt, remainderUah, banks, payWindowMinutes }) =>
     `📖 <b>How ${BRAND} works</b>\n\n` +
     `<b>1. Top up your balance.</b> Two ways, your choice:\n\n` +
@@ -525,7 +644,7 @@ export const supportGuideText = (locale: SupportLocale): string =>
   DICTIONARIES[locale].guide({
     minUsdt: MIN_USDT_AMOUNT,
     remainderUah: Math.round(
-      parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS) / KOPECKS_PER_UAH
+      transactoOrderFloorKopecks() / KOPECKS_PER_UAH
     ),
     banks: enabledBankNames(),
     payWindowMinutes: Number(environments.TMA_FIAT_PAY_WINDOW_MINUTES || '15')
@@ -533,6 +652,16 @@ export const supportGuideText = (locale: SupportLocale): string =>
 
 export const supportBalanceCard = (locale: SupportLocale, balance: SupportBalanceView): string =>
   DICTIONARIES[locale].balanceCard(balance)
+
+export const supportCardOrderAwaitingText = (
+  locale: SupportLocale,
+  view: SupportCardOrderView
+): string => DICTIONARIES[locale].cardOrderAwaiting(view)
+
+export const supportCardOrderDisputedText = (
+  locale: SupportLocale,
+  view: SupportCardOrderView
+): string => DICTIONARIES[locale].cardOrderDisputed(view)
 
 export const supportFiatAmountsText = (
   locale: SupportLocale,

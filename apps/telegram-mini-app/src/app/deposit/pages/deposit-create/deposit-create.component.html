@@ -38,8 +38,24 @@
     </p>
   }
 
+  <!--
+    `disabled` is written twice on purpose — once as static markup, once as the
+    binding that maintains it.
+
+    The app is zoneless, so a component's elements reach the DOM before its
+    first change-detection pass evaluates any binding, and a button whose markup
+    says nothing about `disabled` is an *enabled* button for that gap. Long
+    enough to paint: this one appeared in the accent colour and turned grey a
+    frame later, on a screen where the amount is empty and it was never going to
+    be pressable.
+
+    The static attribute makes the first paint agree with the first binding.
+    Angular then owns the property, and clears the attribute the moment the form
+    becomes valid.
+  -->
   <button
     class="primary-btn"
+    disabled
     [disabled]="submitting() || belowMinimum() || rateUnavailable()"
     (click)="onSubmit()"
     id="deposit-submit-btn"

@@ -1,28 +1,24 @@
 import {
   FIAT_RECEIPT_ALLOWED_EXTENSIONS,
-  FIAT_RECEIPT_ALLOWED_MIME_TYPES
+  FIAT_RECEIPT_ALLOWED_MIME_TYPES,
+  isAcceptedUpload,
+  type UploadedFileType
 } from '@transacto/contracts'
 
 /**
  * Whether a file is one Transacto's recognition will take.
  *
- * The extension decides, and the MIME type is only allowed to disqualify a file
- * when it says something definite: a Telegram WebView reports `image/jpg`,
- * `application/octet-stream` or nothing at all for the same screenshot
- * depending on the phone, and a check that trusted it would refuse receipts
- * that are perfectly fine.
+ * The rule is `isAcceptedUpload`, shared with the statement path: the two are
+ * the same check over two lists, and only the lists are a product decision.
+ * The lists differ for a reason worth keeping in view — a receipt may be a
+ * screenshot because Transacto's own recognition judges it, and a statement may
+ * not, because nothing downstream judges that one.
  */
-export const isAcceptedReceiptFile = (file: {
-  readonly fileName: string
-  readonly mimeType: string
-}): boolean => {
-  const extension = file.fileName.split('.').pop()?.toLowerCase() ?? ''
-  if (!FIAT_RECEIPT_ALLOWED_EXTENSIONS.includes(extension as never)) return false
-
-  const mimeType = file.mimeType.toLowerCase().split(';')[0].trim()
-
-  return mimeType === '' || FIAT_RECEIPT_ALLOWED_MIME_TYPES.includes(mimeType as never)
-}
+export const isAcceptedReceiptFile = (file: UploadedFileType): boolean =>
+  isAcceptedUpload(file, {
+    extensions: FIAT_RECEIPT_ALLOWED_EXTENSIONS,
+    mimeTypes: FIAT_RECEIPT_ALLOWED_MIME_TYPES
+  })
 
 /**
  * UAH kopecks from the hryvnia figure Transacto reads off a receipt.

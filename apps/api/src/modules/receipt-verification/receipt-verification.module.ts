@@ -2,17 +2,21 @@ import { Module } from '@nestjs/common'
 import { HttpModule } from '@nestjs/axios'
 import {
   RECEIPT_CODE_STRATEGIES,
-  RECEIPT_VERIFICATION_PROVIDERS
+  RECEIPT_VERIFICATION_PROVIDERS,
+  STATEMENT_VERIFICATION_PROVIDERS
 } from 'src/modules/receipt-verification/receipt-verification.tokens'
 import {
   MonobankCaApiService,
   MonobankReceiptStrategy,
   MonobankSignatureAdapterService,
+  MonobankStatementProvider,
   PrivatbankAdapterService,
   PrivatbankDocumentApiService,
   PrivatbankReceiptStrategy,
+  PrivatbankStatementProvider,
   ReceiptCheckerApiService,
-  ReceiptVerificationFacadeService
+  ReceiptVerificationFacadeService,
+  StatementVerificationFacadeService
 } from 'src/modules/receipt-verification/services'
 
 /**
@@ -56,6 +60,9 @@ import {
     PrivatbankDocumentApiService,
     MonobankReceiptStrategy,
     PrivatbankReceiptStrategy,
+    StatementVerificationFacadeService,
+    MonobankStatementProvider,
+    PrivatbankStatementProvider,
     {
       provide: RECEIPT_CODE_STRATEGIES,
       // One per bank whose receipts this product can read. A bank absent here
@@ -80,8 +87,25 @@ import {
         privatbank: PrivatbankAdapterService
       ) => [monobank, privatbank],
       inject: [MonobankSignatureAdapterService, PrivatbankAdapterService]
+    },
+    {
+      provide: STATEMENT_VERIFICATION_PROVIDERS,
+      // The same one-per-bank arrangement as the receipts above, and the two
+      // paths are as different from each other as those are. Monobank's
+      // statement is proven by the signature on the bytes; PrivatBank's is
+      // proven by asking PrivatBank for the document number and reading **their**
+      // copy, which makes the upload stop being evidence at all.
+      //
+      // A bank absent here is a bank whose statements cannot be checked, and
+      // `CARD_SALE_ENABLED_BANKS` promises one that can — the facade logs an
+      // error if the two ever disagree.
+      useFactory: (
+        monobank: MonobankStatementProvider,
+        privatbank: PrivatbankStatementProvider
+      ) => [monobank, privatbank],
+      inject: [MonobankStatementProvider, PrivatbankStatementProvider]
     }
   ],
-  exports: [ReceiptVerificationFacadeService]
+  exports: [ReceiptVerificationFacadeService, StatementVerificationFacadeService]
 })
 export class ReceiptVerificationModule {}

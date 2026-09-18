@@ -27,8 +27,15 @@ import {
  * status carrying it, so this is the only thing worth branching on — the status
  * alone does not distinguish "already executed" from "limit exhausted", and
  * both arrive as a 400.
+ *
+ * **Named for whose codes it reads**, because `errorCodeOf` in
+ * `src/shared/utils` reads *ours* — the `ERROR` constant inside a thrown
+ * NestJS exception — and the two are entirely different numbers. They were
+ * both called `errorCodeOf`, one private here and one exported, and a caller
+ * outside this file that reached for the familiar name got a function that
+ * silently answers `undefined` for every Transacto failure there is.
  */
-const errorCodeOf = (error: unknown): TransactoErrorCode | undefined =>
+export const transactoErrorCodeOf = (error: unknown): TransactoErrorCode | undefined =>
   isAxiosError<TransactoApiError>(error) ? error.response?.data?.error_code : undefined
 
 /**
@@ -131,7 +138,7 @@ export class TransactoApiService {
 
       return { outcome: OrderExecutionOutcome.CONFIRMED }
     } catch (error) {
-      const errorCode = errorCodeOf(error)
+      const errorCode = transactoErrorCodeOf(error)
 
       if (errorCode === TransactoErrorCode.TEST_ORDER) {
         this.logger.warn(

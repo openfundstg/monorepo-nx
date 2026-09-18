@@ -38,6 +38,10 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     items: [
       { path: 'users', label: 'nav.users', icon: 'group' },
       { path: 'sales', label: 'nav.sales', icon: 'sync_alt' },
+      // Beside sales rather than under the payment pipeline: a disputed card
+      // payment is a question put to a Mini App seller, and it is answered by
+      // a document they send.
+      { path: 'card-orders', label: 'nav.card_orders', icon: 'gavel' },
       { path: 'deposits', label: 'nav.deposits', icon: 'account_balance_wallet' },
       { path: 'fiat-deposits', label: 'nav.fiat_deposits', icon: 'payments' },
       {

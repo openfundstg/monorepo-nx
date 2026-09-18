@@ -34,6 +34,10 @@ export const routes: Routes = [
         path: 'fiat-deposit-watches',
         loadChildren: () => import('./fiat-deposit-watches/routes').then((m) => m.routes),
       },
+      {
+        path: 'card-orders',
+        loadChildren: () => import('./card-orders/routes').then((m) => m.routes),
+      },
       { path: 'referrals', loadChildren: () => import('./referrals/routes').then((m) => m.routes) },
       { path: 'terminals', loadChildren: () => import('./terminals/routes').then((m) => m.routes) },
       { path: 'orders', loadChildren: () => import('./orders/routes').then((m) => m.routes) },

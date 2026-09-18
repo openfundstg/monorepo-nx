@@ -5,6 +5,11 @@ import type {
   SaleEventType,
   SaleBlockReason,
   SaleRemainderPolicy,
+  SaleMethod,
+  SaleCardOrderState,
+  SaleReceiverNameSource,
+  SaleStatementStatus,
+  SaleStatementRejection,
 } from '../enums/tma.enum.js';
 import type { BankProvider } from '../enums/bank-provider.enum.js';
 import type { TmaFiatDepositStatus } from '../enums/fiat-deposit.enum.js';
@@ -154,6 +159,16 @@ export interface TmaSale {
    */
   publicId: string;
   telegramId: number;
+  /**
+   * Where this sale delivers its hryvnia, and therefore what proves it arrived.
+   *
+   * Optional because the document is returned as it is stored, and sales written
+   * before the variant existed carry no value — Mongoose defaults are not
+   * applied to a lean read. Absent means {@link SaleMethod.JAR}, which is what
+   * every one of them was. The backfill migration writes it explicitly rather
+   * than leaving readers to remember that.
+   */
+  saleMethod?: SaleMethod;
   fiatAmount: number;
   /**
    * Kopecks per USDT **for this sale**, snapshotted when it was created.
@@ -197,8 +212,110 @@ export interface TmaSale {
   refundedRemainderUsdt?: number;
   /** The same tail in UAH kopecks, before it was converted at the order's rate. */
   refundedRemainderFiat?: number;
+  /**
+   * The name a payer sees as the recipient.
+   *
+   * On a {@link SaleMethod.JAR} sale it comes from the bank behind the link, or
+   * from the seller's Telegram profile where the bank says nothing. On a
+   * {@link SaleMethod.CARD} sale the seller types it, because nothing else can.
+   * Either way it is unchecked until a statement rewrites it — see
+   * {@link receiverNameSource}.
+   */
+  receiverName?: string | null;
+  /** Which of those two wrote {@link receiverName}. */
+  receiverNameSource?: SaleReceiverNameSource;
+  /**
+   * The last four digits of the card a {@link SaleMethod.CARD} sale pays out to.
+   *
+   * Four and not sixteen, deliberately — see `cardTail`. `null` on a jar sale,
+   * whose destination is the drop link.
+   */
+  payoutCardTail?: string | null;
+  /**
+   * The Transacto orders of a {@link SaleMethod.CARD} sale, oldest first.
+   *
+   * At most `SALE_CARD_MAX_ORDERS` of them, and at most one awaiting an
+   * answer at a time — the credential is created with `max_open_orders: 1`.
+   * Absent on a jar sale, whose orders are matched rather than answered and so
+   * appear only as timeline events.
+   */
+  cardOrders?: readonly SaleCardOrder[];
   completedAt: string | null;
   createdAt: string;
+}
+
+/**
+ * One Transacto order of a card sale, as the seller has to answer it.
+ *
+ * The card variant's unit of work. A jar sale's orders are settled by the
+ * scraper and never need naming to the user; these are questions put to a
+ * person, so each one carries what it is for, how long there is to answer, and
+ * what happened.
+ */
+export interface SaleCardOrder {
+  /** Transacto's internal numeric id — the one `orders_execute` accepts. */
+  readonly orderId: number;
+  /** What the payer was routed to send, in UAH kopecks. */
+  readonly amount: number;
+  /**
+   * What the seller says actually landed, in UAH kopecks.
+   *
+   * Absent on every order answered with a plain "it arrived", which means the
+   * whole of {@link amount}. Present, and smaller, when a transfer fee took a
+   * bite out of it on the way.
+   *
+   * **It is this figure that counts toward the target, not {@link amount}.** A
+   * jar sale credits what the scraper saw the jar grow by, which is already net
+   * of whatever the bank took; a card sale has no such witness, so the seller's
+   * own figure stands in its place — and a sale that credited the ordered amount
+   * would quietly charge the fee to the seller while telling them it had not.
+   *
+   * Which is also why it is the one field on this document a seller has a motive
+   * to understate: a smaller credit leaves more of the target outstanding and
+   * brings them more hryvnia for the same stake. That is what the statement
+   * checkpoint exists to settle.
+   */
+  readonly declaredAmount?: number;
+  readonly state: SaleCardOrderState;
+  /** When it was routed here, ISO 8601. */
+  readonly arrivedAt: string;
+  /**
+   * When an unanswered order becomes a dispute, ISO 8601.
+   *
+   * Ours, not Transacto's: their `deadline` is how long the *payer* has. This is
+   * how long the seller has after that, and it is what the screen counts down.
+   */
+  readonly confirmDeadlineAt: string;
+  /** When it was answered, ISO 8601, or `null` while it still stands open. */
+  readonly answeredAt: string | null;
+  /**
+   * Statements uploaded against this order, oldest first.
+   *
+   * Empty until somebody denies something — there is nothing to prove before
+   * that. More than one because a refused statement is an ordinary outcome: the
+   * period was too short, the file was a screenshot, it was for another card.
+   * The user has to see *which* of those it was to send a better one, so the
+   * attempts are kept rather than overwritten.
+   */
+  readonly statements: readonly SaleStatement[];
+}
+
+/**
+ * A bank statement uploaded to settle one disputed order.
+ *
+ * The file itself never reaches the Mini App: it is the user's own document, an
+ * operator reads it, and a client has no use for the bytes. What crosses the
+ * wire is the verdict and enough of the document to explain it.
+ */
+export interface SaleStatement {
+  readonly id: string;
+  readonly status: SaleStatementStatus;
+  /** Why it proved nothing, or `null` while it still might. */
+  readonly rejection: SaleStatementRejection | null;
+  readonly uploadedAt: string;
+  /** The period the document covers, ISO 8601, once it has been read. */
+  readonly periodFrom: string | null;
+  readonly periodTo: string | null;
 }
 
 /**
@@ -237,6 +354,22 @@ export interface TmaRatesResponse {
    * it runs.
    */
   sell: number;
+}
+
+/**
+ * The body of `POST /tma/sales/:id/orders/:orderId/confirm`.
+ *
+ * Empty for the ordinary answer — the bot's inline key sends nothing at all,
+ * because a keyboard cannot ask for a number — and an empty body means the
+ * order's whole amount arrived.
+ */
+export interface ConfirmCardOrderReq {
+  /**
+   * What actually landed, in UAH kopecks, when it is not the whole order.
+   *
+   * Never more than the order: a transfer fee can only take money out of one.
+   */
+  receivedAmount?: number;
 }
 
 export interface SaleConfigResponse {
@@ -352,12 +485,36 @@ export interface ResolveDropLinkReq {
  * backend DTO `implements` it and adds the `class-validator` decorators.
  */
 export interface CreateSaleReq {
+  /**
+   * Which variant to create.
+   *
+   * Optional so a client that predates the choice keeps working exactly as it
+   * did: a missing value is read as {@link SaleMethod.JAR}, which is the only
+   * thing it could ever have meant.
+   */
+  saleMethod?: SaleMethod;
   /** The order total in UAH kopecks — the figure the user sets as the jar goal. */
   fiatAmount: number;
   bankType: BankProvider;
-  dropLink: string;
+  /**
+   * The jar to pay into.
+   *
+   * Required on a {@link SaleMethod.JAR} sale and meaningless on a
+   * {@link SaleMethod.CARD} one, which pays a card directly and has no link to
+   * resolve. Send an empty string, or omit it.
+   */
+  dropLink?: string;
   /** 16 digits, however the user typed them. */
   cardNumber: string;
+  /**
+   * Who the payer will see as the recipient.
+   *
+   * Required on a {@link SaleMethod.CARD} sale and ignored on a jar one, where
+   * the bank names the jar's owner and a form field would only be a second,
+   * worse answer. It is rewritten from the first accepted statement — see
+   * {@link SaleReceiverNameSource}.
+   */
+  receiverName?: string;
   /**
    * Kopecks per USDT that `fiatAmount` was worked out at.
    *
@@ -668,6 +825,46 @@ export interface SaleProgress {
    * once, and the refund would otherwise appear only on the next visit.
    */
   refundedRemainderUsdt: number;
+  /**
+   * Which variant this is, so the page knows what it is rendering.
+   *
+   * Not inferable from the other fields: a card sale before its first order and
+   * a jar sale that has never been scraped both show `jarBalance: null`, and
+   * they need opposite screens. Absent on a snapshot built from a sale written
+   * before the variant existed, which means {@link SaleMethod.JAR}.
+   */
+  saleMethod?: SaleMethod;
+  /**
+   * The orders this card sale's seller has to answer, oldest first.
+   *
+   * Empty on a jar sale, whose orders are the scraper's business rather than
+   * the user's. On the snapshot rather than the detail document for the same
+   * reason {@link refundedRemainderUsdt} is: an order arrives while the page is
+   * open, and a detail loaded once would never show it.
+   */
+  cardOrders?: readonly SaleCardOrder[];
+  /**
+   * Whether this sale is waiting on a bank statement before its tail is released.
+   *
+   * True when a seller declared that some payment arrived short and no accepted
+   * statement reaches as far as the moment they said it. The remainder — the
+   * USDT that would otherwise come back to their balance — is held until one
+   * does, which is what makes telling the truth cheaper than not.
+   *
+   * Absent on a jar sale, which has no claims of this kind to check.
+   */
+  statementRequired?: boolean;
+  /**
+   * The smallest order this card sale will be sent, in UAH kopecks, and how
+   * many it will be split into at most.
+   *
+   * Both derived from the target by `saleCardMinOrderKopecks` and
+   * `saleCardMaxOrders`, and sent rather than recomputed so the screen cannot
+   * name a figure different from the one on the credential. Absent on a jar
+   * sale.
+   */
+  cardMinOrderKopecks?: number;
+  cardMaxOrders?: number;
   /** Epoch milliseconds this snapshot was built. */
   updatedAt: number;
 }

@@ -16,7 +16,12 @@ import {
   type MonobankCaVerifyResponse
 } from 'src/shared/interfaces'
 import { UAH_CURRENCY_CODE } from 'src/shared/constants'
-import { describeError } from 'src/shared/utils'
+import {
+  bankSignatureOf,
+  describeError,
+  describeSigners,
+  SignatureRefusal
+} from 'src/shared/utils'
 
 /** Dashes are presentation; two codes are the same code without them. */
 const DASHES = /-/g
@@ -124,54 +129,41 @@ export class MonobankSignatureAdapterService implements ReceiptVerificationProvi
   /**
    * The bank's own valid signature on this document, or `null`.
    *
-   * Searched rather than taken from `signatures[0]`, so a document that is
-   * counter-signed by somebody else still verifies on the bank's own. The
-   * overall verdict is checked too: it is `false` the moment any signature on
-   * the document fails, and a document carrying a broken signature is not one to
-   * settle money against however good the other one is.
+   * The rule itself lives in `bankSignatureOf`, shared with the statement path:
+   * the two ask the same certification service the same question about two
+   * different documents, and a second copy of "did monobank sign this" is the
+   * one duplication neither could afford. What stays here is the logging, which
+   * names a receipt code where the statement path names a sale.
    */
   private banksOwnSignature(
     answer: MonobankCaVerifyResponse,
     code: string
   ): MonobankCaSignature | null {
-    const { signatureValid, protocolInfo } = answer
+    const verdict = bankSignatureOf(answer)
 
-    if (!signatureValid || protocolInfo.mainIndication !== MONOBANK_CA_TOTAL_PASSED) {
-      this.logger.warn(
-        `${code} does not verify: signatureValid ${signatureValid}, ` +
-          `${protocolInfo.mainIndication} across ${protocolInfo.signatures.length} signature(s)`
-      )
+    if ('signature' in verdict) return verdict.signature
 
-      return null
-    }
-
-    const banks =
-      protocolInfo.signatures.find(
-        (candidate) =>
-          candidate.valid &&
-          MONOBANK_SIGNERS.some(
-            (signer) =>
-              candidate.signerCert.organization === signer.organization &&
-              candidate.signerCert.issuer === signer.issuer
-          )
-      ) ?? null
-
-    if (banks === null) {
+    if (verdict.refusal === SignatureRefusal.NOT_THE_BANK) {
       // A valid signature by somebody who is not the bank. Ordinary corruption
       // does not produce this — it is what a document signed with a certificate
       // its author bought looks like, so it is worth an error line rather than
       // a shrug.
       this.logger.error(
         `${code} carries a valid signature by nobody this build recognises: ` +
-          protocolInfo.signatures
-            .map((entry) => `${entry.signerCert.organization} via ${entry.signerCert.issuer}`)
-            .join('; ') +
-          `. Either a forgery, or the bank has changed certificate again — in which case the ` +
-          `pair above is what MONOBANK_SIGNERS is missing.`
+          `${describeSigners(answer)}. Either a forgery, or the bank has changed ` +
+          `certificate again — in which case that pair is what MONOBANK_SIGNERS is missing.`
       )
+
+      return null
     }
 
-    return banks
+    this.logger.warn(
+      `${code} does not verify: signatureValid ${answer.signatureValid}, ` +
+        `${answer.protocolInfo.mainIndication} across ` +
+        `${answer.protocolInfo.signatures.length} signature(s)`
+    )
+
+    return null
   }
 
   /**

@@ -11,7 +11,12 @@ import type {
 } from 'src/modules/receipt-verification/interfaces'
 import { PrivatbankDocumentApiService } from 'src/modules/receipt-verification/services/privatbank-document.api.service'
 import { ReceiptCheckerApiService } from 'src/modules/receipt-verification/services/receipt-checker.api.service'
-import { parsePrivatbankReceipt } from 'src/modules/receipt-verification/utils'
+import {
+  isGranted,
+  parsePrivatbankReceipt,
+  PrivatbankGrantGap,
+  readGrant
+} from 'src/modules/receipt-verification/utils'
 import {
   PrivatbankDocumentType,
   PrivatbankRecipientKind,
@@ -99,30 +104,30 @@ export class PrivatbankAdapterService implements ReceiptVerificationProvider {
         `session ${found.cookie === '' ? 'absent' : 'issued'}`
     )
 
-    // `status: false` is their negative, and it is an explicit boolean. An
-    // empty or malformed code lands here too: their lookup does not validate,
-    // so a code that never existed and one that was mistyped are the same
-    // reply.
-    if (found.body.status !== true) {
-      this.logger.warn(`PrivatBank does not know receipt ${code}: ${found.body.reason ?? 'no reason'}`)
+    const read = readGrant(found)
 
-      return { result: ReceiptLookupResult.UNKNOWN }
-    }
+    if (!isGranted(read)) {
+      if (read.gap === PrivatbankGrantGap.DOCUMENT) {
+        // `status: false` is their negative, and it is an explicit boolean. An
+        // empty or malformed code lands here too: their lookup does not
+        // validate, so a code that never existed and one that was mistyped are
+        // the same reply.
+        this.logger.warn(
+          `PrivatBank does not know receipt ${code}: ${found.body.reason ?? 'no reason'}`
+        )
 
-    const token = found.body.token
-    if (token === undefined || found.cookie === '') {
-      // Their own success reply carries both. Missing either means the shape
-      // moved, and it is worth an error line rather than a quiet refusal.
-      this.logger.error(
-        `PrivatBank found receipt ${code} and issued no usable grant ` +
-          `(token: ${token === undefined ? 'absent' : 'present'}, session: ` +
-          `${found.cookie === '' ? 'absent' : 'present'})`
-      )
+        return { result: ReceiptLookupResult.UNKNOWN }
+      }
+
+      // Their own success reply carries both a token and a session. Missing
+      // either means the shape moved, and it is worth an error line rather than
+      // a quiet refusal.
+      this.logger.error(`PrivatBank found receipt ${code} and issued no usable grant`)
 
       return { result: ReceiptLookupResult.UNAVAILABLE, reason: 'no download grant was issued' }
     }
 
-    return this.read(code, { token, cookie: found.cookie, session: found.session })
+    return this.read(code, read.grant)
   }
 
   /**

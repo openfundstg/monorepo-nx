@@ -1,15 +1,13 @@
 import { ERROR, SaleEventType, TmaSaleStatus } from '@transacto/contracts'
 import { ConflictException, Injectable, Logger } from '@nestjs/common'
-import type { Types } from 'mongoose'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { ensure } from 'src/shared/utils'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-cancel.service'
 import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale-progress.service'
 import { SaleTerminalService } from 'src/modules/telegram-mini-app/services/sale-terminal.service'
 
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 
 /**
  * The two ways a blocked sale can be reviewed by a person.

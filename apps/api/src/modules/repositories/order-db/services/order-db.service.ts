@@ -148,7 +148,8 @@ export class OrderDbService {
     orderStringId: string,
     traderId: number,
     cardId: number,
-    amount: number
+    amount: number,
+    payerDeadlineAt?: Date
   ): Promise<Order> {
     const order = await this.orderModel
       .findOneAndUpdate(
@@ -161,7 +162,11 @@ export class OrderDbService {
           amount,
           enqueuedAt: new Date(),
           lastSyncAt: new Date(),
-          status: OrderStatus.PENDING
+          status: OrderStatus.PENDING,
+          // Spread rather than assigned: an undefined value in an update
+          // document would write `null` over a deadline an earlier delivery
+          // already resolved.
+          ...(payerDeadlineAt ? { payerDeadlineAt } : {})
         },
         { upsert: true, returnDocument: 'after' }
       )

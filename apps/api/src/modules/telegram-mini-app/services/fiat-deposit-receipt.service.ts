@@ -34,12 +34,7 @@ import {
   TransactoPanelCheckParseStatus,
   type TransactoPanelCheckResponse
 } from 'src/shared/interfaces/transacto-panel.interface'
-import {
-  describeError,
-  withoutSignatureEnvelope,
-  isAcceptedReceiptFile,
-  receiptAmountToKopecks
-} from 'src/shared/utils'
+import { describeError, isAcceptedReceiptFile, isEnabledFlag, receiptAmountToKopecks, withoutSignatureEnvelope } from 'src/shared/utils'
 import environments from 'src/environments'
 
 /**
@@ -242,7 +237,7 @@ export class FiatDepositReceiptService {
     file: PanelReceiptFile
   ): Promise<ReceiptVerification | null> {
     if (!this.verification.isConfigured) {
-      if (environments.RECEIPT_VERIFICATION_REQUIRED === 'true')
+      if (isEnabledFlag(environments.RECEIPT_VERIFICATION_REQUIRED))
         throw new ServiceUnavailableException(ERROR.FIAT_DEPOSIT.RECEIPT_VERIFIER_UNAVAILABLE)
 
       this.logger.warn(

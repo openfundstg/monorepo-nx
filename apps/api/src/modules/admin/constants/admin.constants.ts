@@ -40,6 +40,9 @@ export const ADMIN_SORTABLE = {
   REFERRALS: ['createdAt', 'amount', 'fiatAmount'],
   TERMINALS: ['createdAt', 'updatedAt', 'lastBalance', 'lastBalanceAt', 'terminalName'],
   TERMINAL_HISTORY: ['timestamp', 'balance', 'delta'],
+  // The sale's own fields: one row here is one sale, because a card sale's
+  // credential allows one open order at a time.
+  CARD_ORDERS: ['createdAt', 'fiatAmount', 'publicId'],
   ORDERS: ['createdAt', 'amount', 'lastSyncAt', 'status'],
   TRADERS: ['createdAt', 'traderId'],
   ALERTS: ['createdAt', 'amount', 'status'],

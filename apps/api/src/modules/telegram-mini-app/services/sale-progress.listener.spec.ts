@@ -7,6 +7,8 @@ import {
 import { OrderStatus, OrderExecutionReason } from 'src/modules/repositories/order-db'
 import { TraderWsEvent, TerminalOrdersExecutedEvent } from 'src/shared/interfaces'
 import { SaleProgressListener } from './sale-progress.listener'
+import { SaleSettlementService } from './sale-settlement.service'
+import type { SaleCardOrderService } from './sale-card-order.service'
 import type { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import type { SaleProgressService } from './sale-progress.service'
 import type { SaleFacadeService } from './sale-facade.service'
@@ -81,12 +83,27 @@ describe('SaleProgressListener', () => {
     // Nothing in flight by default; the tail rule's guard has its own tests.
     orders = { findUnsettledByCard: jest.fn().mockResolvedValue([]) }
 
+    // The real settlement service over the same doubles. When it was private
+    // to the listener these assertions tested it through this class; it moved
+    // because the card variant settles through a path this listener never sees,
+    // and a stub here would leave every completion rule passing against nothing.
+    const settlement = new SaleSettlementService(
+      db as unknown as TmaSaleDbService,
+      facade as unknown as SaleFacadeService,
+      orders as unknown as OrderDbService,
+    )
+
     listener = new SaleProgressListener(
       db as unknown as TmaSaleDbService,
       progress as unknown as SaleProgressService,
       facade as unknown as SaleFacadeService,
       compliance as unknown as SaleComplianceService,
       orders as unknown as OrderDbService,
+      settlement,
+      // Every sale in this file is a jar sale, so the card path is never
+      // reached. Stubbed rather than omitted: `undefined` in a positional list
+      // is how the next reordering goes unnoticed.
+      { recordArrival: jest.fn(async () => null) } as unknown as SaleCardOrderService,
     )
   })
 

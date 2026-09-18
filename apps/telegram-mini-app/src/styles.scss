@@ -1,8 +1,9 @@
 /*
   Global styles for the Telegram Mini App.
 
-  Three files, in this order and for this reason: the tokens must exist before
-  anything reads them, and the primitives are written in terms of the tokens.
+  Five files, in this order and for this reason: the tokens must exist before
+  anything reads them, and the primitives, the form shapes and the guide panel
+  are written in terms of the tokens.
   Everything after them is the document baseline — the rules that have nowhere
   else to live because they apply to `html`, `body` or every element at once.
 
@@ -12,6 +13,8 @@
 
 @use './styles/tokens';
 @use './styles/primitives';
+@use './styles/form';
+@use './styles/guide';
 
 /*
   No browser zoom, of any kind.

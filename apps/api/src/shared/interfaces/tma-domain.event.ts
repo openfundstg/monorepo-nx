@@ -57,7 +57,32 @@ export const TMA_DOMAIN_EVENT = {
    * sentence, and a consumer that had to go back to the database would go quiet
    * exactly when the database is the unwell thing.
    */
-  FIAT_DEPOSIT_AMOUNTS_AVAILABLE: 'tma.fiat_deposit_amounts_available'
+  FIAT_DEPOSIT_AMOUNTS_AVAILABLE: 'tma.fiat_deposit_amounts_available',
+  /**
+   * A payer has been routed to a card sale, and its seller has to say whether
+   * the money arrived.
+   *
+   * The card variant has no scraper: a confirmation is the only record that the
+   * hryvnia landed. So the seller has to be asked, and asked somewhere they
+   * will see it — which in practice is the bot, not a Mini App they may not
+   * have open.
+   *
+   * Neutral for the usual reason: the sale pipeline must not know a Telegram
+   * bot exists, or the dependency would point from this module at a consumer of
+   * it. Carries the whole sentence's figures rather than an id to re-read, like
+   * {@link FIAT_DEPOSIT_AMOUNTS_AVAILABLE} — a consumer that had to go back to
+   * the database would go quiet exactly when the database is the unwell thing.
+   */
+  SALE_CARD_ORDER_AWAITING: 'tma.sale_card_order_awaiting',
+  /**
+   * A card sale's order was denied, or ran out of time unanswered, and a
+   * statement is now what it is waiting for.
+   *
+   * Separate from {@link SALE_CARD_ORDER_AWAITING} because it asks for
+   * something different — a document rather than a tap — and because routing to
+   * the terminal has stopped by the time it fires, which is worth saying.
+   */
+  SALE_CARD_ORDER_DISPUTED: 'tma.sale_card_order_disputed'
 } as const
 
 /** Payload of {@link TMA_DOMAIN_EVENT.BALANCE_UPDATED} and its referral twin. */
@@ -148,4 +173,29 @@ export interface TmaFiatDepositAmountsAvailableEvent {
   readonly minAmountUah: number
   readonly maxAmountUah: number
   readonly mode: FiatDepositWatchMode
+}
+
+/**
+ * Payload of {@link TMA_DOMAIN_EVENT.SALE_CARD_ORDER_AWAITING} and
+ * {@link TMA_DOMAIN_EVENT.SALE_CARD_ORDER_DISPUTED}.
+ *
+ * Everything a message about this order needs, and nothing that would make the
+ * consumer read the database to write a sentence.
+ *
+ * **No card number, in any form.** The consumer names the sale and the amount;
+ * the seller knows which card of theirs it is, and a bot message is the last
+ * place a payment credential should be able to reach.
+ */
+export interface TmaSaleCardOrderEvent {
+  readonly telegramId: number
+  /** The sale's id, for the deep link back into the Mini App. */
+  readonly saleId: string
+  /** The code the user sees and quotes to support. */
+  readonly publicId: string
+  /** Transacto's numeric order id — what the inline button carries. */
+  readonly orderId: number
+  /** UAH kopecks the payer was routed to send. */
+  readonly amount: number
+  /** When silence becomes a dispute, epoch milliseconds. */
+  readonly confirmDeadlineAt: number
 }

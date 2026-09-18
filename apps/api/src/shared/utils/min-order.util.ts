@@ -1,4 +1,5 @@
 import { DEFAULT_MIN_ORDER_KOPECKS } from '@transacto/contracts'
+import environments from 'src/environments'
 
 /**
  * The smallest order Transacto will route to a terminal, in UAH kopecks.
@@ -33,3 +34,20 @@ export const parseMinOrderKopecks = (value: string | undefined): number => {
     ? parsed
     : DEFAULT_MIN_ORDER_KOPECKS
 }
+
+/**
+ * The configured floor, read from the one variable that holds it.
+ *
+ * `parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS)` appeared in
+ * eight files — the scraper's matcher, the balance processor, the sale config
+ * endpoint, the settlement rule, both card-sale services and the bot's own copy
+ * — which is eight places that each had to know both the variable's name and
+ * what an unset one means. They are the same question and there is only one
+ * honest answer to it.
+ *
+ * Reading configuration inside a util is the exception that
+ * `tma.constants.ts` already makes, and for the same reason: a figure every
+ * layer needs is worse as a parameter threaded through all of them.
+ */
+export const transactoOrderFloorKopecks = (): number =>
+  parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS)

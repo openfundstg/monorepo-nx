@@ -507,3 +507,188 @@
 .remainder-note-label {
   color: var(--text-faint);
 }
+
+/*
+ * The payments a card sale's seller has to answer.
+ *
+ * `.glass-card`, `.primary-btn`, `.ghost-btn` and `.validation-error` are
+ * global primitives; only what this section adds is here, and every value is a
+ * token rather than a literal.
+ */
+.card-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.card-order {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-nested);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+
+  /* The one still being asked about — at most one, by construction. */
+  &.open {
+    border-color: var(--accent);
+  }
+}
+
+.card-order-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-order-state {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.card-order-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.card-order-rejection {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--c-danger);
+}
+
+.card-order-actions {
+  display: flex;
+  gap: 8px;
+
+  > * {
+    flex: 1;
+  }
+}
+
+.card-order-subtitle {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* The one file input in this flow; the native control is hidden behind it. */
+.statement-upload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  background: var(--surface-active);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-fast);
+
+  &:active {
+    border-color: var(--accent);
+  }
+
+  input {
+    display: none;
+  }
+}
+
+/* --- An open payment's two phases ---------------------------------------- */
+
+/*
+  The time the payer still has, as the largest thing in the row.
+
+  It is the answer to the only question a seller has while waiting — "how long
+  do I keep looking at my banking app" — and a figure that answers it in small
+  grey type has not answered it.
+*/
+.card-order-countdown {
+  margin: 4px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-text);
+}
+
+/* The window has run out: the same sentence, in the colour of a problem. */
+.card-order-hint.overdue {
+  font-weight: 600;
+  color: var(--c-warning);
+}
+
+/*
+  Why there is only one button here.
+
+  Quieter than the hint above it, because it explains an absence rather than
+  asking for anything — but present, because an unexplained missing option is
+  the thing people write to support about.
+*/
+.card-order-locked {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+/* --- "a different amount arrived" ---------------------------------------- */
+
+/*
+  Quiet, and below the two answers rather than between them. The ordinary answer
+  is that the whole payment arrived; this is the exception, and a link is what
+  an exception looks like next to two buttons.
+*/
+.amend-open {
+  align-self: flex-start;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.amend {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.amend-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.amend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.amend-suffix {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* What the seller said, kept on screen after they said it. */
+.card-order-declared {
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-warning);
+}
+
+.statement-required {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

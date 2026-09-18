@@ -1,0 +1,45 @@
+<section class="guide">
+  <button type="button" class="guide-toggle" [attr.aria-expanded]="expanded()" (click)="toggle()">
+    <span class="guide-title">{{ 'sale.card_guide.title' | translate }}</span>
+    <span class="guide-chevron" [class.open]="expanded()" aria-hidden="true">▾</span>
+  </button>
+
+  @if (expanded()) {
+    <!--
+      The terms, above the steps: the total, how many payments it becomes and
+      the floor under each. They are the figures that go upstream onto the
+      credential, so what the screen promises and what Transacto is told are the
+      same numbers by construction.
+    -->
+    <div class="goal-callout">
+      <span class="goal-label">{{ 'sale.card_guide.terms_label' | translate }}</span>
+      <span class="goal-value">
+        {{ totalKopecks() | uah: true }} {{ 'common.uah' | translate }}
+      </span>
+
+      <div class="goal-terms">
+        <div class="goal-term">
+          <span>{{ 'sale.card_guide.term_orders' | translate }}</span>
+          <strong>{{ orders() }}</strong>
+        </div>
+        <div class="goal-term">
+          <span>{{ 'sale.card_guide.term_per_order' | translate }}</span>
+          <strong>{{ perOrderKopecks() | uah }} {{ 'common.uah' | translate }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <ol class="steps">
+      @for (key of stepKeys; track key) {
+        <li class="step">
+          <span class="step-text">{{ key | translate }}</span>
+        </li>
+      }
+    </ol>
+
+    <p class="guide-warning">
+      <span class="warning-icon" aria-hidden="true">⚠️</span>
+      {{ 'sale.card_guide.warning' | translate }}
+    </p>
+  }
+</section>

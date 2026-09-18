@@ -1,10 +1,11 @@
 import { describe, expect, it, beforeEach, vi, type Mock } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { SaleCreateComponent } from './sale-create.component';
 import { SaleService } from '../../services/sale.service';
+import { SALE_CONFIG_KEY } from '../../resolvers/sale-config.resolver';
 import {
   BankProvider,
   DEFAULT_MIN_ORDER_KOPECKS,
@@ -45,6 +46,18 @@ describe('SaleCreateComponent validation', () => {
   /** What `create()` does — resolved by default, rejected where that is the point. */
   let create: Mock;
 
+  /** What the resolver hands the form — and what `getConfig()` re-reads on retry. */
+  const config = () => ({
+    trustLevel: 'NEWBIE',
+    maxParallelOrders: MAX_PARALLEL_ORDERS,
+    openOrders,
+    slotsAwaitingJarClosure: awaitingJar,
+    sellRate,
+    // Without this every balance check reads `undefined` and the whole form
+    // silently becomes invalid.
+    balance: BALANCE_CENTS,
+  });
+
   const build = async () => {
     TestBed.configureTestingModule({
       providers: [
@@ -54,26 +67,23 @@ describe('SaleCreateComponent validation', () => {
         {
           provide: SaleService,
           useValue: {
-            getConfig: () =>
-              Promise.resolve({
-                trustLevel: 'NEWBIE',
-                maxParallelOrders: MAX_PARALLEL_ORDERS,
-                openOrders,
-                slotsAwaitingJarClosure: awaitingJar,
-                sellRate,
-                // Without this every balance check reads `undefined` and the
-                // whole form silently becomes invalid.
-                balance: BALANCE_CENTS,
-              }),
+            getConfig: () => Promise.resolve(config()),
             create,
           },
+        },
+        // What the route's resolver put there. The form reads its figures from
+        // here rather than fetching them, so that the screen is never drawn
+        // from the defaults its signals were declared with.
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { data: { [SALE_CONFIG_KEY]: config() } } },
         },
       ],
     });
 
     const fixture = TestBed.createComponent(SaleCreateComponent);
     component = fixture.componentInstance;
-    await component.ngOnInit();
+    component.ngOnInit();
   };
 
   beforeEach(async () => {
@@ -101,7 +111,7 @@ describe('SaleCreateComponent validation', () => {
     // The reported bug: this form was complete and the button stayed disabled.
     // 10 USDT = 40000 kopecks, +1% = 40400, against a 500 USDT ceiling.
     fillForm();
-    component.usdtAmount.set(10);
+    component.pricing.usdtAmount.set(10);
 
     expect(component.isValid()).toBe(true);
   });
@@ -112,7 +122,7 @@ describe('SaleCreateComponent validation', () => {
    */
   it('accepts a large order, which no level ceiling refuses any more', () => {
     fillForm();
-    component.usdtAmount.set(600);
+    component.pricing.usdtAmount.set(600);
 
     expect(component.isValid()).toBe(true);
   });
@@ -120,9 +130,9 @@ describe('SaleCreateComponent validation', () => {
   describe('the parallel-order allowance', () => {
     it('leaves the form usable while a slot is free', () => {
       fillForm();
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
-      expect(component.slotsExhausted()).toBe(false);
+      expect(component.pricing.slotsExhausted()).toBe(false);
       expect(component.isValid()).toBe(true);
     });
 
@@ -132,9 +142,9 @@ describe('SaleCreateComponent validation', () => {
       await build();
 
       fillForm();
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
-      expect(component.slotsExhausted()).toBe(true);
+      expect(component.pricing.slotsExhausted()).toBe(true);
       expect(component.isValid()).toBe(false);
     });
 
@@ -164,7 +174,7 @@ describe('SaleCreateComponent validation', () => {
       it('says so, rather than blaming a sale that is running', async () => {
         await withOpenJar();
 
-        expect(component.slotsExhausted()).toBe(true);
+        expect(component.pricing.slotsExhausted()).toBe(true);
         expect(component.blockedByOpenJars()).toBe(true);
         expect(component.runningOrders()).toBe(MAX_PARALLEL_ORDERS - 1);
       });
@@ -172,8 +182,8 @@ describe('SaleCreateComponent validation', () => {
       it('names the sale and its bank, so there is something to act on', async () => {
         await withOpenJar();
 
-        expect(component.awaitingJarClosure()).toHaveLength(1);
-        expect(component.awaitingJarClosure()[0].publicId).toBe('8GJPNPDY');
+        expect(component.pricing.awaitingJarClosure()).toHaveLength(1);
+        expect(component.pricing.awaitingJarClosure()[0].publicId).toBe('8GJPNPDY');
         expect(component.bankNameKey(BankProvider.NOVAPAY)).toBe('sale.bank_novapay');
       });
 
@@ -184,7 +194,7 @@ describe('SaleCreateComponent validation', () => {
         TestBed.resetTestingModule();
         await build();
 
-        expect(component.slotsExhausted()).toBe(true);
+        expect(component.pricing.slotsExhausted()).toBe(true);
         expect(component.blockedByOpenJars()).toBe(false);
       });
     });
@@ -195,23 +205,23 @@ describe('SaleCreateComponent validation', () => {
      * for the instant before the server answers.
      */
     it('does not read an unloaded allowance as exhausted', () => {
-      component.maxParallelOrders.set(0);
-      component.openOrders.set(0);
+      component.pricing.maxParallelOrders.set(0);
+      component.pricing.openOrders.set(0);
 
-      expect(component.slotsExhausted()).toBe(false);
+      expect(component.pricing.slotsExhausted()).toBe(false);
     });
   });
 
   it('rejects an amount below the minimum', () => {
     fillForm();
-    component.usdtAmount.set(9);
+    component.pricing.usdtAmount.set(9);
 
     expect(component.isValid()).toBe(false);
   });
 
   it('rejects a card number that is not 16 digits', () => {
     fillForm();
-    component.usdtAmount.set(10);
+    component.pricing.usdtAmount.set(10);
     component.cardNumber.set('487410003099');
 
     expect(component.isValid()).toBe(false);
@@ -219,7 +229,7 @@ describe('SaleCreateComponent validation', () => {
 
   it('accepts a card number typed with spaces', () => {
     fillForm();
-    component.usdtAmount.set(10);
+    component.pricing.usdtAmount.set(10);
     component.cardNumber.set('4874 1000 0000 3007');
 
     expect(component.isValid()).toBe(true);
@@ -227,7 +237,7 @@ describe('SaleCreateComponent validation', () => {
 
   it('rejects a link that is not a URL', () => {
     fillForm();
-    component.usdtAmount.set(10);
+    component.pricing.usdtAmount.set(10);
     component.dropLink.set('send.monobank.ua/jar/abc');
 
     expect(component.isValid()).toBe(false);
@@ -242,10 +252,10 @@ describe('SaleCreateComponent validation', () => {
    * that can price can disagree with the server that charges.
    */
   it('quotes the rate it was given and totals against it', () => {
-    component.usdtAmount.set(10);
+    component.pricing.usdtAmount.set(10);
 
-    expect(component.sellRateKopecks()).toBe(4_000);
-    expect(component.targetKopecks()).toBe(40_000);
+    expect(component.pricing.sellRateKopecks()).toBe(4_000);
+    expect(component.pricing.targetKopecks()).toBe(40_000);
   });
 
   describe('the bank picker', () => {
@@ -340,14 +350,14 @@ describe('SaleCreateComponent validation', () => {
      * The stubbed config omits it, which is a server older than the field.
      */
     it('falls back to the contract floor when the config does not name one', () => {
-      expect(component.minOrderKopecks()).toBe(DEFAULT_MIN_ORDER_KOPECKS);
+      expect(component.pricing.minOrderKopecks()).toBe(DEFAULT_MIN_ORDER_KOPECKS);
     });
   });
 
   describe('the jar target tolerance', () => {
     it('accepts a jar set exactly to the target', () => {
-      component.usdtAmount.set(10);
-      component.jarGoal.set(component.targetKopecks());
+      component.pricing.usdtAmount.set(10);
+      component.jarGoal.set(component.pricing.targetKopecks());
 
       expect(component.goalMismatch()).toBe(false);
     });
@@ -356,8 +366,8 @@ describe('SaleCreateComponent validation', () => {
       ['a hryvnia high', 100],
       ['a hryvnia low', -100],
     ])('accepts a jar set %s', (_label, offset) => {
-      component.usdtAmount.set(10);
-      component.jarGoal.set(component.targetKopecks() + offset);
+      component.pricing.usdtAmount.set(10);
+      component.jarGoal.set(component.pricing.targetKopecks() + offset);
 
       expect(component.goalMismatch()).toBe(false);
     });
@@ -372,8 +382,8 @@ describe('SaleCreateComponent validation', () => {
       ['two hryvnia high', 200],
       ['two hryvnia low', -200],
     ])('accepts a jar set %s', (_label, offset) => {
-      component.usdtAmount.set(10);
-      component.jarGoal.set(component.targetKopecks() + offset);
+      component.pricing.usdtAmount.set(10);
+      component.jarGoal.set(component.pricing.targetKopecks() + offset);
 
       expect(component.goalMismatch()).toBe(false);
     });
@@ -382,15 +392,15 @@ describe('SaleCreateComponent validation', () => {
       ['well over one percent high', 2_000],
       ['well over one percent low', -2_000],
     ])('flags a jar set %s', (_label, offset) => {
-      component.usdtAmount.set(10);
-      component.jarGoal.set(component.targetKopecks() + offset);
+      component.pricing.usdtAmount.set(10);
+      component.jarGoal.set(component.pricing.targetKopecks() + offset);
 
       expect(component.goalMismatch()).toBe(true);
     });
 
     /** `null` is "the bank did not say", never "does not match". */
     it('does not flag an unknown target', () => {
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
       component.jarGoal.set(null);
 
       expect(component.goalMismatch()).toBe(false);
@@ -399,39 +409,39 @@ describe('SaleCreateComponent validation', () => {
 
   describe('balance rule', () => {
     it('freezes only the pre-profit leg, so the requirement is the amount typed', () => {
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
       // 40 400 kopecks target − 1% profit = 40 000 kopecks = 10 USDT = 1 000 cents.
       // Comparing `targetKopecks()` (40 400) against a cent balance instead
       // would overstate the requirement by a factor of the exchange rate.
       expect(component.requiredCents()).toBe(1_000);
-      expect(component.requiredCents()).not.toBe(component.targetKopecks());
+      expect(component.requiredCents()).not.toBe(component.pricing.targetKopecks());
     });
 
     it('accepts an amount comfortably under the balance', () => {
       fillForm();
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
-      expect(component.hasSufficientBalance()).toBe(true);
+      expect(component.pricing.hasSufficientBalance()).toBe(true);
       expect(component.isValid()).toBe(true);
     });
 
     it('accepts an amount exactly equal to the balance', () => {
       fillForm();
-      component.usdtAmount.set(10);
-      component.balanceCents.set(1_000);
+      component.pricing.usdtAmount.set(10);
+      component.pricing.balanceCents.set(1_000);
 
-      expect(component.requiredCents()).toBe(component.balanceCents());
-      expect(component.hasSufficientBalance()).toBe(true);
+      expect(component.requiredCents()).toBe(component.pricing.balanceCents());
+      expect(component.pricing.hasSufficientBalance()).toBe(true);
       expect(component.isValid()).toBe(true);
     });
 
     it('rejects an amount one cent past the balance', () => {
       fillForm();
-      component.usdtAmount.set(10);
-      component.balanceCents.set(999);
+      component.pricing.usdtAmount.set(10);
+      component.pricing.balanceCents.set(999);
 
-      expect(component.hasSufficientBalance()).toBe(false);
+      expect(component.pricing.hasSufficientBalance()).toBe(false);
       expect(component.isValid()).toBe(false);
     });
 
@@ -446,11 +456,11 @@ describe('SaleCreateComponent validation', () => {
      */
     it('lets a user stake a balance that is not a whole number of USDT', () => {
       fillForm();
-      component.usdtAmount.set(10.02);
-      component.balanceCents.set(1_002);
+      component.pricing.usdtAmount.set(10.02);
+      component.pricing.balanceCents.set(1_002);
 
       expect(component.requiredCents()).toBeLessThanOrEqual(1_002);
-      expect(component.hasSufficientBalance()).toBe(true);
+      expect(component.pricing.hasSufficientBalance()).toBe(true);
       expect(component.isValid()).toBe(true);
     });
 
@@ -459,17 +469,17 @@ describe('SaleCreateComponent validation', () => {
       fillForm();
 
       for (let cents = 1_000; cents <= 50_000; cents += 7) {
-        component.usdtAmount.set(cents / 100);
+        component.pricing.usdtAmount.set(cents / 100);
         expect(component.requiredCents()).toBeLessThanOrEqual(cents);
       }
     });
 
     it('stays valid at the ceiling when the balance covers it', () => {
       fillForm();
-      component.usdtAmount.set(495);
+      component.pricing.usdtAmount.set(495);
 
       expect(component.requiredCents()).toBe(49_500);
-      expect(component.hasSufficientBalance()).toBe(true);
+      expect(component.pricing.hasSufficientBalance()).toBe(true);
     });
   });
 
@@ -491,29 +501,36 @@ describe('SaleCreateComponent validation', () => {
             provide: SaleService,
             useValue: { getConfig: () => Promise.reject(new Error('503')) },
           },
+          // `null` is exactly what the resolver produces when the call fails —
+          // it resolves rather than rejecting, so the form is reached and can
+          // say so, instead of the navigation being cancelled in silence.
+          {
+            provide: ActivatedRoute,
+            useValue: { snapshot: { data: { [SALE_CONFIG_KEY]: null } } },
+          },
         ],
       });
 
       const fixture = TestBed.createComponent(SaleCreateComponent);
       component = fixture.componentInstance;
-      await component.ngOnInit();
+      component.ngOnInit();
     });
 
     it('says so instead of pricing the order itself', () => {
-      expect(component.rateUnavailable()).toBe(true);
-      expect(component.sellRateKopecks()).toBe(0);
+      expect(component.pricing.rateUnavailable()).toBe(true);
+      expect(component.pricing.sellRateKopecks()).toBe(0);
     });
 
     it('refuses to submit', () => {
       component.dropLink.set('https://send.monobank.ua/widget.html?jar=abc');
       component.cardNumber.set('4874100000003007');
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
       expect(component.isValid()).toBe(false);
     });
 
     it('does not divide by a rate of zero', () => {
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
       expect(component.requiredCents()).toBe(0);
     });
@@ -578,7 +595,7 @@ describe('SaleCreateComponent validation', () => {
     /** The button has to agree with the message under the field. */
     it('blocks the submit while the two disagree', () => {
       fillForm();
-      component.usdtAmount.set(100);
+      component.pricing.usdtAmount.set(100);
       linkResolvedTo(JAR_CARD);
       component.cardNumber.set('4874100000003205');
 
@@ -587,7 +604,7 @@ describe('SaleCreateComponent validation', () => {
 
     it('lets the submit through once they agree', () => {
       fillForm();
-      component.usdtAmount.set(100);
+      component.pricing.usdtAmount.set(100);
       linkResolvedTo(JAR_CARD);
 
       expect(component.isValid()).toBe(true);
@@ -632,17 +649,17 @@ describe('SaleCreateComponent validation', () => {
   describe('the minimum order', () => {
     it('refuses an amount under the floor', () => {
       fillForm();
-      component.usdtAmount.set(9);
+      component.pricing.usdtAmount.set(9);
 
-      expect(component.belowMinimum()).toBe(true);
+      expect(component.pricing.belowMinimum()).toBe(true);
       expect(component.isValid()).toBe(false);
     });
 
     it('accepts an amount exactly at the floor', () => {
       fillForm();
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
-      expect(component.belowMinimum()).toBe(false);
+      expect(component.pricing.belowMinimum()).toBe(false);
       expect(component.isValid()).toBe(true);
     });
 
@@ -651,9 +668,9 @@ describe('SaleCreateComponent validation', () => {
      * typed would greet every user with an error.
      */
     it.each([null, 0])('says nothing for %p', (amount) => {
-      component.usdtAmount.set(amount as never);
+      component.pricing.usdtAmount.set(amount as never);
 
-      expect(component.belowMinimum()).toBe(false);
+      expect(component.pricing.belowMinimum()).toBe(false);
     });
 
     /**
@@ -663,11 +680,11 @@ describe('SaleCreateComponent validation', () => {
     it('turns over exactly at the contracted floor', () => {
       fillForm();
 
-      component.usdtAmount.set(MIN_USDT_AMOUNT - 1);
-      expect(component.belowMinimum()).toBe(true);
+      component.pricing.usdtAmount.set(MIN_USDT_AMOUNT - 1);
+      expect(component.pricing.belowMinimum()).toBe(true);
 
-      component.usdtAmount.set(MIN_USDT_AMOUNT);
-      expect(component.belowMinimum()).toBe(false);
+      component.pricing.usdtAmount.set(MIN_USDT_AMOUNT);
+      expect(component.pricing.belowMinimum()).toBe(false);
     });
   });
 
@@ -679,7 +696,7 @@ describe('SaleCreateComponent validation', () => {
     it('refuses to submit until the bank has named one', () => {
       component.dropLink.set('https://next.privat24.ua/money-transfer/share/abc');
       component.cardNumber.set('4874100000003007');
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
 
       expect(component.dropCardNumber()).toBeNull();
       expect(component.isValid()).toBe(false);
@@ -706,7 +723,7 @@ describe('SaleCreateComponent validation', () => {
 
     it('is satisfied once the bank names one', () => {
       fillForm();
-      component.usdtAmount.set(10);
+      component.pricing.usdtAmount.set(10);
       component.linkResolved.set(true);
 
       expect(component.cardUnavailable()).toBe(false);
@@ -733,8 +750,8 @@ describe('SaleCreateComponent validation', () => {
 
     /** The verdict must follow the amount, not the moment the link resolved. */
     it('clears itself the moment the amount makes the target fit', () => {
-      component.usdtAmount.set(20);
-      component.jarGoal.set(component.targetKopecks());
+      component.pricing.usdtAmount.set(20);
+      component.jarGoal.set(component.pricing.targetKopecks());
 
       expect(component.goalMismatch()).toBe(false);
     });
@@ -748,7 +765,7 @@ describe('SaleCreateComponent validation', () => {
 
       component.useSuggestedAmount();
 
-      expect(component.usdtAmount()).toBe((component.suggestedUsdtCents() ?? 0) / 100);
+      expect(component.pricing.usdtAmount()).toBe((component.suggestedUsdtCents() ?? 0) / 100);
       expect(component.goalMismatch()).toBe(false);
     });
 
@@ -760,9 +777,9 @@ describe('SaleCreateComponent validation', () => {
     });
 
     it('comes back when the amount moves away again', () => {
-      component.usdtAmount.set(20);
-      component.jarGoal.set(component.targetKopecks());
-      component.usdtAmount.set(500);
+      component.pricing.usdtAmount.set(20);
+      component.jarGoal.set(component.pricing.targetKopecks());
+      component.pricing.usdtAmount.set(500);
 
       expect(component.goalMismatch()).toBe(true);
     });
@@ -854,8 +871,8 @@ describe('SaleCreateComponent validation', () => {
     /** A complete form whose jar goal matches what the amount derives. */
     const readyToSubmit = () => {
       fillForm();
-      component.usdtAmount.set(10);
-      component.jarGoal.set(component.targetKopecks());
+      component.pricing.usdtAmount.set(10);
+      component.jarGoal.set(component.pricing.targetKopecks());
     };
 
     const refuseWithRateChanged = () =>
@@ -869,7 +886,7 @@ describe('SaleCreateComponent validation', () => {
 
       await component.onSubmit();
 
-      expect(component.rateMoved()).toBe(true);
+      expect(component.submit.rateMoved()).toBe(true);
       expect(component.suggestedUsdtCents()).toBeGreaterThan(0);
     });
 
@@ -883,12 +900,12 @@ describe('SaleCreateComponent validation', () => {
       const offered = component.suggestedUsdtCents();
       component.useCurrentRate();
 
-      expect(component.usdtAmount()).toBe((offered as number) / 100);
+      expect(component.pricing.usdtAmount()).toBe((offered as number) / 100);
       expect(component.jarGoal()).toBe(goal);
       // And the form is submittable again: the target the new amount derives
       // matches the goal that never moved.
       expect(component.goalMismatch()).toBe(false);
-      expect(component.rateMoved()).toBe(false);
+      expect(component.submit.rateMoved()).toBe(false);
     });
 
     /** Any other refusal is not a rate problem and gets no rate button. */
@@ -898,7 +915,7 @@ describe('SaleCreateComponent validation', () => {
 
       await component.onSubmit();
 
-      expect(component.rateMoved()).toBe(false);
+      expect(component.submit.rateMoved()).toBe(false);
     });
   });
 });

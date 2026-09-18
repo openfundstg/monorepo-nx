@@ -2,6 +2,7 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import type { HttpsProxyAgent } from 'https-proxy-agent'
 import { ERROR } from '@transacto/contracts'
 import { ProxyPool } from 'src/shared/proxy/proxy-pool'
+import { isEnabledFlag } from 'src/shared/utils'
 import environments from 'src/environments'
 
 /**
@@ -55,7 +56,7 @@ export class ProxyManagerService {
     const agent = this.getAgent(consumer)
     if (agent) return agent
 
-    if (environments.PROXY_REQUIRED === 'true') {
+    if (isEnabledFlag(environments.PROXY_REQUIRED)) {
       this.logger.error(`${consumer} requires a proxy and PROXY_URLS is empty — refusing to call`)
       throw new ServiceUnavailableException(ERROR.CONFIG.MISSING_PROXY)
     }

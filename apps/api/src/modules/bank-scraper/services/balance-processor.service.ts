@@ -10,10 +10,9 @@ import { OrderMatcherService, MatchingOutcome } from './order-matcher.service'
 import { TraderWsEvent, WsEventNames } from 'src/shared/interfaces'
 import { AlertType, AlertDocument } from 'src/modules/repositories/alerts-db/schemas'
 import type { ScraperJobData } from 'src/shared/constants'
-import { parseMinOrderKopecks } from 'src/shared/utils'
+import { transactoOrderFloorKopecks } from 'src/shared/utils'
 import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
 import { SaleRemainderPolicy } from '@transacto/contracts'
-import environments from 'src/environments'
 import {
   TerminalHistoryOrderEvent,
   TerminalHistoryAlert,
@@ -215,7 +214,7 @@ export class BalanceProcessorService {
     // cue to pay the rest in by hand. Read from the same place the funding rule
     // reads it, so the warning and the completion can never point at different
     // moments.
-    const minOrder = parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS)
+    const minOrder = transactoOrderFloorKopecks()
     // Strictly above zero: the warning exists to name a remainder the trader
     // has to pay in, and once the goal is met there is none. Without the lower
     // bound the alert was recreated with `left: 0` — and, on a jar past its

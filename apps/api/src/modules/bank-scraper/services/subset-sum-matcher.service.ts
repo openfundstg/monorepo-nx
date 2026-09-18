@@ -1,4 +1,5 @@
 import type { Order } from 'src/modules/repositories/order-db/schemas'
+import { isEnabledFlag } from 'src/shared/utils'
 import environments from 'src/environments'
 
 export enum MatchResultStatus {
@@ -47,7 +48,7 @@ export class SubsetSumMatcherService {
       }
     }
 
-    if (environments.FUZZY_MATCHING_ENABLED === 'true') {
+    if (isEnabledFlag(environments.FUZZY_MATCHING_ENABLED)) {
       const fuzzyMatches = this.findSubsetSumFuzzy(pendingOrders, totalDelta)
       if (fuzzyMatches.length === 1) {
         return {

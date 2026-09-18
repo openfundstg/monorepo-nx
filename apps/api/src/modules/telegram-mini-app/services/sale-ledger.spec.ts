@@ -54,6 +54,8 @@ describe('SaleFacadeService — the ledger check before a completion', () => {
 
     const unused = {} as never
 
+    // Positional, and the positions matter: `redis` is 13th and `blockService`
+    // 15th. Only the three this file exercises are real.
     service = new SaleFacadeService(
       saleDbService as never,
       unused,
@@ -67,10 +69,10 @@ describe('SaleFacadeService — the ledger check before a completion', () => {
       unused,
       unused,
       unused,
-      unused,
       redis as never,
       unused,
-      blockService as never
+      blockService as never,
+      []
     )
   })
 

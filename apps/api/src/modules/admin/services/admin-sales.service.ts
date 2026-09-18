@@ -19,9 +19,9 @@ import {
   Logger,
   NotFoundException
 } from '@nestjs/common'
-import type { QueryFilter, Types } from 'mongoose'
+import type { QueryFilter } from 'mongoose'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale, TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
 
 /**
  * A stored order, as every read here returns it.
@@ -30,7 +30,6 @@ import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
  * settlement services this delegates to take exactly this shape, and a cast
  * would only hide the day one of them stops doing so.
  */
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 import { SaleBlockService } from 'src/modules/telegram-mini-app/services/sale-block.service'
 import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-cancel.service'
 import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-facade.service'

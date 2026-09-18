@@ -1,16 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { SaleRemainderPolicy } from '@transacto/contracts'
+import {
+  SaleMethod,
+  saleCardMaxOrders,
+  saleCardMinOrderKopecks,
+  SaleRemainderPolicy
+} from '@transacto/contracts'
 import type { SaleProgress, SaleEvent } from '@transacto/contracts'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
 import { OrderDbService } from 'src/modules/repositories/order-db'
-import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
-import { saleDeliveredFiat } from 'src/shared/utils'
-import type { Types } from 'mongoose'
+import { awaitsStatementCheckpoint, parseMinOrderKopecks,
+  transactoOrderFloorKopecks, saleDeliveredFiat } from 'src/shared/utils'
 
 /** What every read path here works with: a lean order document plus its id. */
-type StoredSale = TmaSale & { _id: Types.ObjectId }
 
 /**
  * Turns a sale into the snapshot the Mini App renders, and pushes it.
@@ -137,7 +141,54 @@ export class SaleProgressService {
       // Written by `completeIfOpen` in the same update that completes the
       // order, so the push announcing completion already carries it.
       refundedRemainderUsdt: order.refundedRemainderUsdt ?? 0,
+      ...this.cardFields(order),
       updatedAt: Date.now()
+    }
+  }
+
+  /**
+   * The half of the snapshot only a card sale has.
+   *
+   * Spread in rather than always present, so a jar sale's snapshot is byte for
+   * byte what it was — the card variant must not change what an existing screen
+   * receives.
+   *
+   * **`saleMethod` cannot be inferred from the rest**, which is why it is sent.
+   * A card sale before its first order and a jar sale that has never been
+   * scraped both show `jarBalance: null`, and they need opposite screens.
+   *
+   * The two limits are sent rather than recomputed on the client for the reason
+   * every shared figure here is: the same arithmetic produced the credential's
+   * `min_amount` upstream, and a screen naming a different number would be
+   * describing a product that does not exist.
+   */
+  private cardFields(order: StoredSale): Partial<SaleProgress> {
+    if (order.saleMethod !== SaleMethod.CARD) return {}
+
+    const floorKopecks = transactoOrderFloorKopecks()
+
+    return {
+      saleMethod: SaleMethod.CARD,
+      cardOrders: (order.cardOrders ?? []).map((cardOrder) => ({
+        orderId: cardOrder.orderId,
+        amount: cardOrder.amount,
+        state: cardOrder.state,
+        arrivedAt: cardOrder.arrivedAt.toISOString(),
+        confirmDeadlineAt: cardOrder.confirmDeadlineAt.toISOString(),
+        answeredAt: cardOrder.answeredAt?.toISOString() ?? null,
+        declaredAmount: cardOrder.declaredAmount,
+        statements: (cardOrder.statements ?? []).map((statement) => ({
+          id: statement._id.toString(),
+          status: statement.status,
+          rejection: statement.rejection ?? null,
+          uploadedAt: statement.uploadedAt.toISOString(),
+          periodFrom: statement.periodFrom?.toISOString() ?? null,
+          periodTo: statement.periodTo?.toISOString() ?? null
+        }))
+      })),
+      cardMinOrderKopecks: saleCardMinOrderKopecks(order.fiatAmount, floorKopecks),
+      cardMaxOrders: saleCardMaxOrders(order.fiatAmount, floorKopecks),
+      statementRequired: awaitsStatementCheckpoint(order)
     }
   }
 

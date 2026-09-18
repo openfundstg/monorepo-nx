@@ -1,4 +1,31 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Req } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  ParseIntPipe,
+  Post,
+  Req,
+  UploadedFile,
+  UseInterceptors
+} from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { SALE_STATEMENT_MAX_BYTES } from '@transacto/contracts'
+
+/**
+ * The three fields this reads off a multipart upload.
+ *
+ * Declared locally because `@types/multer` is not installed and
+ * `Express.Multer.File` does not exist — the house pattern, the same one
+ * `tma-fiat-deposit.controller.ts` uses. Adding a types package for one
+ * parameter is not worth a dependency.
+ */
+interface UploadedStatement {
+  readonly buffer: Buffer
+  readonly originalname: string
+  readonly mimetype: string
+}
 import { ERROR } from '@transacto/contracts'
 import type {
   CancelSaleRes,
@@ -10,6 +37,7 @@ import type {
 import { UserTypeTMA } from 'src/modules/auth'
 import type { TmaAuthenticatedRequest } from 'src/shared/interfaces'
 import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-facade.service'
+import { ConfirmCardOrderReqDto } from 'src/modules/telegram-mini-app/dto/confirm-card-order.req.dto'
 import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale-progress.service'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import type { TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
@@ -18,10 +46,13 @@ import { CreateSaleDto } from 'src/modules/telegram-mini-app/dto/create-sale.dto
 import { ResolveDropLinkReqDto } from 'src/modules/telegram-mini-app/dto/resolve-drop-link.req.dto'
 import { DropLinkResolverService } from 'src/modules/telegram-mini-app/services/drop-link-resolver.service'
 import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-cancel.service'
+import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
+import { SaleStatementService } from 'src/modules/telegram-mini-app/services/sale-statement.service'
 import { toAwaitingJar } from 'src/modules/telegram-mini-app/utils'
-import { getTrustLevel } from 'src/shared/constants'
-import { parseMinOrderKopecks } from 'src/shared/utils'
-import environments from 'src/environments'
+import {
+  getTrustLevel
+} from 'src/shared/constants'
+import { transactoOrderFloorKopecks } from 'src/shared/utils'
 import type { Types } from 'mongoose'
 
 @Controller('tma/sales')
@@ -32,7 +63,9 @@ export class TmaSaleController {
     private readonly saleDbService: TmaSaleDbService,
     private readonly userDbService: TmaUserDbService,
     private readonly dropLinkResolver: DropLinkResolverService,
-    private readonly saleCancel: SaleCancelService
+    private readonly saleCancel: SaleCancelService,
+    private readonly cardOrders: SaleCardOrderService,
+    private readonly statements: SaleStatementService
   ) {}
 
   /**
@@ -73,7 +106,12 @@ export class TmaSaleController {
       // remainder choice offers to return "anything under ₴300", and a client
       // quoting a threshold the server no longer uses would describe a product
       // that does not exist.
-      minOrderKopecks: parseMinOrderKopecks(environments.TRANSACTO_MIN_ORDER_KOPECKS)
+      minOrderKopecks: transactoOrderFloorKopecks(),
+      // A kill switch, read per request rather than captured at boot: turning
+      // the card variant off has to take effect without a restart, because the
+      // reason for turning it off is never leisurely.
+      // Named on the create form. It is the obligation the variant asks of the
+      // seller, and they agree to it before there is anything to answer.
     }
   }
 
@@ -103,15 +141,10 @@ export class TmaSaleController {
     @Body() dto: CreateSaleDto
   ): Promise<CreateSaleResponse> {
     const tmaUser = req.tmaUser
-    const order = await this.saleFacade.createSale(
-      tmaUser.id,
-      dto.fiatAmount,
-      dto.bankType,
-      dto.dropLink,
-      dto.cardNumber,
-      dto.quotedRate,
-      dto.remainderPolicy
-    )
+    // The DTO is the wire shape with validation on it, so it is handed over
+    // whole rather than unpacked into a positional list that grows by two
+    // arguments every time a variant needs something the other does not.
+    const order = await this.saleFacade.createSale(tmaUser.id, dto)
 
     return {
       saleId: order._id.toString(),
@@ -138,6 +171,94 @@ export class TmaSaleController {
     @Param('id') id: string
   ): Promise<CancelSaleRes> {
     return this.saleCancel.cancel(id, req.tmaUser.id)
+  }
+
+  /**
+   * POST /api/tma/sales/:id/orders/:orderId/confirm
+   *
+   * The seller says one card order's money reached their card.
+   *
+   * **This is the settlement.** A card sale has no scraper: the tap is the only
+   * record that the hryvnia arrived, and it is taken at face value because it
+   * is testimony against the teller's own interest — confirming money that
+   * never came costs them their own stake.
+   *
+   * The same method the bot's inline button calls, and safe to call twice: a
+   * seller who taps both surfaces is the expected case, and the second answer
+   * finds the order already settled and returns the same snapshot.
+   *
+   * `receivedAmount` is what actually landed, when a transfer fee took a bite
+   * out of it. Absent means the whole order arrived — which is all the bot can
+   * say, and the ordinary answer here too.
+   *
+   * Returns the progress snapshot rather than the sale, so the screen this was
+   * pressed on updates from the response without waiting for the socket.
+   */
+  @Post(':id/orders/:orderId/confirm')
+  @UserTypeTMA()
+  async confirmCardOrder(
+    @Req() req: TmaAuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Body() body: ConfirmCardOrderReqDto
+  ): Promise<SaleProgress> {
+    const sale = await this.cardOrders.confirm(req.tmaUser.id, id, orderId, body.receivedAmount)
+
+    return this.saleProgress.build(sale)
+  }
+
+  /**
+   * POST /api/tma/sales/:id/orders/:orderId/deny
+   *
+   * The seller says one card order's money never arrived.
+   *
+   * Nothing is settled and nothing is told upstream, because nothing has been
+   * established: this is the one claim in the flow that costs the person making
+   * it nothing. Routing stops so no further money lands on an open question,
+   * and what answers it from here is a bank statement rather than a tap.
+   */
+  @Post(':id/orders/:orderId/deny')
+  @UserTypeTMA()
+  async denyCardOrder(
+    @Req() req: TmaAuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('orderId', ParseIntPipe) orderId: number
+  ): Promise<SaleProgress> {
+    const sale = await this.cardOrders.deny(req.tmaUser.id, id, orderId)
+
+    return this.saleProgress.build(sale)
+  }
+
+  /**
+   * POST /api/tma/sales/:id/orders/:orderId/statement
+   *
+   * The seller sends a bank statement to settle an order they denied.
+   *
+   * **Every outcome here is a `200`**, including a refusal: a statement whose
+   * period was too short or whose account was wrong is an ordinary answer the
+   * screen renders, not an error. What the response carries is the progress
+   * snapshot, with the statement's own verdict on the order it answers.
+   *
+   * The size limit is set on the interceptor as well as checked in the service.
+   * Here it stops a phone from streaming ten megabytes into memory before
+   * anything looks at it; there it holds for every caller.
+   */
+  @Post(':id/orders/:orderId/statement')
+  @UserTypeTMA()
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: SALE_STATEMENT_MAX_BYTES } }))
+  async uploadStatement(
+    @Req() req: TmaAuthenticatedRequest,
+    @Param('id') id: string,
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @UploadedFile() file: UploadedStatement
+  ): Promise<SaleProgress> {
+    const sale = await this.statements.submit(req.tmaUser.id, id, orderId, {
+      buffer: file?.buffer,
+      fileName: file?.originalname ?? '',
+      mimeType: file?.mimetype ?? ''
+    })
+
+    return this.saleProgress.build(sale)
   }
 
   /**

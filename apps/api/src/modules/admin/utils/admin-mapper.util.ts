@@ -4,6 +4,8 @@ import {
   TmaFiatReceiptStatus,
   type AdminAlertListItem,
   type AdminAuditLogItem,
+  type AdminCardOrderListItem,
+  type AdminCardOrderStatement,
   type AdminDepositListItem,
   type AdminFiatDepositListItem,
   type AdminFiatDepositWatchListItem,
@@ -18,13 +20,16 @@ import {
   type TerminalHistoryAlert,
   type TerminalHistoryOrderEvent,
   type AdminTmaUserListItem,
-  type AdminTraderListItem
+  type AdminTraderListItem,
+  type BankProvider
 } from '@transacto/contracts'
 import { getTrustLevel } from 'src/shared/constants'
 import type { TmaFiatDepositRecord } from 'src/modules/repositories/tma-fiat-deposit-db/interfaces'
 import { getBankProvider, saleRefundSplit } from 'src/shared/utils'
 import { allowedSaleActions } from './sale-actions.util'
 import type { StoredTmaUser } from 'src/modules/repositories/tma-user-db/services'
+import type { TmaSale, TmaSaleCardOrder } from 'src/modules/repositories/tma-sale-db/schemas'
+import type { Types } from 'mongoose'
 
 /**
  * Stored document → wire row, for every collection the panel lists.
@@ -536,4 +541,48 @@ export const toAdminFiatDepositWatch = (
   mode: watch.mode,
   lastNotifiedAt: watch.lastNotifiedAt?.toISOString() ?? null,
   createdAt: watch.createdAt.toISOString()
+})
+
+/**
+ * One disputed card payment, as the panel lists it.
+ *
+ * Here rather than in the service, with the other fifteen: a mapper is what a
+ * stored document looks like to an operator, and keeping them together is what
+ * stops two screens disagreeing about how the same figure renders.
+ *
+ * **No card number in any form, not even four digits.** Closing an appeal does
+ * not need one, and this row is rendered in a browser.
+ */
+export const toAdminCardOrder = (
+  sale: TmaSale & { _id: Types.ObjectId },
+  cardOrder: TmaSaleCardOrder
+): AdminCardOrderListItem => ({
+  orderId: cardOrder.orderId,
+  saleId: sale._id.toString(),
+  publicId: sale.publicId,
+  telegramId: sale.telegramId,
+  state: cardOrder.state,
+  amount: cardOrder.amount,
+  arrivedAt: cardOrder.arrivedAt.toISOString(),
+  confirmDeadlineAt: cardOrder.confirmDeadlineAt.toISOString(),
+  answeredAt: cardOrder.answeredAt?.toISOString() ?? null,
+  receiverName: sale.receiverName,
+  receiverNameSource: sale.receiverNameSource,
+  bankType: sale.bankType as BankProvider,
+  // Counts and verdicts, never the documents: a row carrying them would put the
+  // period, the holder and the account tail of somebody's bank statement into a
+  // table nobody reads them from. What an operator opens is the file itself.
+  statements: (cardOrder.statements ?? []).map(
+    (statement): AdminCardOrderStatement => ({
+      id: statement._id.toString(),
+      bank: statement.bank,
+      status: statement.status,
+      rejection: statement.rejection,
+      uploadedAt: statement.uploadedAt.toISOString(),
+      sizeBytes: statement.sizeBytes,
+      periodFrom: statement.periodFrom?.toISOString() ?? null,
+      periodTo: statement.periodTo?.toISOString() ?? null,
+      ownerName: statement.ownerName
+    })
+  )
 })

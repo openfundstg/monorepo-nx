@@ -184,6 +184,242 @@
       </div>
     }
 
+    <!--
+      The payments a card sale's seller has to answer.
+      Empty on a jar sale, whose orders the scraper settles without asking.
+    -->
+    <!--
+      The tail is being held until a statement says what really landed.
+
+      Not a punishment and not an accusation: the seller declared that a payment
+      came up short, which is a claim only they can make and only they gain by
+      making, so the remainder waits for the bank's own record. Telling the truth
+      costs one upload. What it is worth saying plainly is that the money is
+      theirs either way — it is the figure that is in question, not the refund.
+    -->
+    @if (statementRequired() && shortfallOrder(); as pending) {
+      <div class="statement-required glass-card">
+        <h3 class="section-title">{{ 'sale.card_checkpoint_title' | translate }}</h3>
+        <p class="card-order-hint">{{ 'sale.card_checkpoint_hint' | translate }}</p>
+
+        <label class="statement-upload">
+          @if (uploadingStatement()) {
+            <span class="spinner"></span>
+            <span>{{ 'sale.card_statement_uploading' | translate }}</span>
+          } @else {
+            <span>{{ 'sale.card_statement_upload' | translate }}</span>
+          }
+          <input
+            type="file"
+            accept=".pdf,application/pdf"
+            [disabled]="uploadingStatement()"
+            (change)="onStatementPicked($event, pending.orderId)"
+          />
+        </label>
+      </div>
+    }
+
+    @if (cardOrders().length > 0) {
+      <div class="card-orders glass-card">
+        <h3 class="section-title">{{ 'sale.card_orders_title' | translate }}</h3>
+
+        @for (cardOrder of cardOrders(); track cardOrder.orderId) {
+          <div class="card-order" [class.open]="cardOrder.orderId === openCardOrder()?.orderId">
+            <div class="card-order-head">
+              <strong>{{ cardOrder.amount | uah }} {{ 'common.uah' | translate }}</strong>
+              <span class="card-order-state">
+                {{ 'SALE_CARD_ORDER.' + cardOrder.state | translate }}
+              </span>
+            </div>
+
+            <!--
+              An open payment has two phases, and they ask different questions.
+
+              While Transacto's window is still running the money is simply not
+              late, so the only answer worth offering is "it arrived". Denying
+              here would report the absence of a payment still in flight — and
+              a denial stops the terminal, so it would cost the seller the rest
+              of their own sale over nothing. The countdown says how long that
+              lasts instead of leaving them to guess whether to wait.
+
+              Once the window has run out the question is real, and both keys
+              are offered. Confirming stays one tap — it is the ordinary answer
+              and it is testimony against the seller's own interest. Denying
+              takes two, because of what it stops.
+            -->
+            @if (cardOrder.state === 'AWAITING_CONFIRMATION') {
+              @if (isOverdue(cardOrder)) {
+                <p class="card-order-hint overdue">
+                  {{ 'sale.card_order_overdue' | translate }}
+                </p>
+              } @else {
+                <p class="card-order-hint">{{ 'sale.card_order_waiting' | translate }}</p>
+                <p class="card-order-countdown">{{ countdown(cardOrder) }}</p>
+              }
+
+              <p class="card-order-hint">{{ 'sale.card_order_confirm_hint' | translate }}</p>
+
+              <div class="card-order-actions">
+                <button
+                  class="primary-btn"
+                  [disabled]="answeringOrderId() !== null"
+                  (click)="onConfirmCardOrder(cardOrder.orderId)"
+                >
+                  {{ 'sale.card_order_confirm' | translate }}
+                </button>
+                @if (isOverdue(cardOrder)) {
+                  <button
+                    class="ghost-btn"
+                    [class.armed]="denyArmed() === cardOrder.orderId"
+                    [disabled]="answeringOrderId() !== null"
+                    (click)="onDenyCardOrder(cardOrder.orderId)"
+                  >
+                    @if (denyArmed() === cardOrder.orderId) {
+                      {{ 'sale.card_order_deny_confirm' | translate }}
+                    } @else {
+                      {{ 'sale.card_order_deny' | translate }}
+                    }
+                  </button>
+                }
+              </div>
+
+              <!--
+                Said rather than left as a missing button: "where is the other
+                option" is the question an absence creates, and answering it is
+                cheaper than the support message it otherwise becomes.
+              -->
+              @if (!isOverdue(cardOrder)) {
+                <p class="card-order-locked">
+                  {{ 'sale.card_order_deny_locked' | translate }}
+                </p>
+              }
+
+              <!--
+                A bank fee took a few hryvnia on the way.
+
+                Behind a second tap rather than a field beside the button: the
+                ordinary answer is that the whole payment arrived, and an input
+                sitting there invites people to fill it in. What is typed counts
+                toward the sale instead of the order's own figure — and because
+                a smaller figure leaves more of the target outstanding, and so
+                brings more hryvnia, it is the one claim here worth checking. So
+                the line says plainly what asking for it costs.
+              -->
+              @if (amendingOrderId() === cardOrder.orderId) {
+                <div class="amend">
+                  <label class="amend-label" [for]="'amend-' + cardOrder.orderId">
+                    {{ 'sale.card_order_amend_label' | translate }}
+                  </label>
+                  <div class="amend-row">
+                    <input
+                      [id]="'amend-' + cardOrder.orderId"
+                      type="text"
+                      inputmode="decimal"
+                      class="text-input"
+                      [class.invalid]="amendedUah() !== '' && !amendedValidFor(cardOrder)"
+                      [(ngModel)]="amendedUah"
+                    />
+                    <span class="amend-suffix">{{ 'common.uah' | translate }}</span>
+                  </div>
+                  <p class="card-order-hint">{{ 'sale.card_order_amend_hint' | translate }}</p>
+
+                  <div class="card-order-actions">
+                    <button
+                      class="primary-btn"
+                      disabled
+                      [disabled]="answeringOrderId() !== null || !amendedValidFor(cardOrder)"
+                      (click)="onConfirmCardOrder(cardOrder.orderId, amendedKopecks() ?? undefined)"
+                    >
+                      {{ 'sale.card_order_amend_submit' | translate }}
+                    </button>
+                    <button class="ghost-btn" (click)="cancelAmending()">
+                      {{ 'common.cancel' | translate }}
+                    </button>
+                  </div>
+                </div>
+              } @else {
+                <button
+                  type="button"
+                  class="link-btn amend-open"
+                  [disabled]="answeringOrderId() !== null"
+                  (click)="startAmending(cardOrder.orderId, cardOrder.amount)"
+                >
+                  {{ 'sale.card_order_amend_open' | translate }}
+                </button>
+              }
+            }
+
+            <!--
+              A disputed order can still be confirmed: a late payer's money is
+              still money, and so is a late answer.
+            -->
+            @if (cardOrder.state === 'DISPUTED') {
+              <h4 class="card-order-subtitle">{{ 'sale.card_statement_title' | translate }}</h4>
+              <p class="card-order-hint">{{ 'sale.card_statement_hint' | translate }}</p>
+
+              <label class="statement-upload">
+                @if (uploadingStatement()) {
+                  <span class="spinner"></span>
+                  <span>{{ 'sale.card_statement_uploading' | translate }}</span>
+                } @else {
+                  <span>{{ 'sale.card_statement_upload' | translate }}</span>
+                }
+                <!--
+                  PDF only, and the server refuses anything else. A statement
+                  proves a negative, which a screenshot cannot do: what makes it
+                  evidence is the bank's signature over its exact bytes.
+                -->
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  [disabled]="uploadingStatement()"
+                  (change)="onStatementPicked($event, cardOrder.orderId)"
+                />
+              </label>
+
+              <!--
+                Still confirmable: a late payer's money is still money, and so
+                is a late answer.
+              -->
+              <button
+                class="ghost-btn"
+                [disabled]="answeringOrderId() !== null || uploadingStatement()"
+                (click)="onConfirmCardOrder(cardOrder.orderId)"
+              >
+                {{ 'sale.card_order_confirm' | translate }}
+              </button>
+            }
+
+            <!--
+              What the seller said arrived, where it was not the whole order.
+              Shown after the fact so the figure they gave is on the screen they
+              will be asked about if a statement disagrees with it.
+            -->
+            @if (cardOrder.declaredAmount; as declared) {
+              <p class="card-order-declared">
+                {{
+                  'sale.card_order_declared'
+                    | translate: { amount: (declared | uah) }
+                }}
+              </p>
+            }
+
+            @for (statement of cardOrder.statements; track statement.id) {
+              @if (statement.rejection) {
+                <p class="card-order-rejection">
+                  {{ 'SALE_STATEMENT.' + statement.rejection | translate }}
+                </p>
+              }
+            }
+          </div>
+        }
+
+        @if (cardOrderError()) {
+          <div class="validation-error">{{ cardOrderError() }}</div>
+        }
+      </div>
+    }
+
     <!-- Step tracker -->
     <div class="timeline glass-card">
       <div

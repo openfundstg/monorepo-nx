@@ -37,7 +37,8 @@
     "support": "Підтримка",
     "audit": "Аудит",
     "fiat_deposits": "Фіатні поповнення",
-    "fiat_deposit_watches": "Запити на суми"
+    "fiat_deposit_watches": "Запити на суми",
+    "card_orders": "Спірні платежі"
   },
   "shell": {
     "logout": "Вийти",
@@ -495,5 +496,28 @@
       "SALE_COMPLETED": "🏁 Продаж завершено",
       "ORDER_CONFIRMATION_FAILED": "⚠️ Ордер не підтверджено"
     }
+  },
+  "card_orders": {
+    "title": "Спірні платежі на картку",
+    "subtitle": "Продавець каже, що гроші не надійшли. Знайдіть за номером ордера з панелі Transacto.",
+    "search_placeholder": "Номер ордера або код заявки",
+    "empty": "Спірних платежів немає.",
+    "order_id": "Ордер",
+    "sale": "Заявка",
+    "telegram_id": "Telegram ID",
+    "amount": "Сума",
+    "state": "Стан",
+    "receiver": "Отримувач",
+    "receiver_proven": "ПІБ із виписки",
+    "statements": "Виписок",
+    "arrived": "Надійшов",
+    "open_statement": "Відкрити виписку"
+  },
+  "SALE_CARD_ORDER": {
+    "AWAITING_CONFIRMATION": "Очікує підтвердження",
+    "CONFIRMED": "Підтверджено",
+    "DISPUTED": "Не підтверджено",
+    "PROVEN_PAID": "Підтверджено випискою",
+    "PROVEN_UNPAID": "Виписка: грошей не було"
   }
 }

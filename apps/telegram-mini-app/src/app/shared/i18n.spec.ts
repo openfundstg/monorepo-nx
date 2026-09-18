@@ -5,6 +5,9 @@ import uk from '../../assets/i18n/uk.json';
 // crosses that way. The alternative was hand-copying every guide key into the
 // pinned list below, where it would drift the first time a bank gains a step.
 import { BANK_GUIDE } from '../sale/constants/bank-guide.const';
+// And the card form's guide, for the same reason: its steps are a list, so a
+// step added there is a translation nobody would otherwise be asked for.
+import { CARD_GUIDE_STEP_KEYS } from '../sale/constants/sale-card-create.const';
 // Reached into for the same reason: the tour's per-step keys exist only in
 // `TOUR_STEPS`, and a copied list would not know about a step added there.
 import { TOUR_STEPS } from '../onboarding/constants/tour.const';
@@ -292,6 +295,40 @@ describe('i18n dictionaries', () => {
       'BLOCK_REASON.LEDGER_MISMATCH',
       'SALE_EVENT.BLOCKED',
       'SALE_EVENT.STOPPED_BY_USER',
+
+      // The card variant of a sale renders two more families by concatenation:
+      // `'SALE_CARD_ORDER.' + state` for where one payment stands, and
+      // `'SALE_STATEMENT.' + rejection` for why an uploaded statement proved
+      // nothing. Neither name appears anywhere else in the source.
+      //
+      // The rejections matter most here. They are the only thing that tells a
+      // seller *which* statement to send instead — "the period does not cover
+      // it" and "that is a different account" are different instructions, and a
+      // missing key would collapse both into a key echoed back at them.
+      'SALE_CARD_ORDER.AWAITING_CONFIRMATION',
+      'SALE_CARD_ORDER.CONFIRMED',
+      'SALE_CARD_ORDER.DISPUTED',
+      'SALE_CARD_ORDER.PROVEN_PAID',
+      'SALE_CARD_ORDER.PROVEN_UNPAID',
+      'SALE_STATEMENT.SIGNATURE_INVALID',
+      'SALE_STATEMENT.NOT_A_BANK_SIGNER',
+      'SALE_STATEMENT.UNREADABLE',
+      'SALE_STATEMENT.PERIOD_TOO_SHORT',
+      'SALE_STATEMENT.WRONG_ACCOUNT',
+      'SALE_STATEMENT.CONTRADICTED',
+      'SALE_STATEMENT.NOT_REGISTERED',
+      'SALE_STATEMENT.VERIFIER_UNAVAILABLE',
+      // Not rejections the server returns — the two the form refuses on its
+      // own, before spending a phone's data on a file it can already see is
+      // wrong. They share the section because the user reads them in the
+      // same place, under the same upload card.
+      'SALE_STATEMENT.UNSUPPORTED_TYPE',
+      'SALE_STATEMENT.TOO_LARGE',
+      'SALE_EVENT.ORDER_CONFIRMED',
+      'SALE_EVENT.ORDER_DISPUTED',
+      'SALE_EVENT.STATEMENT_SUBMITTED',
+      'SALE_EVENT.STATEMENT_REJECTED',
+      'BLOCK_REASON.ORDER_UNCONFIRMED',
     ];
 
     for (const lang of Object.keys(DICTIONARIES)) {
@@ -330,6 +367,32 @@ describe('i18n dictionaries', () => {
     for (const lang of Object.keys(DICTIONARIES)) {
       const langKeys = keysOf(lang);
       expect({ lang, missing: guideKeys.filter((k) => !langKeys.has(k)) }).toEqual({
+        lang,
+        missing: [],
+      });
+    }
+  });
+
+  /**
+   * The card sale's guide, checked the same way and for the same reason.
+   *
+   * It replaced an always-open block whose copy lived in six loose keys; those
+   * are gone, and a key here that no dictionary carries is a step that renders
+   * as its own dotted name on the form a seller reads before staking anything.
+   */
+  it('translates every step of the card sale guide', () => {
+    const cardGuideKeys = [
+      'sale.card_guide.title',
+      'sale.card_guide.terms_label',
+      'sale.card_guide.term_orders',
+      'sale.card_guide.term_per_order',
+      'sale.card_guide.warning',
+      ...CARD_GUIDE_STEP_KEYS,
+    ];
+
+    for (const lang of Object.keys(DICTIONARIES)) {
+      const langKeys = keysOf(lang);
+      expect({ lang, missing: cardGuideKeys.filter((k) => !langKeys.has(k)) }).toEqual({
         lang,
         missing: [],
       });

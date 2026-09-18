@@ -35,9 +35,27 @@
  *   must survive a body that does not parse.
  */
 
-/** The document kinds this product asks for. Others answer "not supported". */
+/**
+ * The document kinds this product asks for. Others answer "not supported".
+ *
+ * **The value is the whole vocabulary**: it is the `document[type]` of the
+ * lookup, the path segment of the download (`/pb/get-doc/download/statement/…`)
+ * and the prefix of the name the bank gives the file
+ * (`statement-QB00000000000000.pdf`). One string in three places, which is why
+ * the download takes the type rather than hard-coding a segment.
+ */
 export const PrivatbankDocumentType = {
-  RECEIPT: 'receipt'
+  RECEIPT: 'receipt',
+  /**
+   * «Довідка/виписка» — a statement, captured 2026-09-17.
+   *
+   * What makes this member worth more than a second document kind: it means a
+   * PrivatBank statement never has to be trusted as an upload. The bank is
+   * asked whether the number exists and then serves **its own copy**, which is
+   * the same arrangement the receipt path already has and a stronger claim than
+   * any signature check on a file a user sent us.
+   */
+  STATEMENT: 'statement'
 } as const
 export type PrivatbankDocumentType =
   (typeof PrivatbankDocumentType)[keyof typeof PrivatbankDocumentType]
@@ -70,7 +88,8 @@ export interface PrivatbankFindDocumentResponse {
   /**
    * Ukrainian, and the only description of what happened:
    * `'Документ був знайдений'`, `'Документ із цим кодом не знайдено'`,
-   * `'Переданий тип документа не підтримуються'`.
+   * `'Переданий тип документа не підтримуються'`. Identical for a receipt and
+   * a statement — the reason never names which kind was asked for.
    *
    * Developer-facing. It is logged and never shown to a user — this product
    * renders its own sentence from an enum, in the user's language.
@@ -78,9 +97,16 @@ export interface PrivatbankFindDocumentResponse {
   readonly reason?: string
   /** Empty object in every capture, successful or not. Nothing reads it. */
   readonly content?: Record<string, unknown>
-  /** `'receipt-P24A0000000000A0000.pdf'`. Present only on success. */
+  /**
+   * `'receipt-P24A0000000000A0000.pdf'`, `'statement-QB00000000000000.pdf'`.
+   * Present only on success — the bank's own name for the file, always
+   * `<type>-<id>.pdf`.
+   */
   readonly document_name?: string
-  /** `'Квитанція'` on a receipt lookup; echoes the request on a bad type. */
+  /**
+   * `'Квитанція'` on a receipt lookup and `'Довідка/виписка'` on a statement;
+   * echoes the request on a bad type.
+   */
   readonly document_type?: string
   /** The CSRF token for the download. Bound to the `PHPSESSID` set beside it. */
   readonly token?: string

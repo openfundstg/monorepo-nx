@@ -39,6 +39,7 @@ describe('SupportService', () => {
   let menu: { sendGreeting: jest.Mock; handleButton: jest.Mock; handleLanguageChoice: jest.Mock }
   let users: { remember: jest.Mock }
   let fiatWatch: { handleUnsubscribe: jest.Mock }
+  let cardSale: { handleAnswer: jest.Mock }
   let service: SupportService
 
   beforeEach(() => {
@@ -56,6 +57,7 @@ describe('SupportService', () => {
     }
     users = { remember: jest.fn().mockResolvedValue(SupportLocale.UK) }
     fiatWatch = { handleUnsubscribe: jest.fn().mockResolvedValue(undefined) }
+    cardSale = { handleAnswer: jest.fn().mockResolvedValue(undefined) }
 
     service = new SupportService(
       { isEnabled: true, requireGroupId: () => GROUP_ID } as never,
@@ -64,6 +66,7 @@ describe('SupportService', () => {
       menu as never,
       users as never,
       fiatWatch as never,
+      cardSale as never,
       redis as never
     )
   })
@@ -139,6 +142,30 @@ describe('SupportService', () => {
     expect(relay.relayToGroup).toHaveBeenCalledTimes(1)
   })
 
+  /**
+   * Routed by payload prefix, because there is more than one kind of inline
+   * key. Everything used to reach the language handler, which read an
+   * unrecognised payload as "no language" and answered nothing — so a key that
+   * settles money must be proven to reach its own handler.
+   */
+  it.each([
+    ['csale:ok:1234567', 'confirming'],
+    ['csale:no:1234567', 'denying'],
+  ])('routes a card sale key (%s) to the card sale handler', async (data) => {
+    await service.handleUpdate({
+      update_id: 14,
+      callback_query: {
+        id: 'q2',
+        chat_instance: 'c1',
+        from: { id: USER_ID, is_bot: false, first_name: 'Іван' },
+        data,
+      },
+    } as never)
+
+    expect(cardSale.handleAnswer).toHaveBeenCalledTimes(1)
+    expect(menu.handleLanguageChoice).not.toHaveBeenCalled()
+  })
+
   it('routes an inline key press to the language menu', async () => {
     await service.handleUpdate({
       update_id: 13,
@@ -195,6 +222,7 @@ describe('SupportService', () => {
       menu as never,
       users as never,
       fiatWatch as never,
+      cardSale as never,
       redis as never
     )
 

@@ -46,7 +46,14 @@
       </button>
     </div>
 
-    <button type="button" class="primary-btn" [disabled]="!canTransfer()" (click)="transfer()">
+    <!-- Static `disabled` as well as the binding — see deposit-create for why. -->
+    <button
+      type="button"
+      class="primary-btn"
+      disabled
+      [disabled]="!canTransfer()"
+      (click)="transfer()"
+    >
       @if (transferring()) {
         {{ 'referral.transferring' | translate }}
       } @else {
@@ -100,7 +107,14 @@
         [placeholder]="'referral.code_placeholder' | translate"
       />
 
-      <button type="button" class="primary-btn" [disabled]="!canRedeem()" (click)="redeem()">
+      <!-- Static `disabled` as well as the binding — see deposit-create for why. -->
+      <button
+        type="button"
+        class="primary-btn"
+        disabled
+        [disabled]="!canRedeem()"
+        (click)="redeem()"
+      >
         @if (redeeming()) {
           {{ 'referral.redeeming' | translate }}
         } @else {

@@ -5,6 +5,7 @@ import {
   AlertType,
   ERROR,
   OrderStatus,
+  SaleCardOrderState,
   SupportTopicStatus,
   FiatDepositWatchMode,
   TerminalHistoryAlertType,
@@ -62,6 +63,16 @@ describe('translation keys built by concatenation', () => {
 
   it('covers every Transacto order status', () => {
     expectEveryMember('ORDER_STATUS', Object.values(OrderStatus));
+  });
+
+  /**
+   * `'SALE_CARD_ORDER.' + state`, built by concatenation in the card-orders
+   * column definition. It is the column an operator scans to find the rows that
+   * need a person, so a member with no copy renders its own key in exactly the
+   * cell that has to be legible.
+   */
+  it('covers every card-sale order state', () => {
+    expectEveryMember('SALE_CARD_ORDER', Object.values(SaleCardOrderState));
   });
 
   it('covers every alert type and status', () => {

@@ -1,0 +1,333 @@
+/*
+  The shapes both sale forms are built from.
+
+  There are two ways to sell — into a jar, or straight onto a card — and they
+  ask for different things, but they ask in the same voice: a labelled group on
+  a glass card, an amount with its unit pinned to the right, a row of figures
+  under it, a bank picker, an error.
+
+  They did not, for one release. The card form was written with its own
+  stylesheet and its own names for the design tokens — `--text-primary` for
+  `--text`, `--surface-2` for `--c-surface-2`, `--radius-md` for `--r-md`. A
+  custom property that is not defined does not fail: it resolves to nothing, so
+  the form rendered with no background, no radius and no colour, and no build
+  or lint step could have said so. CSS has no compiler to catch a misspelt
+  token, which is exactly why the shapes belong in one file instead of two.
+
+  Only what more than one form uses lives here. A rule that belongs to one
+  screen stays with that screen.
+*/
+
+/* --- Groups -------------------------------------------------------------- */
+
+.input-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.field-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.mt-3 {
+  margin-top: 16px;
+}
+
+/* --- Amount -------------------------------------------------------------- */
+
+.amount-input-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.amount-input {
+  width: 100%;
+  padding: 14px 60px 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--t-base);
+}
+
+.amount-input:focus {
+  border-color: var(--accent);
+}
+
+.amount-input::placeholder {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+/* Sits inside the amount field's right padding — hence the reserved 60px. */
+.input-suffix {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* --- Ordinary text fields ------------------------------------------------ */
+
+/*
+  Everything that is not the amount: a pasted link, a card number, a name. One
+  size, because none of them is the headline the amount is.
+
+  16px is the floor, not a preference. Below it iOS zooms the page in when the
+  field takes focus — and does not zoom back out on blur, so the app is left
+  magnified. That is the same "it zoomed itself" complaint as the task-switcher
+  one, from a different trigger, and `maximum-scale=1` does not reliably stop it.
+*/
+.text-input,
+.link-input {
+  width: 100%;
+  padding: 13px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  color: var(--text);
+  font-size: 16px;
+  outline: none;
+  transition: border-color var(--t-base);
+}
+
+.text-input:focus,
+.link-input:focus {
+  border-color: var(--accent);
+}
+
+.text-input::placeholder,
+.link-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* --- Figures under a field ----------------------------------------------- */
+
+.limits-info {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.limit-label {
+  color: var(--text-muted);
+}
+
+.limit-value {
+  font-weight: 600;
+  transition: color var(--t-base);
+}
+
+.limit-value.error {
+  color: var(--c-danger);
+}
+
+/* --- Refusals ------------------------------------------------------------ */
+
+.validation-error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* --- Bank picker --------------------------------------------------------- */
+
+.bank-options {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.bank-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+  cursor: pointer;
+  transition:
+    border-color var(--t-base),
+    background var(--t-base);
+  /* Anchors the ribbon, and clips it to the rounded corner. */
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * A bank that is not open for new sales.
+ *
+ * Still rendered rather than hidden: a picker that silently loses two of its
+ * three tiles reads as a broken screen, while a greyed one with a label says
+ * what happened. `pointer-events: none` stops the tap; the component's own
+ * guard refuses it as well, and that guard — not this line — is what makes the
+ * grey mean something.
+ */
+.bank-option.unavailable {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/*
+ * The dimming lands on the tile's contents, not on the tile, so the ribbon
+ * keeps its full strength. It used to sit on `.bank-option` itself, which faded
+ * the "unavailable" ribbon along with everything else — leaving a greyed tile
+ * whose only explanation of *why* was the one thing too faint to read.
+ */
+.bank-option.unavailable .bank-icon-img,
+.bank-option.unavailable .bank-name {
+  opacity: 0.35;
+}
+
+.bank-icon-img {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+}
+
+.bank-name {
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/**
+ * Corner ribbon on a labelled bank.
+ *
+ * A 45° band pinned across the top-right corner, sized well past the tile so
+ * the rotated strip still reaches both cut edges; the tile's `overflow: hidden`
+ * is what trims it back to the corner. Laid out with `position: absolute` so it
+ * takes no part in the tile's column flex and cannot shift the icon or name.
+ */
+.bank-ribbon {
+  position: absolute;
+  /*
+   * These four are one measurement, not four choices. A 45° band across a
+   * right-angle corner is only visible for a chord of twice its distance from
+   * that corner, so the label's own width sets how far in the band has to sit:
+   * "Рекомендовано" is ~58px at 7px, needing ~60px of chord, which is what
+   * `top` and `right` add up to here. Moving it nearer the corner clips the
+   * word — the first attempt did exactly that.
+   */
+  top: 15px;
+  right: -34px;
+  width: 112px;
+  transform: rotate(45deg);
+  background: var(--c-danger);
+  color: var(--on-fill);
+  /*
+   * Deliberately tiny: the ribbon labels the tile, it does not compete with it.
+   * No uppercase and no tracking for the same reason the band sits where it
+   * does — capitalised Cyrillic is ~40% wider and did not fit the chord at all.
+   */
+  font-size: 7px;
+  font-weight: 700;
+  /* Kept thin so the band clears the icon below it on narrow viewports. */
+  line-height: 1.25;
+  padding: 1px 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* The same ribbon, without the recommendation's urgency. */
+.bank-ribbon.muted {
+  background: var(--c-text-faint);
+}
+
+/*
+  The selected tile carries the bank's own colour rather than the app accent, so
+  the picker answers "which bank" and not merely "which tile". Mono has no
+  colour to borrow — its brand is the absence of one — so it takes a plain
+  light edge.
+*/
+.active.mono {
+  border-color: var(--border-strong);
+  background: var(--surface-active);
+}
+
+.active.privat {
+  border-color: var(--c-success);
+  background: var(--c-success-soft);
+}
+
+.active.pumb {
+  border-color: var(--c-danger);
+  background: var(--c-danger-soft);
+}
+
+.active.novapay {
+  border-color: var(--c-novapay);
+  background: var(--c-novapay-soft);
+}
+
+/* --- The total, under the amount ----------------------------------------- */
+
+/*
+  "N USDT = X ₴", which both forms show the moment an amount is typed. The rate
+  is stated once at the top of each screen, so this row carries the total alone.
+*/
+.math-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.math-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.math-val {
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* --- A field that is filled in and wrong ---------------------------------- */
+
+/*
+  The refusal replaces the hint rather than joining it. Two lines under one
+  field — what to type and why what you typed is wrong — compete, and the one
+  that matters is the second.
+*/
+.text-input.invalid,
+.text-input.invalid:focus {
+  border-color: var(--c-danger);
+}
+
+.field-error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--c-danger);
+}
