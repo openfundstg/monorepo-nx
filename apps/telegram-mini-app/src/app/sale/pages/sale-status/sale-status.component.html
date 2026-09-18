@@ -225,7 +225,7 @@
       <div class="card-orders glass-card">
         <h3 class="section-title">{{ 'sale.card_orders_title' | translate }}</h3>
 
-        @for (cardOrder of cardOrders(); track cardOrder.orderId) {
+        @for (cardOrder of cardOrdersNewestFirst(); track cardOrder.orderId) {
           <div class="card-order" [class.open]="cardOrder.orderId === openCardOrder()?.orderId">
             <div class="card-order-head">
               <strong>{{ cardOrder.amount | uah }} {{ 'common.uah' | translate }}</strong>

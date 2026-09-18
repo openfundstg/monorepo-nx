@@ -9,7 +9,12 @@ import {
   SaleStatementStatus,
   TmaSaleStatus,
 } from '@transacto/contracts';
-import type { SaleCardOrder, SaleStatement, TmaSale } from '@transacto/contracts';
+import type {
+  SaleCardOrder,
+  SaleProgress,
+  SaleStatement,
+  TmaSale,
+} from '@transacto/contracts';
 import { SaleStatusComponent } from './sale-status.component';
 import { SaleService } from '../../services/sale.service';
 import { TmaService } from '../../../auth/services/tma.service';
@@ -203,5 +208,64 @@ describe('SaleStatusComponent statement refusals', () => {
     );
 
     expect(component.latestRejection(cardOrder)).toBe(SaleStatementRejection.WRONG_ACCOUNT);
+  });
+});
+
+/**
+ * Which end of the payment list the newest payment is at.
+ *
+ * The server stores them as they arrived, which is what the lookups want and
+ * the opposite of what a reader wants: the payment being asked about is the
+ * newest, and it sat at the bottom under a growing pile of settled ones — while
+ * the timeline directly beside it reads newest first.
+ */
+describe('SaleStatusComponent payment order', () => {
+  let component: SaleStatusComponent;
+
+  const cardOrder = (orderId: number): SaleCardOrder =>
+    ({ orderId, statements: [] }) as unknown as SaleCardOrder;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'sale-1' } } } },
+        { provide: SaleService, useValue: {} },
+        {
+          provide: WsService,
+          useValue: {
+            connected: signal(true),
+            saleProgress: () =>
+              ({
+                saleId: 'sale-1',
+                updatedAt: 1,
+                cardOrders: [cardOrder(1), cardOrder(2), cardOrder(3)],
+              }) as unknown as SaleProgress,
+            connectionEpoch: () => 0,
+            connect: vi.fn(),
+          },
+        },
+        {
+          provide: TmaService,
+          useValue: { hapticFeedback: vi.fn(), showBackButton: vi.fn(), hideBackButton: vi.fn() },
+        },
+        { provide: ClockService, useValue: { now: () => Date.now() } },
+        { provide: MetaPixelService, useValue: { trackConversion: vi.fn() } },
+      ],
+    });
+
+    component = TestBed.runInInjectionContext(() => new SaleStatusComponent());
+  });
+
+  it('reads newest first on screen', () => {
+    expect(component.cardOrdersNewestFirst().map((order) => order.orderId)).toEqual([3, 2, 1]);
+  });
+
+  /** The lookups mean "the one open order" and must not depend on which end. */
+  it('leaves the stored order alone for everything else', () => {
+    expect(component.cardOrders().map((order) => order.orderId)).toEqual([1, 2, 3]);
   });
 });

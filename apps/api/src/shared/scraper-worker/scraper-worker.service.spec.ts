@@ -78,4 +78,55 @@ describe('ScraperWorkerService', () => {
     const unconfigured = new ScraperWorkerService({ isConfigured: false } as unknown as ScraperWorkerApiService)
     await expect(unconfigured.request(REQUEST)).rejects.toBeInstanceOf(ServiceUnavailableException)
   })
+
+  /**
+   * **The hop to the worker is itself a Tor circuit**, and a circuit that drops
+   * mid-request throws out of the transport rather than answering with a code.
+   * That escaped the walk entirely: one `socket hang up` on the onion hop and a
+   * seller's bank statement came back "we could not check it", with no rotation
+   * attempted. It is the failure another attempt is most likely to fix, and it
+   * was the only one not retried.
+   */
+  describe('when the worker itself cannot be reached', () => {
+    const unreachable = (): Error =>
+      Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })
+
+    it('rotates rather than giving up', async () => {
+      send.mockRejectedValueOnce(unreachable()).mockResolvedValueOnce(ok(200))
+
+      const result = await service.request(REQUEST)
+
+      expect(result.upstreamStatus).toBe(200)
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(send.mock.calls[1][0].rotate).toBe(true)
+    })
+
+    it('keeps walking across several dropped circuits', async () => {
+      send
+        .mockRejectedValueOnce(unreachable())
+        .mockRejectedValueOnce(unreachable())
+        .mockResolvedValueOnce(ok(200))
+
+      await expect(service.request(REQUEST)).resolves.toMatchObject({ upstreamStatus: 200 })
+      expect(send).toHaveBeenCalledTimes(3)
+    })
+
+    /** And still gives up in the end, rather than walking for ever. */
+    it('refuses once every attempt has been spent', async () => {
+      send.mockRejectedValue(unreachable())
+
+      await expect(service.request(REQUEST)).rejects.toBeInstanceOf(ServiceUnavailableException)
+    })
+
+    /** A caller that must not rotate does not get a second try either. */
+    it('does not retry a call pinned to one exit', async () => {
+      send.mockRejectedValue(unreachable())
+
+      await expect(service.request(REQUEST, { maxAttempts: 1 })).rejects.toBeInstanceOf(
+        ServiceUnavailableException
+      )
+      expect(send).toHaveBeenCalledTimes(1)
+    })
+  })
+
 })

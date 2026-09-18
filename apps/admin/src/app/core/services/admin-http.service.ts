@@ -33,6 +33,19 @@ export class AdminHttpService {
     return this.http.get<T>(`${environment.apiUrl}/${path}`);
   }
 
+  /**
+   * The absolute URL of one endpoint, for the cases that are not a request.
+   *
+   * A download is a link the browser follows, not a body this app holds — and
+   * the one place that built such a link by hand wrote the base out again and
+   * got it wrong, asking for `/api/admin/admin/card-orders/…` and being
+   * answered `404`. Every path in this service now joins the base in exactly
+   * one place.
+   */
+  url(path: string): string {
+    return `${environment.apiUrl}/${path}`;
+  }
+
   /** A state-changing call. The CSRF header is added by the interceptor. */
   command<TBody, TRes>(path: string, body: TBody): Observable<TRes> {
     return this.http.post<TRes>(`${environment.apiUrl}/${path}`, body);

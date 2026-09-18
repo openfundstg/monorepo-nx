@@ -1,10 +1,11 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import {
   ScraperWorkerErrorCode,
+  type ScraperWorkerOutcome,
   type ScraperWorkerRequest,
   type ScraperWorkerResult
 } from 'src/shared/interfaces'
-import { PROXY_ATTEMPTS, PROXY_REPAIRABLE_STATUSES } from 'src/shared/utils'
+import { describeError, PROXY_ATTEMPTS, PROXY_REPAIRABLE_STATUSES } from 'src/shared/utils'
 import { ScraperWorkerApiService } from 'src/shared/scraper-worker/scraper-worker.api.service'
 
 /**
@@ -78,7 +79,34 @@ export class ScraperWorkerService {
     // not come back.
     for (let index = 0; index < attempts; index++) {
       const isLast = index === attempts - 1
-      const outcome = await this.api.send({ ...request, rotate: index > 0 })
+
+      // **The hop to the worker is the flakiest one here, and it was the single
+      // failure this walk did not survive.** `send` reads any HTTP status the
+      // worker answers with, so nothing it *says* throws — but the worker is a
+      // Tor hidden service, and a circuit that drops mid-request throws out of
+      // the transport instead. That escaped the loop: one `ECONNRESET` on the
+      // onion hop and a seller's bank statement came back "we could not check
+      // it", with no rotation attempted and no second try offered.
+      //
+      // Safe to repeat, and checked rather than assumed: every caller of this
+      // walk is a read — a balance scrape, a document lookup, a signature
+      // check, a jar link. The Transacto panel, which is the one thing here
+      // that moves money, does not come through the worker at all.
+      let outcome: ScraperWorkerOutcome
+
+      try {
+        outcome = await this.api.send({ ...request, rotate: index > 0 })
+      } catch (error: unknown) {
+        const failure = describeError(error)
+
+        if (isLast)
+          throw new ServiceUnavailableException(
+            `Scraper worker could not be reached for a ${consumer} request: ${failure}`
+          )
+
+        this.rotating(consumer, request.channel, `unreachable: ${failure}`, index + 2)
+        continue
+      }
 
       if (outcome.ok) {
         if (isLast || !rotateOn.includes(outcome.result.upstreamStatus)) return outcome.result

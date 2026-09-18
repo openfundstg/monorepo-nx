@@ -471,6 +471,28 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
   )
 
   /**
+   * The same payments, newest first — the order the list is read in.
+   *
+   * The server stores them as they arrived, which is what every lookup below
+   * wants and the opposite of what somebody scanning the screen wants: the
+   * payment they are being asked about is the newest one, and it was at the
+   * bottom under a growing pile of settled ones. The timeline beside it already
+   * reads newest first, and two lists on one screen running opposite ways is
+   * its own small lie.
+   *
+   * A separate signal rather than reversing {@link cardOrders}, because the
+   * finds below mean "the one open order" and must not start depending on which
+   * end they are searched from.
+   */
+  readonly cardOrdersNewestFirst = computed<readonly SaleCardOrder[]>(() =>
+    // `.map()` first so the reverse mutates a fresh array and not the snapshot;
+    // `.toReversed()` would need the ES2023 lib and this app targets ES2022.
+    this.cardOrders()
+      .map((order) => order)
+      .reverse(),
+  )
+
+  /**
    * The one order, if any, that is still a question.
    *
    * At most one can be: the credential is created with `max_open_orders: 1`, so

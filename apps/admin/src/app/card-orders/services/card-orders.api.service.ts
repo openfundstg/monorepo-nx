@@ -6,7 +6,6 @@ import type {
 } from '@transacto/contracts';
 import type { Observable } from 'rxjs';
 import { AdminHttpService } from '../../core/services/admin-http.service';
-import { environment } from '../../../environments/environment';
 
 /**
  * HTTP only. One method, because this screen settles nothing.
@@ -33,6 +32,6 @@ export class CardOrdersApiService {
    * this can be an ordinary link.
    */
   statementUrl(orderId: number): string {
-    return `${environment.apiUrl}/admin/card-orders/${orderId}/statement`;
+    return this.http.url(`card-orders/${orderId}/statement`);
   }
 }
