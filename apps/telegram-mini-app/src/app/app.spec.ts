@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { NavigationEnd, provideRouter, Router, type Event } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
-import { MiniAppStartParam } from '@transacto/contracts';
+import { MiniAppStartParam, saleStartParam } from '@transacto/contracts';
 import { Subject } from 'rxjs';
 import { AppComponent } from './app';
 import { TmaService } from './auth/services/tma.service';
@@ -245,6 +245,36 @@ describe('AppComponent opening on the launch link', () => {
 
   it('does nothing for a payload it does not recognise', () => {
     const component = build('Z38SL69F')
+    component.ngOnInit()
+
+    settle(LAUNCH_URL)
+
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * The bot's *Open the sale* key.
+   *
+   * It used to carry no payload at all, which makes a `t.me/<bot>` link — a bot
+   * chat, not this app, and often not even the chat the person was already in.
+   * Pressing it did nothing they could see, which is exactly how it was
+   * reported.
+   */
+  it('opens the sale named by a sale payload', () => {
+    const component = build(saleStartParam('68cbf4a1c2d3e4f5a6b7c8d9'))
+    component.ngOnInit()
+
+    settle(LAUNCH_URL)
+
+    expect(navigate).toHaveBeenCalledWith(['/sale', '68cbf4a1c2d3e4f5a6b7c8d9', 'status'])
+  })
+
+  /**
+   * A payload is free text on a link anybody can write, and whatever comes out
+   * of it becomes a route segment. One that is not an id is not a sale.
+   */
+  it('ignores a sale payload that does not carry an id', () => {
+    const component = build('sale_not-an-id')
     component.ngOnInit()
 
     settle(LAUNCH_URL)

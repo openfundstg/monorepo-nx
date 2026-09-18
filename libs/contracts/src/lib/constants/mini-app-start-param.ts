@@ -23,3 +23,43 @@ export const MiniAppStartParam = {
 } as const;
 
 export type MiniAppStartParam = (typeof MiniAppStartParam)[keyof typeof MiniAppStartParam];
+
+/**
+ * The prefix a "open this sale" payload carries.
+ *
+ * An underscore, which is the point: `startapp` allows `A-Za-z0-9_-`, and a
+ * referral code is eight characters of the public-id alphabet — letters and
+ * digits only. So a payload containing one of these can never be read as a
+ * code, and a code can never be read as a sale.
+ */
+export const SALE_START_PARAM_PREFIX = 'sale_';
+
+/** A sale id, as the id of a Mongo document: 24 hexadecimal characters. */
+const SALE_ID_PATTERN = /^[0-9a-f]{24}$/;
+
+/**
+ * The `startapp` payload that opens one sale's status screen.
+ *
+ * The bot writes it onto its *Open the sale* key, the Mini App reads it back
+ * out of Telegram's signed `initData`. Without a payload the key is a link to
+ * a bot chat — which is where the person pressing it already is, so it looked
+ * to them like a button that does nothing.
+ */
+export const saleStartParam = (saleId: string): string =>
+  `${SALE_START_PARAM_PREFIX}${saleId}`;
+
+/**
+ * The sale behind a launch payload, or `null` when it is about something else.
+ *
+ * Validated rather than merely unprefixed: whatever comes back becomes a route
+ * segment, and a payload is free text a person can type into a link. An id
+ * that is not an id is not a sale, and navigating to it would ask the API
+ * about a document that cannot exist.
+ */
+export const saleIdFromStartParam = (param: string): string | null => {
+  if (!param.startsWith(SALE_START_PARAM_PREFIX)) return null;
+
+  const saleId = param.slice(SALE_START_PARAM_PREFIX.length);
+
+  return SALE_ID_PATTERN.test(saleId) ? saleId : null;
+};

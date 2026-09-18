@@ -64,6 +64,22 @@ const USDT_AMOUNT_EVENTS: ReadonlySet<SaleEventType> = new Set([
   SaleEventType.REMAINDER_REFUNDED,
 ])
 
+/**
+ * Statuses in which this sale can still change on its own.
+ *
+ * What the connection indicator is about. It reads the **socket**, and the
+ * socket is up whenever the app is open — so a sale that ended weeks ago sat
+ * under a green "live", which says something true about the connection and
+ * something false about the sale. The two are only worth conflating while
+ * there is something to be live *for*.
+ */
+const LIVE_STATUSES: ReadonlySet<TmaSaleStatus> = new Set([
+  TmaSaleStatus.CREATED,
+  TmaSaleStatus.TERMINAL_READY,
+  TmaSaleStatus.AWAITING_FIAT,
+  TmaSaleStatus.CLOSING,
+])
+
 @Component({
   selector: 'app-sale-status',
   imports: [FormsModule, TranslatePipe, UahPipe, DateTimePipe, UsdtPipe, TrackTapDirective],
@@ -125,6 +141,17 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
   )
 
   readonly publicId = computed(() => this.progress()?.publicId ?? this.order()?.publicId ?? '')
+
+  /**
+   * Whether to say anything about the connection at all.
+   *
+   * Gated on `loading()` as well as on the status, because `currentStatus()`
+   * falls back to CREATED until both responses land — without it a finished
+   * sale would show the indicator for the first frame and then drop it.
+   */
+  readonly showsConnection = computed(
+    () => !this.loading() && LIVE_STATUSES.has(this.currentStatus()),
+  )
 
   readonly step = computed<SaleStep>(() => {
     const status = this.currentStatus()

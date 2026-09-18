@@ -1,3 +1,4 @@
+import { SaleMethod } from '@transacto/contracts'
 import { SaleClosingService } from './sale-closing.service'
 import { OrderStatus, type OrderDbService } from 'src/modules/repositories/order-db'
 import type { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
@@ -83,6 +84,49 @@ describe('SaleClosingService', () => {
   it('keeps waiting on an outstanding order even with the jar closed', async () => {
     orders.findUnsettledByCard.mockResolvedValue([pending()])
     sales.findClosing.mockResolvedValue([closingOrder({ jarClosedAt: new Date() })])
+
+    await service.settleFinishedClosings()
+
+    expect(cancel.settle).not.toHaveBeenCalled()
+  })
+
+  /**
+   * **A card sale has no jar, and waiting for one to close is waiting for ever.**
+   *
+   * The bug this pins: `cardId !== null` was read as "has a jar", and every
+   * card sale has a `cardId` — the Transacto credential that routes a payer to
+   * the seller's card. So a card sale stopped early sat in `CLOSING` on every
+   * pass of this sweep, the stake stayed frozen, and the slot it held never
+   * came back. It still has to wait on its outstanding orders; it just has
+   * nothing to close afterwards.
+   */
+  it('settles a card sale without waiting for a jar it never had', async () => {
+    sales.findClosing.mockResolvedValue([
+      closingOrder({ saleMethod: SaleMethod.CARD, jarClosedAt: null }),
+    ])
+
+    await service.settleFinishedClosings()
+
+    expect(orders.findUnsettledByCard).toHaveBeenCalledWith(CARD_ID)
+    expect(cancel.settle).toHaveBeenCalled()
+  })
+
+  it('still waits on a card sale whose orders are outstanding', async () => {
+    orders.findUnsettledByCard.mockResolvedValue([pending()])
+    sales.findClosing.mockResolvedValue([
+      closingOrder({ saleMethod: SaleMethod.CARD, jarClosedAt: null }),
+    ])
+
+    await service.settleFinishedClosings()
+
+    expect(cancel.settle).not.toHaveBeenCalled()
+  })
+
+  /** And a jar sale is unchanged: an open jar still holds the settlement. */
+  it('keeps waiting on a jar sale with the method spelled out', async () => {
+    sales.findClosing.mockResolvedValue([
+      closingOrder({ saleMethod: SaleMethod.JAR, jarClosedAt: null }),
+    ])
 
     await service.settleFinishedClosings()
 

@@ -539,6 +539,37 @@ export class SaleCardOrderService {
     return withEvent
   }
 
+  /**
+   * Shuts the terminal while an order is still running, without answering it.
+   *
+   * **The order is untouched, and that is the whole difference from
+   * {@link dispute}.** Its seller still has the rest of their window and can
+   * still confirm; what is taken away is Transacto's ability to route a *second*
+   * payer here in the moment the first order runs out. Expiry and routing are
+   * both decided upstream, on a clock we do not hold, and nothing says the
+   * sweep gets to see the first before the second exists.
+   *
+   * Nothing new is recorded, so this is safe to repeat — `stopRouting` is one
+   * `enable_orders: 0` and one local flag, and it is called at most twice per
+   * order because the sweep's period and the cutoff are the same half minute.
+   * Routing comes back the moment the order settles, through
+   * {@link resumeIfSettled}, exactly as it does after a dispute.
+   *
+   * Swallowed rather than thrown, like the stop inside {@link dispute}: nobody
+   * asked for this and nobody is waiting to be told it happened. What is lost
+   * when it fails is the guarantee, which the log line names.
+   */
+  async holdRouting(sale: StoredSale): Promise<void> {
+    try {
+      await this.terminalService.stopRouting(sale, 'Order window closing')
+    } catch (error: unknown) {
+      this.logger.error(
+        `Could not close routing ahead of the deadline on sale ${sale.publicId}: ` +
+          describeError(error)
+      )
+    }
+  }
+
   /** Lets payers back in once no order on this sale is disputed. */
   private async resumeIfSettled(sale: StoredSale): Promise<void> {
     const stillDisputed = sale.cardOrders?.some(

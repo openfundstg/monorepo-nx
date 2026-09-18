@@ -1,4 +1,6 @@
 import { AdminSaleAction, TmaSaleStatus } from '@transacto/contracts'
+import { saleHasJar } from 'src/shared/utils'
+import type { SaleDestination } from 'src/shared/utils'
 
 /**
  * Which admin interventions each sale status accepts.
@@ -67,19 +69,22 @@ const ALLOWED_BY_ACTION: Readonly<Record<AdminSaleAction, readonly TmaSaleStatus
  * What `RELEASE_JAR` needs to know beyond the status.
  *
  * The only action whose availability is not a function of the status alone: it
- * releases a slot, and a sale holds one only while it has a jar (`cardId`) that
- * nothing has yet reported closed (`jarClosedAt`). Offering it on a sale that
- * holds no slot is offering to do nothing.
+ * releases a slot, and a sale holds one only while it has a jar that nothing
+ * has yet reported closed (`jarClosedAt`). Offering it on a sale that holds no
+ * slot is offering to do nothing.
+ *
+ * `saleMethod` is here because `cardId` does not answer "has a jar" — every
+ * card sale carries one too, and its destination is a person's own card. See
+ * {@link saleHasJar}.
  */
-export interface SaleActionSubject {
+export interface SaleActionSubject extends SaleDestination {
   readonly status: TmaSaleStatus
-  readonly cardId?: number | null
   readonly jarClosedAt?: Date | null
 }
 
 /** Whether this sale is one whose slot `RELEASE_JAR` could actually free. */
 const holdsAJar = (order: SaleActionSubject): boolean =>
-  order.cardId !== null && order.cardId !== undefined && !order.jarClosedAt
+  saleHasJar(order) && !order.jarClosedAt
 
 const isAllowed = (action: AdminSaleAction, order: SaleActionSubject): boolean => {
   if (!ALLOWED_BY_ACTION[action].includes(order.status)) return false

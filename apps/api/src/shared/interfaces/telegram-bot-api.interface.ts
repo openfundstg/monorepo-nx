@@ -433,10 +433,10 @@ export interface TelegramReplyParameters {
 /**
  * An inbound update.
  *
- * Every member Telegram can send is listed even though the webhook is
- * registered for `message` alone: `allowed_updates` is a runtime setting that
- * somebody can widen from a browser, and a type listing only today's subset
- * would make the others look impossible rather than merely unrequested.
+ * Every member Telegram can send is listed even though the webhook asks for
+ * two of them: `allowed_updates` is a runtime setting that somebody can widen
+ * from a browser, and a type listing only today's subset would make the others
+ * look impossible rather than merely unrequested.
  */
 export interface TelegramUpdate {
   readonly update_id: number
@@ -472,9 +472,16 @@ export interface TelegramUpdate {
 /**
  * The update kinds `setWebhook` may be told to deliver.
  *
- * Only {@link MESSAGE} is requested. Anything not listed in `allowed_updates`
- * is dropped by Telegram before it reaches us, which is the cheapest possible
- * filter and the reason the webhook cannot be flooded with reactions or polls.
+ * {@link MESSAGE} and {@link CALLBACK_QUERY} are requested, and no more.
+ * Anything not listed in `allowed_updates` is dropped by Telegram before it
+ * reaches us, which is the cheapest possible filter and the reason the webhook
+ * cannot be flooded with reactions or polls.
+ *
+ * **The list is stored on Telegram's side, not ours**, and it is whatever the
+ * last `setWebhook` said — so a bot whose webhook was registered by hand, or
+ * before this deployment asked for callbacks, drops every inline key press
+ * without a trace at either end. `SupportWebhookRegistrarService` reads the
+ * live list back for exactly that reason.
  */
 export enum TelegramUpdateType {
   MESSAGE = 'message',
@@ -680,6 +687,29 @@ export interface SetWebhookParams {
   readonly drop_pending_updates?: boolean
   /** 1–256 chars, `A-Z a-z 0-9 _ -`. Echoed back in `X-Telegram-Bot-Api-Secret-Token`. */
   readonly secret_token?: string
+}
+
+/**
+ * What `getWebhookInfo` answers: the webhook as **Telegram** holds it.
+ *
+ * Worth having because that record is the one that decides what is delivered,
+ * and nothing in this deployment can see it otherwise. `allowed_updates` is
+ * absent when the default is in force — which is every update type except
+ * `chat_member`, `message_reaction` and `message_reaction_count` — so absent
+ * means *wider* than our list, never narrower.
+ */
+export interface TelegramWebhookInfo {
+  /** Empty string when no webhook is set at all. */
+  readonly url: string
+  readonly has_custom_certificate: boolean
+  readonly pending_update_count: number
+  readonly ip_address?: string
+  readonly last_error_date?: number
+  readonly last_error_message?: string
+  readonly last_synchronization_error_date?: number
+  readonly max_connections?: number
+  /** Absent means Telegram's own default, not an empty list. */
+  readonly allowed_updates?: readonly string[]
 }
 
 export interface AnswerCallbackQueryParams {

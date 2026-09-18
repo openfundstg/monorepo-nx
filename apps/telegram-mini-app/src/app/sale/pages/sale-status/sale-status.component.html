@@ -1,10 +1,12 @@
 <div class="sale-status">
   <div class="page-head">
     <h2 class="page-title">{{ 'dashboard.sell' | translate }}</h2>
-    <span class="conn-indicator" [class.online]="ws.connected()">
-      <span class="conn-dot"></span>
-      {{ (ws.connected() ? 'sale.live' : 'sale.offline') | translate }}
-    </span>
+    @if (showsConnection()) {
+      <span class="conn-indicator" [class.online]="ws.connected()">
+        <span class="conn-dot"></span>
+        {{ (ws.connected() ? 'sale.live' : 'sale.offline') | translate }}
+      </span>
+    }
   </div>
 
   @if (loading()) {

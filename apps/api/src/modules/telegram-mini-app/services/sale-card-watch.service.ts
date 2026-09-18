@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { SaleCardOrderState } from '@transacto/contracts'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
+import { TMA_CARD_SALE_ROUTING_CUTOFF_MS } from 'src/shared/constants'
 import { describeError } from 'src/shared/utils'
 
 /**
@@ -19,6 +20,14 @@ import { describeError } from 'src/shared/utils'
  * confirm afterwards: `DISPUTED` is a state a confirmation is accepted from, and
  * an order Transacto has marked `OVERDUE` is still executable — a late payer's
  * money is still money, and so is a late seller's answer.
+ *
+ * **It also closes the terminal before the window does.** Expiry and routing
+ * are both Transacto's decisions on Transacto's clock, and nothing orders them:
+ * the instant an order stops being open, the credential has room for another
+ * and may be given one in the same second — before any sweep has seen the first
+ * expire. Two unanswered orders on one sale turns "did the ₴1 428 arrive?" into
+ * "did some money arrive?", which nobody can answer. So routing is stood down
+ * while the order is still alive; see `TMA_CARD_SALE_ROUTING_CUTOFF_MS`.
  *
  * **A poll rather than a timer**, for the reason `SaleClosingService` gives: a
  * scheduled callback does not survive a restart, and the deadline is a fact on
@@ -46,16 +55,21 @@ export class SaleCardWatchService {
     this.running = true
     try {
       const now = new Date()
-      const sales = await this.saleDbService.findCardOrdersPastDeadline(now)
+      // Everything already past its deadline, **and** everything about to be.
+      // The second group is why the query reaches into the future at all.
+      const sales = await this.saleDbService.findCardOrdersDueBy(
+        new Date(now.getTime() + TMA_CARD_SALE_ROUTING_CUTOFF_MS)
+      )
       if (sales.length === 0) return
 
       for (const sale of sales) {
         // One failure must not strand every other sale waiting behind it.
         try {
-          await this.disputeOverdue(sale, now)
+          await this.answerForOrders(sale, now)
         } catch (error: unknown) {
           this.logger.error(
-            `Could not dispute overdue orders on sale ${sale.publicId}: ${describeError(error)}`
+            `Could not answer for the unanswered orders on sale ${sale.publicId}: ` +
+              describeError(error)
           )
         }
       }
@@ -67,7 +81,12 @@ export class SaleCardWatchService {
   }
 
   /**
-   * Disputes every overdue order on one sale.
+   * Answers for every order on one sale that the seller has not.
+   *
+   * Two things, and the clock decides which each order gets. Past its deadline
+   * it becomes a dispute, exactly as before. Merely *close* to its deadline it
+   * is left alone and the terminal is shut instead — the seller still has the
+   * rest of their window, and nobody new can be routed into it.
    *
    * A loop rather than a single lookup even though the credential is capped at
    * one open order, because that cap is Transacto's to enforce and this sweep
@@ -75,15 +94,24 @@ export class SaleCardWatchService {
    * own; the first dispute stops routing, and the rest are no-ops on a terminal
    * that is already stopped.
    */
-  private async disputeOverdue(
-    sale: Awaited<ReturnType<TmaSaleDbService['findCardOrdersPastDeadline']>>[number],
+  private async answerForOrders(
+    sale: Awaited<ReturnType<TmaSaleDbService['findCardOrdersDueBy']>>[number],
     now: Date
   ): Promise<void> {
-    const overdue = (sale.cardOrders ?? []).filter(
-      (order) =>
-        order.state === SaleCardOrderState.AWAITING_CONFIRMATION &&
-        order.confirmDeadlineAt <= now
+    const unanswered = (sale.cardOrders ?? []).filter(
+      (order) => order.state === SaleCardOrderState.AWAITING_CONFIRMATION
     )
+
+    const overdue = unanswered.filter((order) => order.confirmDeadlineAt <= now)
+
+    // Still alive, and near enough the end that the next payer must not be let
+    // in. Only worth doing while nothing is overdue: a dispute stops routing by
+    // itself, so doing both would be the same call twice.
+    if (overdue.length === 0) {
+      if (unanswered.length > 0) await this.cardOrders.holdRouting(sale)
+
+      return
+    }
 
     // Re-read between orders, because each dispute rewrites the document and
     // the next one has to act on what the first left behind — above all on

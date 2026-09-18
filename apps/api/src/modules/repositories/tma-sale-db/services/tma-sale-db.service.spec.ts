@@ -1,6 +1,12 @@
 import { InternalServerErrorException } from '@nestjs/common'
 import { Mongoose, Types } from 'mongoose'
-import { BankProvider, PUBLIC_ID_PATTERN, SaleCardOrderState, TmaSaleStatus } from '@transacto/contracts'
+import {
+  BankProvider,
+  PUBLIC_ID_PATTERN,
+  SaleCardOrderState,
+  SaleMethod,
+  TmaSaleStatus
+} from '@transacto/contracts'
 import { StatementSubject } from 'src/shared/interfaces'
 import { TmaSaleDbService } from './tma-sale-db.service'
 import {
@@ -204,6 +210,7 @@ describe('TmaSaleDbService', () => {
         expect(ended).toEqual({
           status: { $in: [TmaSaleStatus.COMPLETED, TmaSaleStatus.CANCELLED] },
           cardId: { $ne: null },
+          saleMethod: { $ne: SaleMethod.CARD },
           jarClosedAt: null,
         })
       })
@@ -215,6 +222,19 @@ describe('TmaSaleDbService', () => {
       it('never waits on an order that has no jar', async () => {
         expect((await query()).$or).toContainEqual(
           expect.objectContaining({ cardId: { $ne: null } }),
+        )
+      })
+
+      /**
+       * **And a card sale has no jar either, which `cardId` does not say.**
+       * Both variants get a Transacto credential, so both carry one — this
+       * branch therefore held a card seller's slot for good, waiting on a
+       * closure nobody could ever report. It is the reason a sale stopped early
+       * never gave its slot back.
+       */
+      it('never waits on a card sale, which has no jar to close', async () => {
+        expect((await query()).$or).toContainEqual(
+          expect.objectContaining({ saleMethod: { $ne: SaleMethod.CARD } }),
         )
       })
 

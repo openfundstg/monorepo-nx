@@ -12,7 +12,7 @@ import { OrderDbService } from 'src/modules/repositories/order-db'
 import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { awaitsStatementCheckpoint, parseMinOrderKopecks,
-  transactoOrderFloorKopecks, saleDeliveredFiat } from 'src/shared/utils'
+  transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar } from 'src/shared/utils'
 
 /** What every read path here works with: a lean order document plus its id. */
 
@@ -87,11 +87,13 @@ export class SaleProgressService {
    * between the user and both their next sale and, for an order they
    * stopped themselves, their stake.
    *
-   * `cardId === null` means there is no jar: the order never got a terminal, so
-   * there is nothing to ask for.
+   * {@link saleHasJar} is what "there is a jar" means: an order that never got
+   * a terminal has none, and neither does a card sale, whose destination is the
+   * seller's own card. Both used to be asked anyway — the second of them by a
+   * screen telling a card seller to go and close a jar that never existed.
    */
   private awaitsJarClosure(order: StoredSale): boolean {
-    if (order.cardId === null) return false
+    if (!saleHasJar(order)) return false
     if (order.jarClosedAt) return false
 
     return (

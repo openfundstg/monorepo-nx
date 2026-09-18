@@ -281,7 +281,21 @@ export class TmaSaleDbService {
       // `cardId: { $ne: null }` keeps out the orders that never got a terminal
       // at all: there is no jar to close, so there would be nothing the user
       // could do to release the slot.
-      { status: { $in: JAR_OUTLIVES_ORDER_STATUSES }, cardId: { $ne: null }, jarClosedAt: null }
+      //
+      // **And `saleMethod` keeps out the card sales, for the same reason.**
+      // Every card sale has a `cardId` too — the credential is what routes a
+      // payer to their card — and none of them has a jar, so this branch held
+      // one seller's slot for ever with nothing they could go and close. The
+      // rule is `saleHasJar` in `src/shared/utils`; a Mongo filter cannot call
+      // it, so this is the one restatement of it and it is marked as such.
+      // `$ne` also matches a document written before the field existed, which
+      // the backfill migration has already set to `JAR`.
+      {
+        status: { $in: JAR_OUTLIVES_ORDER_STATUSES },
+        cardId: { $ne: null },
+        saleMethod: { $ne: SaleMethod.CARD },
+        jarClosedAt: null
+      }
     ]
   }
 
@@ -474,7 +488,17 @@ export class TmaSaleDbService {
   async isAwaitingJarClosureByCardId(cardId: number): Promise<boolean> {
     const order = await this.saleModel
       .findOne(
-        { cardId, status: { $in: JAR_OUTLIVES_ORDER_STATUSES }, jarClosedAt: null },
+        {
+          cardId,
+          status: { $in: JAR_OUTLIVES_ORDER_STATUSES },
+          // A card sale has no jar, so it is never awaiting one — see
+          // `saleHasJar`. Its terminal is not scraped either, so this can only
+          // be reached by a mix-up; answering `true` for one would tell the
+          // scraper to read hryvnia leaving a jar that does not exist as its
+          // owner withdrawing, which is the one reading that means nothing.
+          saleMethod: { $ne: SaleMethod.CARD },
+          jarClosedAt: null
+        },
         { _id: 1 }
       )
       .lean()
@@ -992,21 +1016,28 @@ export class TmaSaleDbService {
   }
 
   /**
-   * Card orders whose confirmation window has run out, across every sale.
+   * Card orders whose confirmation window has run out **or is about to**.
    *
    * Returns whole sales rather than orders, because the sweep has to act on
    * both: the order becomes a dispute and the sale's terminal stops routing.
    * A sale may hold only one unanswered order at a time — the credential is
    * capped at one open order — so there is no ambiguity about which.
+   *
+   * `due` is a moment slightly in the future rather than now, and the caller is
+   * what decides how far: routing is stood down before the window closes, so
+   * Transacto cannot route a second payer in the same second the first order
+   * expires. See `TMA_CARD_SALE_ROUTING_CUTOFF_MS`. The two cases are told
+   * apart by the sweep against the real clock, not here — this query's job is
+   * to find the documents, and one of them being still alive is the point.
    */
-  async findCardOrdersPastDeadline(now: Date): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+  async findCardOrdersDueBy(due: Date): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
     return this.saleModel
       .find({
         saleMethod: SaleMethod.CARD,
         cardOrders: {
           $elemMatch: {
             state: SaleCardOrderState.AWAITING_CONFIRMATION,
-            confirmDeadlineAt: { $lte: now }
+            confirmDeadlineAt: { $lte: due }
           }
         }
       })

@@ -17,7 +17,8 @@ import type {
   TelegramForumTopic,
   TelegramMessage,
   TelegramMessageId,
-  TelegramUser
+  TelegramUser,
+  TelegramWebhookInfo
 } from 'src/shared/interfaces'
 
 /**
@@ -114,6 +115,14 @@ export class TelegramBotApiService {
 
   async setWebhook(params: SetWebhookParams): Promise<true> {
     return this.call<true>('setWebhook', params)
+  }
+
+  /**
+   * The webhook as Telegram holds it — which is the record that decides what
+   * gets delivered here, and the only copy of it that matters.
+   */
+  async getWebhookInfo(): Promise<TelegramWebhookInfo> {
+    return this.call<TelegramWebhookInfo>('getWebhookInfo', {})
   }
 
   /**

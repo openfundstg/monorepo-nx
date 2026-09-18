@@ -1,4 +1,5 @@
 import {
+  SaleMethod,
   SaleRemainderPolicy,
   TerminalSource,
   TmaFiatReceiptStatus,
@@ -99,6 +100,10 @@ export const toAdminSale = (
     status: AdminSaleListItem['status']
     blockReason: AdminSaleListItem['blockReason']
     remainderPolicy?: SaleRemainderPolicy
+    // Which variant this is. Not on the wire item — the panel does not render
+    // it yet — but read by `allowedSaleActions`, because *release jar* means
+    // nothing on a sale that pays a card and has no jar to release.
+    saleMethod?: SaleMethod
     transactoTerminalId: number | null
     cardId: number | null
     traderId: number | null

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
-import { ERROR } from '@transacto/contracts'
+import { ERROR, saleStartParam } from '@transacto/contracts'
 import environments from 'src/environments'
 import {
   SupportUserText,
@@ -111,8 +111,22 @@ export class SupportCardSaleService {
     const telegramId = query.from.id
     const locale = await this.localeOf(telegramId)
 
+    // **Logged on the way in, before anything can refuse it.** The two keys
+    // settle money and their only visible effect is a sentence back in the
+    // chat, so "I pressed it and nothing happened" has two completely different
+    // causes — the press never reached this deployment, or it reached it and
+    // was answered. One line here is what tells those apart without a
+    // reproduction, and `answerCallbackQuery` above has already run, so this
+    // records the press rather than our opinion of it.
+    this.logger.log(
+      `Card sale key pressed by ${telegramId}: ` +
+        `${confirming === null ? 'deny' : 'confirm'} order ${orderId}`
+    )
+
     try {
       const answer = await this.answer(telegramId, orderId, confirming !== null)
+
+      this.logger.log(`Card sale key from ${telegramId} on order ${orderId} answered: ${answer}`)
 
       await this.reply(telegramId, answer)
     } catch (error: unknown) {
@@ -193,7 +207,7 @@ export class SupportCardSaleService {
         reply_markup: buildCardOrderKeyboard(locale, {
           orderId: event.orderId,
           canDeny: options.canDeny,
-          appUrl: this.miniAppUrl()
+          appUrl: this.saleUrl(event.saleId)
         })
       })
     } catch (error: unknown) {
@@ -231,10 +245,22 @@ export class SupportCardSaleService {
     return this.users.localeFor(telegramId)
   }
 
-  /** `null` on a deployment with no bot username — a key is dropped, not the message. */
-  private miniAppUrl(): string | null {
+  /**
+   * The link that opens this sale's own screen, or `null` where it cannot.
+   *
+   * **The payload is what makes it a link to anything.** Without one this read
+   * `miniAppLink(username)`, which is `t.me/<bot>` — a bot chat, not the Mini
+   * App, as that helper's own doc says. Pressing *Open the sale* therefore took
+   * a person to a chat window, and since this bot may be a different one from
+   * the Mini App's, often not even the window they were already in. Either way
+   * nothing about their sale was on the other side of it.
+   *
+   * `TELEGRAM_BOT_USERNAME` and not the support bot's: the Mini App is hosted
+   * by the former whichever bot sent this message.
+   */
+  private saleUrl(saleId: string): string | null {
     const username = environments.TELEGRAM_BOT_USERNAME?.trim()
 
-    return username ? miniAppLink(username) : null
+    return username ? miniAppLink(username, saleStartParam(saleId)) : null
   }
 }

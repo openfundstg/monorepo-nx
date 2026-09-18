@@ -5,6 +5,7 @@ import {
   BankProvider,
   type TrustLevelInfo
 } from '@transacto/contracts'
+import { SECOND_MS } from 'src/shared/constants/time.constants'
 import environments from 'src/environments'
 
 export { TrustLevel, type TrustLevelInfo } from '@transacto/contracts'
@@ -123,6 +124,29 @@ export function getTrustLevel(totalTurnover: number): TrustLevelInfo {
  * manufacture disputes out of people who were asleep.
  */
 export const TMA_CARD_SALE_CONFIRM_WINDOW_MINUTES = 60
+
+/**
+ * How far ahead of an order's deadline routing to its terminal is switched off.
+ *
+ * **Because expiry and routing are Transacto's decisions, taken on Transacto's
+ * clock, and nothing says they happen in that order.** The moment an order
+ * stops being open the credential has room for another, and it is free to route
+ * one in the same second the old one ran out — before any sweep of ours has
+ * seen the first one expire. The sale would then hold two unanswered orders at
+ * once, and "did the ₴1 428 arrive?" becomes "did some money arrive?", which is
+ * a question nobody can answer about a card that sees more than one transfer a
+ * day. One open order at a time is the whole basis of the card variant.
+ *
+ * So the sweep stands routing down while the order is still alive, and the
+ * window closes with the terminal already shut. Thirty seconds because that is
+ * the sweep's own period: any shorter and a tick could step straight over the
+ * window from "not yet" to "already expired", which is the gap this closes.
+ *
+ * It costs nothing when the seller answers in time — confirming resumes routing
+ * — and at worst delays the next payer by half a minute on an order about to
+ * become a dispute, which stops routing anyway.
+ */
+export const TMA_CARD_SALE_ROUTING_CUTOFF_MS = 30 * SECOND_MS
 
 /**
  * How long after a payment's deadline a statement may still credit it.

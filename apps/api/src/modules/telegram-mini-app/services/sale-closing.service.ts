@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { OrderDbService } from 'src/modules/repositories/order-db'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-cancel.service'
-import { describeError } from 'src/shared/utils'
+import { describeError, saleHasJar } from 'src/shared/utils'
 
 /**
  * Finishes the sales that are winding down.
@@ -90,7 +90,13 @@ export class SaleClosingService {
       // stays open, and money that arrives afterwards matches nothing and comes
       // back as an appeal — so the stake is not released until the one person
       // who can close the jar has done it.
-      if (order.jarClosedAt === null) {
+      //
+      // **A card sale has no jar and must not wait on one.** This read
+      // `jarClosedAt === null` against any sale with a `cardId`, which every
+      // card sale has — so one asked to stop early waited for a closure that
+      // could never be reported, stayed `CLOSING` for ever, and went on holding
+      // its owner's slot. See {@link saleHasJar}.
+      if (saleHasJar(order) && order.jarClosedAt === null) {
         this.logger.debug(
           `Sale ${order.publicId} is waiting for its owner to close the jar`
         )

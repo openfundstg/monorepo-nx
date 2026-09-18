@@ -13,7 +13,7 @@ import {
 } from '@angular/router'
 import { filter, map, startWith, take } from 'rxjs'
 import { TranslateService } from '@ngx-translate/core'
-import { MiniAppStartParam } from '@transacto/contracts'
+import { MiniAppStartParam, saleIdFromStartParam } from '@transacto/contracts'
 import { TmaService } from './auth/services/tma.service'
 import { BottomNavComponent } from './shared/components/bottom-nav/bottom-nav.component'
 import { LoadingOverlayComponent } from './shared/components/loading-overlay/loading-overlay.component'
@@ -36,6 +36,9 @@ import {
 
 /** Where `MiniAppStartParam.TOP_UP` lands — the hryvnia amounts list. */
 const TOP_UP_ROUTE = '/deposit/fiat'
+
+/** Where a `sale_<id>` payload lands, as `sale/routes.ts` spells it. */
+const saleStatusRoute = (saleId: string): readonly string[] => ['/sale', saleId, 'status']
 
 @Component({
   selector: 'app-root',
@@ -160,7 +163,8 @@ export class AppComponent implements OnInit {
    * `initData` and is bound there.
    */
   private followStartParam(): void {
-    if (this.tma.startParam() !== MiniAppStartParam.TOP_UP) return
+    const destination = this.routeForStartParam()
+    if (destination === null) return
 
     this.router.events
       .pipe(
@@ -170,8 +174,27 @@ export class AppComponent implements OnInit {
       .subscribe((event) => {
         if (!this.isRootUrl((event as NavigationEnd).urlAfterRedirects)) return
 
-        void this.router.navigate([TOP_UP_ROUTE])
+        void this.router.navigate([...destination])
       })
+  }
+
+  /**
+   * Where this launch's payload says to go, or `null` for one we do not act on.
+   *
+   * Two payloads today, and the second is why this is a lookup rather than a
+   * comparison. The bot's card-sale message carries `sale_<id>`, because its
+   * *Open the sale* key used to carry nothing at all — a bare `t.me/<bot>`
+   * link, which opens a bot chat and not this app, so the key did nothing a
+   * person could see.
+   */
+  private routeForStartParam(): readonly string[] | null {
+    const param = this.tma.startParam()
+
+    if (param === MiniAppStartParam.TOP_UP) return [TOP_UP_ROUTE]
+
+    const saleId = saleIdFromStartParam(param)
+
+    return saleId === null ? null : saleStatusRoute(saleId)
   }
 
   /**
