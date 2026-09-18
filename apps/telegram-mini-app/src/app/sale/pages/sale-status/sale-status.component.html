@@ -406,12 +406,17 @@
               </p>
             }
 
-            @for (statement of cardOrder.statements; track statement.id) {
-              @if (statement.rejection) {
-                <p class="card-order-rejection">
-                  {{ 'SALE_STATEMENT.' + statement.rejection | translate }}
-                </p>
-              }
+            <!--
+              Why the *last* statement was refused, and only that one. Every
+              attempt is kept on the document for the record, and rendering all
+              of them put a refused upload's reason under the verdict of the
+              accepted one that came after it — a settled order captioned with
+              "this statement's period does not cover the payment".
+            -->
+            @if (latestRejection(cardOrder); as rejection) {
+              <p class="card-order-rejection">
+                {{ 'SALE_STATEMENT.' + rejection | translate }}
+              </p>
             }
           </div>
         }

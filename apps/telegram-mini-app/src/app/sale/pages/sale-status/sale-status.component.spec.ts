@@ -3,8 +3,13 @@ import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
-import { TmaSaleStatus } from '@transacto/contracts';
-import type { TmaSale } from '@transacto/contracts';
+import {
+  SaleCardOrderState,
+  SaleStatementRejection,
+  SaleStatementStatus,
+  TmaSaleStatus,
+} from '@transacto/contracts';
+import type { SaleCardOrder, SaleStatement, TmaSale } from '@transacto/contracts';
 import { SaleStatusComponent } from './sale-status.component';
 import { SaleService } from '../../services/sale.service';
 import { TmaService } from '../../../auth/services/tma.service';
@@ -109,5 +114,94 @@ describe('SaleStatusComponent live indicator', () => {
     connected.set(false);
 
     expect(component.showsConnection()).toBe(true);
+  });
+});
+
+/**
+ * Which refusal the seller is shown, when they have sent more than one document.
+ *
+ * **The bug:** every attempt was rendered, so an order settled by an accepted
+ * statement carried the *earlier* refused one's reason underneath its verdict —
+ * "the statement confirmed no money arrived", and directly below, in red, "this
+ * statement's period does not cover the payment". Two answers to one question,
+ * and the stale one was the one that looked urgent.
+ */
+describe('SaleStatusComponent statement refusals', () => {
+  let component: SaleStatusComponent;
+
+  const attempt = (rejection: SaleStatementRejection | null): SaleStatement => ({
+    id: `s-${rejection ?? 'ok'}`,
+    status: rejection === null ? SaleStatementStatus.ACCEPTED : SaleStatementStatus.REJECTED,
+    rejection,
+    uploadedAt: '2026-09-18T19:44:46.000Z',
+    periodFrom: null,
+    periodTo: null,
+  });
+
+  const order = (...statements: SaleStatement[]): SaleCardOrder => ({
+    orderId: 1,
+    amount: 30_300,
+    state: SaleCardOrderState.DISPUTED,
+    arrivedAt: '2026-09-18T19:00:00.000Z',
+    confirmDeadlineAt: '2026-09-18T19:05:00.000Z',
+    answeredAt: '2026-09-18T19:05:00.000Z',
+    statements,
+  });
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'sale-1' } } } },
+        { provide: SaleService, useValue: {} },
+        {
+          provide: WsService,
+          useValue: {
+            connected: signal(true),
+            saleProgress: () => null,
+            connectionEpoch: () => 0,
+            connect: vi.fn(),
+          },
+        },
+        {
+          provide: TmaService,
+          useValue: { hapticFeedback: vi.fn(), showBackButton: vi.fn(), hideBackButton: vi.fn() },
+        },
+        { provide: ClockService, useValue: { now: () => Date.now() } },
+        { provide: MetaPixelService, useValue: { trackConversion: vi.fn() } },
+      ],
+    });
+
+    component = TestBed.runInInjectionContext(() => new SaleStatusComponent());
+  });
+
+  it('says nothing when no statement has been sent', () => {
+    expect(component.latestRejection(order())).toBeNull();
+  });
+
+  it('shows why the last attempt was refused', () => {
+    expect(
+      component.latestRejection(order(attempt(SaleStatementRejection.PERIOD_TOO_SHORT))),
+    ).toBe(SaleStatementRejection.PERIOD_TOO_SHORT);
+  });
+
+  /** **The bug.** An accepted statement carries no rejection, so it answers by itself. */
+  it('drops an earlier refusal once a later statement was accepted', () => {
+    const cardOrder = order(attempt(SaleStatementRejection.PERIOD_TOO_SHORT), attempt(null));
+
+    expect(component.latestRejection(cardOrder)).toBeNull();
+  });
+
+  /** Several failures in a row describe several documents; only the last still exists. */
+  it('shows only the most recent of two refusals', () => {
+    const cardOrder = order(
+      attempt(SaleStatementRejection.PERIOD_TOO_SHORT),
+      attempt(SaleStatementRejection.WRONG_ACCOUNT),
+    );
+
+    expect(component.latestRejection(cardOrder)).toBe(SaleStatementRejection.WRONG_ACCOUNT);
   });
 });

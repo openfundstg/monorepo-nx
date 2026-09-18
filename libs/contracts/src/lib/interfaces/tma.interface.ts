@@ -294,8 +294,13 @@ export interface SaleCardOrder {
    * Empty until somebody denies something — there is nothing to prove before
    * that. More than one because a refused statement is an ordinary outcome: the
    * period was too short, the file was a screenshot, it was for another card.
-   * The user has to see *which* of those it was to send a better one, so the
-   * attempts are kept rather than overwritten.
+   * Every attempt is kept rather than overwritten, because an operator working
+   * a dispute wants the whole sequence.
+   *
+   * **The screen shows the last one's refusal and no earlier one.** Only the
+   * last describes a document the seller still has any reason to think about,
+   * and rendering the list put a refused upload's reason directly under the
+   * verdict of the accepted statement that followed it.
    */
   readonly statements: readonly SaleStatement[];
 }

@@ -22,7 +22,12 @@ import {
   TmaSaleStatus,
   sellRate
 } from '@transacto/contracts'
-import type { SaleCardOrder, SaleProgress, TmaSale } from '@transacto/contracts'
+import type {
+  SaleCardOrder,
+  SaleProgress,
+  SaleStatementRejection,
+  TmaSale
+} from '@transacto/contracts'
 import { SaleService } from '../../services/sale.service'
 import { TmaService } from '../../../auth/services/tma.service'
 import { WsService } from '../../../realtime/services/ws.service'
@@ -550,6 +555,25 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
    */
   isOverdue(order: SaleCardOrder): boolean {
     return this.remainingMs(order) <= 0
+  }
+
+  /**
+   * Why the seller's **last** statement for this order proved nothing, if it
+   * did not.
+   *
+   * The whole list is kept on the document — an operator working a dispute
+   * wants every attempt — but only the last one describes a document that still
+   * exists as far as the seller is concerned. Rendering all of them put a
+   * refused upload's reason underneath the verdict of the accepted one that
+   * came after it, so a settled order read "the statement confirmed no money
+   * arrived" and, directly below, "this statement's period does not cover the
+   * payment". Two answers to one question, the stale one in red.
+   *
+   * No state check is needed to say which is which: an accepted statement
+   * carries no rejection, so the last entry answers it by itself.
+   */
+  latestRejection(order: SaleCardOrder): SaleStatementRejection | null {
+    return order.statements.at(-1)?.rejection ?? null
   }
 
   /**
