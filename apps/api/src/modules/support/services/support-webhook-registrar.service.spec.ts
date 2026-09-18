@@ -27,6 +27,7 @@ describe('SupportWebhookRegistrarService', () => {
   let getWebhookInfo: jest.Mock
   let setWebhook: jest.Mock
   let errors: string[]
+  let warnings: string[]
 
   const run = async (config: Partial<SupportConfigService>): Promise<void> => {
     const service = new SupportWebhookRegistrarService(
@@ -48,13 +49,17 @@ describe('SupportWebhookRegistrarService', () => {
 
   beforeEach(() => {
     errors = []
+    warnings = []
     setWebhook = jest.fn().mockResolvedValue(true)
     getWebhookInfo = jest.fn().mockResolvedValue(info())
 
     jest.spyOn(Logger.prototype, 'error').mockImplementation((message: unknown) => {
       errors.push(String(message))
     })
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    warnings = []
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message))
+    })
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
   })
 
@@ -141,4 +146,50 @@ describe('SupportWebhookRegistrarService', () => {
 
     await expect(run({})).resolves.toBeUndefined()
   })
+
+  /**
+   * **The failure this audit was written for, as it actually arrived.**
+   *
+   * A webhook URL resolving to a host with no public listener: Telegram accepts
+   * the registration, reports `Connection timed out` on every delivery, and
+   * nothing whatsoever appears in this deployment's logs — outbound messages
+   * still work, so the bot looks alive and only its buttons are dead.
+   *
+   * The timestamp is what makes the line usable. Telegram keeps the last
+   * failure until there is another, so without one a blip from last week reads
+   * exactly like a webhook that has never been delivered to.
+   */
+  describe('what Telegram says about its own deliveries', () => {
+    const FAILED_AT = Date.UTC(2026, 8, 18, 20, 30, 0)
+
+    it('reports a failed delivery, and when it failed', async () => {
+      getWebhookInfo.mockResolvedValue(
+        info({
+          last_error_message: 'Connection timed out',
+          last_error_date: FAILED_AT / 1000
+        })
+      )
+
+      await run({})
+
+      expect(warnings.join('\n')).toContain('Connection timed out')
+      expect(warnings.join('\n')).toContain(new Date(FAILED_AT).toISOString())
+    })
+
+    /** Telegram may omit the date; the line still has to say something true. */
+    it('says so plainly when Telegram gave no time', async () => {
+      getWebhookInfo.mockResolvedValue(info({ last_error_message: 'Connection timed out' }))
+
+      await run({})
+
+      expect(warnings.join('\n')).toContain('at an unknown time')
+    })
+
+    it('says nothing when Telegram reports no failure', async () => {
+      await run({})
+
+      expect(warnings.join('\n')).not.toContain('last delivery')
+    })
+  })
+
 })

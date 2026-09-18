@@ -9,6 +9,9 @@ import { TelegramBotApiService } from 'src/modules/support/services/telegram-bot
 /** The path any correctly configured webhook URL has to end in. */
 const EXPECTED_SUFFIX = `/${SUPPORT_WEBHOOK_PATH}/webhook`
 
+/** Telegram counts in whole seconds; `Date` does not. */
+const MS_PER_SECOND = 1000
+
 /** What this deployment asks Telegram to deliver, and all it can handle. */
 const WANTED_UPDATES = [TelegramUpdateType.MESSAGE, TelegramUpdateType.CALLBACK_QUERY] as const
 
@@ -152,10 +155,24 @@ export class SupportWebhookRegistrarService implements OnModuleInit {
     // TLS failure, a 500 from us. Printed whole because it names ours, not a
     // user's, and a webhook failing every delivery reads identically to one
     // that is not registered at all.
+    //
+    // **`last_error_date` is what makes the line usable.** Telegram keeps the
+    // last failure for as long as there has not been another, so without a
+    // timestamp a blip from last Tuesday reads exactly like a webhook that has
+    // never once been delivered to — which is the case this whole audit exists
+    // to catch, and the case it actually caught: a URL resolving to a host with
+    // no public listener at all, every inline key press timing out at
+    // Telegram's end for days with nothing in any log here.
     if (info.last_error_message) {
+      const when =
+        info.last_error_date === undefined
+          ? 'at an unknown time'
+          : `at ${new Date(info.last_error_date * MS_PER_SECOND).toISOString()}`
+
       this.logger.warn(
-        `Telegram's last delivery to the support webhook failed: ${info.last_error_message} ` +
-          `(${info.pending_update_count} update(s) pending)`
+        `Telegram's last delivery to the support webhook failed ${when}: ` +
+          `${info.last_error_message} (${info.pending_update_count} update(s) pending). ` +
+          'If that is recent, nothing a user sends or presses is reaching this deployment.'
       )
     }
   }
