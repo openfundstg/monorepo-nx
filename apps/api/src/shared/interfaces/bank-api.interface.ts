@@ -284,7 +284,10 @@ export interface PumbRawResponse {
   /**
    * The receiving card, **masked**: `"53552800****0000"`.
    *
-   * Sixteen characters, twelve of them digits, in one observed sample. The name
+   * Sixteen characters, twelve of them digits — the shape of one observed
+   * sample, with an invented value. The real one was in this comment for
+   * several releases before anybody noticed that a masked PAN is a payment
+   * credential like any other. The name of the field
    * is theirs and is left alone — it reads as "the card we hash", which is
    * presumably what their own backend does with it, but what arrives is a
    * masked PAN.
