@@ -32,7 +32,11 @@ const expectation: StatementExpectation = {
   cardTail: CARD_TAIL,
   amountKopecks: AMOUNT,
   from: WINDOW_FROM,
-  to: WINDOW_TO
+  to: WINDOW_TO,
+  // The ordinary case: by the time a statement is read the window has closed,
+  // so everything in it can be asked for. Where it has not, see the pair of
+  // tests about a window whose upper edge is still in the future.
+  mustCoverTo: WINDOW_TO
 }
 
 const statement = (over: Partial<ParsedStatement> = {}): ParsedStatement => ({
@@ -87,13 +91,13 @@ describe('StatementVerificationFacadeService', () => {
 
   afterEach(() => jest.clearAllMocks())
 
-  const verify = () =>
+  const verify = (over: Partial<StatementExpectation> = {}) =>
     service.verify(
       {
         bank: BankProvider.MONO,
         uploaded: { buffer: Buffer.from(''), fileName: 's.pdf', mimeType: 'application/pdf' }
       },
-      expectation
+      { ...expectation, ...over }
     )
 
   describe('what has to hold before the rows mean anything', () => {
@@ -180,6 +184,35 @@ describe('StatementVerificationFacadeService', () => {
       await expect(verify()).resolves.toMatchObject({
         rejection: SaleStatementRejection.PERIOD_TOO_SHORT
       })
+    })
+
+    /**
+     * **A document cannot cover time that has not happened yet.**
+     *
+     * The window ends at the deadline plus three hours of grace for a bank
+     * posting late, so when a seller is asked for a statement that edge is
+     * normally still in the future. This check used to demand a document
+     * reaching it, and a bank issues whole days — so an order whose deadline
+     * fell after 21:00 Kyiv had a window ending tomorrow, and every same-day
+     * statement was refused as too short however complete it was. Verified
+     * against a real one: it covered its whole day, all rows read, credits
+     * reconciled, and it proved nothing.
+     */
+    it('accepts a document that reaches the present but not the window’s future edge', async () => {
+      parsed = statement({ periodTo: new Date('2026-09-14T11:00:00.000Z') })
+
+      await expect(
+        verify({ mustCoverTo: new Date('2026-09-14T11:00:00.000Z') })
+      ).resolves.toMatchObject({ finding: expect.anything() })
+    })
+
+    /** And the requirement itself is still a requirement, not a formality. */
+    it('still refuses a document that stops short of the present', async () => {
+      parsed = statement({ periodTo: new Date('2026-09-14T10:59:59.999Z') })
+
+      await expect(
+        verify({ mustCoverTo: new Date('2026-09-14T11:00:00.000Z') })
+      ).resolves.toMatchObject({ rejection: SaleStatementRejection.PERIOD_TOO_SHORT })
     })
 
     /** A row that looked like a row and did not parse is why this can be asked. */

@@ -122,7 +122,14 @@ export class StatementVerificationFacadeService {
     //    have landed proves nothing about the part it misses — and reading that
     //    as "no credit found" is the one failure this whole design exists to
     //    make impossible.
-    if (statement.periodFrom > expectation.from || statement.periodTo < expectation.to)
+    //
+    //    **Against `mustCoverTo`, not `to`.** The window's upper edge includes a
+    //    grace for a bank posting late, which at the moment a seller is asked
+    //    for a statement is still in the future — and this used to demand a
+    //    document covering it. A bank issues whole days, so where that grace
+    //    crossed midnight no same-day statement could ever pass, however
+    //    complete it was.
+    if (statement.periodFrom > expectation.from || statement.periodTo < expectation.mustCoverTo)
       return { rejection: SaleStatementRejection.PERIOD_TOO_SHORT, statement }
 
     // 3. Was every row read? A row that looked like a row and did not parse is

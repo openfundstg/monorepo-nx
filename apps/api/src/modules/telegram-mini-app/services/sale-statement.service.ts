@@ -28,7 +28,11 @@ import {
 import type { ParsedStatement } from 'src/shared/interfaces'
 import { awaitsStatementCheckpoint } from 'src/shared/utils'
 import { StatementSubject } from 'src/shared/interfaces'
-import { statementCorrection, windowForOrder } from 'src/modules/telegram-mini-app/utils'
+import {
+  coverageRequiredTo,
+  statementCorrection,
+  windowForOrder
+} from 'src/modules/telegram-mini-app/utils'
 import type { StoredSale, TmaSaleCardOrder } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
@@ -353,7 +357,11 @@ export class SaleStatementService {
       // other account is refused before a row of it is read.
       cardTail: sale.payoutCardTail ?? '',
       amountKopecks: cardOrder.amount,
-      ...window
+      ...window,
+      // How far the document has to reach is **not** where the search ends —
+      // the window's edge is normally still in the future when a seller is
+      // asked for one. See {@link coverageRequiredTo}.
+      mustCoverTo: coverageRequiredTo(window, new Date())
     }
   }
 

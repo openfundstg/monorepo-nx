@@ -91,9 +91,32 @@ export interface StatementExpectation {
   readonly cardTail: string
   /** The credit that is supposed to be missing, in UAH kopecks. */
   readonly amountKopecks: number
-  /** The window the credit would have landed in. */
+  /** The window the credit would have landed in — where the rows are searched. */
   readonly from: Date
   readonly to: Date
+  /**
+   * How far the document has to reach before its silence means anything.
+   *
+   * **Not {@link to}, and the difference is the whole point of this field.**
+   * The window's upper edge is the deadline plus a grace for a bank posting
+   * late, so at the moment a seller is asked for a statement that edge is
+   * normally *in the future* — and no document can cover time that has not
+   * happened. Demanding it refused statements that were complete, correct and
+   * the best that will ever exist.
+   *
+   * It bit where the grace crossed midnight. A bank issues whole days, so a
+   * same-day statement reaches 23:59:59 and no further; an order whose deadline
+   * fell after 21:00 Kyiv therefore had a window ending tomorrow, and **no
+   * statement the seller could produce that day was ever going to be accepted.**
+   * Three hours out of every twenty-four, with the rejection reading as though
+   * they had picked the wrong dates.
+   *
+   * Cutting the requirement at the present is safe in the direction that
+   * matters. Finding a credit spends the seller's stake, and a document reaching
+   * less far can only ever find *fewer* credits; not finding one merely leaves
+   * the dispute with an operator, which is where it already was.
+   */
+  readonly mustCoverTo: Date
 }
 
 /** What a statement turned out to say. */

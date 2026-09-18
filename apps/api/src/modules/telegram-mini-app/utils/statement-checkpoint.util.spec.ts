@@ -1,5 +1,5 @@
 import { SaleCardOrderState } from '@transacto/contracts'
-import { statementCorrection } from './statement-checkpoint.util'
+import { coverageRequiredTo, statementCorrection } from './statement-checkpoint.util'
 
 const HOUR = 60 * 60 * 1000
 const GRACE = 3 * HOUR
@@ -242,5 +242,49 @@ describe('statementCorrection', () => {
     )
 
     expect(result).toEqual({ correctionKopecks: 0, unsettled: [] })
+  })
+})
+
+/**
+ * How much of a window a document is actually required to account for.
+ *
+ * **The bug: it was the whole window, and the window ends in the future.** Its
+ * upper edge is the payment deadline plus three hours of grace for a bank
+ * posting late, and a seller is asked for a statement the moment the deadline
+ * passes — so they were being asked to produce a document covering hours that
+ * had not happened.
+ *
+ * Harmless for most of the day, because a bank issues whole days and a same-day
+ * statement runs to 23:59:59, which is past almost any window's edge. Fatal
+ * once that edge crossed midnight: an order whose deadline fell after 21:00
+ * Kyiv could not be answered by any statement produced that day. Confirmed on a
+ * real one — it covered its whole day, every row read, credits reconciled, and
+ * it was refused as too short.
+ */
+describe('coverageRequiredTo', () => {
+  const WINDOW = { to: new Date('2026-09-18T22:05:00Z') }
+
+  it('asks only for what has happened when the window is still open', () => {
+    const now = new Date('2026-09-18T19:17:00Z')
+
+    expect(coverageRequiredTo(WINDOW, now)).toEqual(now)
+  })
+
+  it('asks for the whole window once it has closed', () => {
+    expect(coverageRequiredTo(WINDOW, new Date('2026-09-19T08:00:00Z'))).toEqual(WINDOW.to)
+  })
+
+  /** Never further than the window itself: a later statement is not asked for more. */
+  it('never asks for more than the window, however late the document arrives', () => {
+    const now = new Date('2026-09-25T08:00:00Z')
+
+    expect(coverageRequiredTo(WINDOW, now).getTime()).toBeLessThanOrEqual(WINDOW.to.getTime())
+  })
+
+  /** And never for more than the present, however far ahead the window ends. */
+  it('never asks for the future', () => {
+    const now = new Date('2026-09-18T19:17:00Z')
+
+    expect(coverageRequiredTo(WINDOW, now).getTime()).toBeLessThanOrEqual(now.getTime())
   })
 })

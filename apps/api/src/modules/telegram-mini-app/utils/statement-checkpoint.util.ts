@@ -64,6 +64,31 @@ export const attributionWindow = (
   return { from, to: to < from ? from : to }
 }
 
+/**
+ * How far a document has to reach before its silence about a window means
+ * anything.
+ *
+ * **The window's own upper edge is the wrong answer, because it is usually in
+ * the future.** It runs to the payment deadline plus a grace for a bank posting
+ * late, and a seller is asked for a statement the moment the deadline passes —
+ * so the edge is hours ahead of them, and no document covers time that has not
+ * happened.
+ *
+ * It broke where the grace crossed midnight. A bank issues whole days, so a
+ * same-day statement reaches 23:59:59 and stops; an order whose deadline fell
+ * after 21:00 Kyiv had a window ending the next day, and **every statement the
+ * seller could produce was refused as too short** — complete, correct, every row
+ * read, and it proved nothing. Three hours out of every twenty-four.
+ *
+ * Cutting the requirement at the present is safe in the one direction that
+ * matters. Finding a credit executes the order and spends the seller's stake; a
+ * document reaching less far can only find fewer credits, never more. Not
+ * finding one leaves the dispute with an operator, which is where it already
+ * was.
+ */
+export const coverageRequiredTo = (window: { readonly to: Date }, now: Date): Date =>
+  window.to < now ? window.to : now
+
 /** A claim the document contradicts outright, rather than merely corrects. */
 export interface UnsettledClaim {
   readonly orderId: number
