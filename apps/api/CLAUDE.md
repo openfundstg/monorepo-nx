@@ -5,7 +5,7 @@ NestJS backend inside the Nx monorepo. These rules apply to all code in `apps/ap
 Detailed examples live in on-demand files, not here:
 
 - Adding an HTTP endpoint → `.claude/skills/create-endpoint/SKILL.md`
-- Reviewing code → `.claude/agents/strict-reviewer.md` (8 anti-patterns, with ✅/❌ examples)
+- Reviewing code → `.claude/agents/strict-reviewer.md` (9 anti-patterns, with ✅/❌ examples)
 - Wire contracts shared with the frontends → [../../CONTRACTS.md](../../CONTRACTS.md)
 - What isn't compliant yet → [REFACTORING.md](./REFACTORING.md) — a backlog, never a precedent to copy
 

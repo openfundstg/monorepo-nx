@@ -106,6 +106,35 @@ Secrets are the same rule from the other side: they live only in
 `apps/api/src/environments/.env` — gitignored, never committed — and are
 documented with placeholders in `.env.example`.
 
+### The rule is enforced, because the rule alone was not enough
+
+This section has been here the whole time, and real data was committed twice
+anyway. So it is now checked by something that runs:
+
+- **`apps/api/src/shared/no-real-data.spec.ts`** fails the build on any card
+  number, masked card, IBAN or Ukrainian tax number in the repository — asked of
+  `git ls-files`, so it covers every project and a file not yet committed — that
+  is not listed in **`apps/api/src/shared/testing/declared-not-personal.const.ts`**
+  with a sentence saying why it is safe. Pasting a value is no longer enough:
+  somebody has to go and write that sentence. A tax number is told from a
+  timestamp by its own checksum, which is what the real one failed.
+- **CHECK 8 of `strict-reviewer`** covers the half a machine cannot: **names**.
+  `Петренко Роман Іванович` and a real person's name are the same shape, and no
+  scanner will ever tell them apart.
+
+If the check fires, the value is either real — replace it with an invented one
+that still satisfies whatever the code checks — or it is not personal data at
+all, and belongs in the declaration with its reason. Do not add an exclusion to
+the check itself; the declaration is the exclusion, and it is written where the
+next reader will look.
+
+**What it costs to skip this.** On 2026-09-18 a real tax number, a real name and
+a masked card from a live capture were found in the tree and in every commit
+behind it. Removing them took a `git filter-repo` rewrite of all nine commits and
+a force-push: every SHA changed, every existing clone had to be replaced, and the
+old objects stay reachable on the remote until it garbage-collects. A rewrite
+cannot un-disclose, and unlike a token, a person's tax number cannot be rotated.
+
 Learnt the expensive way: a developer's own name, cards, IBANs and receipt codes
 had been frozen into fixtures and doc comments across ~30 files and pushed.
 Removing them took a working-tree scrub **and** a `git filter-repo` history
