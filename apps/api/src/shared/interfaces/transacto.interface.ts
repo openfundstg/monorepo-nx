@@ -276,6 +276,19 @@ export interface Terminal {
   cred2?: string | null
   /** IBAN or anything else the method needs — we keep the jar URL here. */
   cred3?: string | null
+  /**
+   * "Публичная ссылка Mono Банки / Privat Конверта / PUMB Moneybox" — their
+   * own documented home for a jar link.
+   *
+   * **Declared, never sent, and the discrepancy is deliberate.** This product
+   * puts the jar URL in {@link cred3} and always has; Transacto stores it there
+   * and hands it back there, which the entire bank scraper depends on — every
+   * strategy reads `terminal.cred3` to find the jar it is watching. So the
+   * observed behaviour and the documentation disagree about which field a link
+   * belongs in, and the observed behaviour is the one carrying production
+   * traffic. Worth asking them before anything moves.
+   */
+  cred_additional?: string | null
   enabled?: boolean
   enable_orders?: boolean
   allow_work?: boolean
@@ -325,6 +338,15 @@ export interface TransactoCredentialsCreateRequest {
   cred2?: string
   /** IBAN or anything else the method needs — we put the jar URL here. */
   cred3?: string
+  /**
+   * Their documented field for a jar link, which their docs call **required**
+   * alongside `cred` for the UAH public-balance methods.
+   *
+   * Never sent, because `cred3` is what has been carrying every jar sale this
+   * product has ever made — see {@link Terminal.cred_additional} for why the
+   * two disagree and why nothing has been changed on the strength of a document.
+   */
+  cred_additional?: string
   min_amount?: number
   max_amount?: number
   limit_by_day?: number
@@ -359,6 +381,22 @@ export interface TransactoCredentialsCreateResponse extends TransactoSuccess {
 /**
  * `POST /credentials_update`. Every field but `card_id` is optional, and only
  * the ones sent are touched.
+ *
+ * **This list is the whole of what can be changed, and `name` is not on it.**
+ * Neither are `cred`, `cred2`, `cred3` or `terminal_name`: nothing that
+ * *identifies* a credential is updatable, only its limits and its switches.
+ * Confirmed against both of Transacto's own documents — the field is accepted
+ * by `credentials_create` and by nothing else, and no endpoint in their API
+ * renames anything.
+ *
+ * So the name a payer sees is fixed when the credential is created and cannot
+ * be corrected afterwards. The only route to a different one is
+ * `credentials_delete` plus a fresh `credentials_create`, which archives the
+ * terminal irreversibly, issues a new `card_id` and `terminal_id`, and is
+ * refused outright while any order is awaiting payment — see
+ * {@link TransactoCredentialsDeleteRequest}. That is not a rename; it is a
+ * different terminal, and every order and sale pointing at the old one would
+ * be pointing at nothing.
  */
 export interface TransactoCredentialsUpdateRequest {
   card_id: number

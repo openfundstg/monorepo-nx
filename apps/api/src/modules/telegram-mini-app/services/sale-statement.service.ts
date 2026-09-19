@@ -284,6 +284,15 @@ export class SaleStatementService {
    * somebody other than the seller named, money has already gone to a card
    * whose holder they described wrongly — and on a variant where nothing else
    * ever checks the destination, that is the only moment it is ever noticed.
+   *
+   * **Nothing is sent upstream, and that is Transacto's limit rather than an
+   * omission.** The name a payer sees lives on the credential, and their
+   * `credentials_update` does not accept `name` — nor `cred`, nor
+   * `terminal_name`; nothing identifying a credential can be changed after it
+   * exists, and no endpoint in their API renames anything. See
+   * {@link TransactoCredentialsUpdateRequest}. So this sale's payers keep
+   * seeing whatever the seller typed, and what the bank says is kept for the
+   * operator, for the admin panel, and for the next sale to be created with.
    */
   private async adoptReceiverName(sale: StoredSale, ownerName: string): Promise<void> {
     if (sale.receiverNameSource === SaleReceiverNameSource.STATEMENT) return
