@@ -163,10 +163,10 @@ export const DEPOSIT_COLUMNS: readonly ColumnDef<AdminDepositRowItem>[] = [
      * list, which found either nothing or the wrong thing.
      */
     key: 'payoutId',
-    header: 'deposits.payout',
+    header: 'deposits.payout_short',
     type: ColumnType.TEXT,
     value: (row) => row.payoutId,
-    width: '120px',
+    width: '130px',
   },
   {
     key: 'documentCount',
