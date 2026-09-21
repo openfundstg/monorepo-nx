@@ -516,6 +516,28 @@ describe('SaleCardOrderService', () => {
       })
 
       /**
+       * **106 is the state this was asking for, not a refusal.**
+       *
+       * An operator settling the order in the panel while the seller answers is
+       * an ordinary race here, and a retry of a call that already succeeded
+       * answers the same way. Read as a failure it cost a whole verdict: a
+       * statement that proved a denied order paid came back a `503` because the
+       * order had been executed in the meantime, so the one document that could
+       * settle the dispute settled nothing.
+       */
+      it('takes "already executed" as confirmation and settles', async () => {
+        transacto.executeOrder.mockRejectedValue({
+          isAxiosError: true,
+          response: { data: { error_code: TransactoErrorCode.ORDER_ALREADY_EXECUTED } }
+        })
+
+        await expect(service.confirm(TELEGRAM_ID, SALE_ID, ORDER_ID)).resolves.toBeDefined()
+
+        expect(db.moveCardOrder).toHaveBeenCalled()
+        expect(settlement.creditSettledOrder).toHaveBeenCalled()
+      })
+
+      /**
        * 108 means the money arrived and the confirmation did not. The seller's
        * word is what this variant runs on, and our failure to relay it does not
        * un-arrive their hryvnia — so it settles here and stays open upstream.

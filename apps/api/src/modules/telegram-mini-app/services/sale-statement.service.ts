@@ -188,15 +188,24 @@ export class SaleStatementService {
     // was addressed to.
     if (statement !== null) await this.checkpoint(sale, statement)
 
-    if (verification.finding === StatementFinding.CREDITED) {
-      const settled = await this.cardOrders.confirmFromStatement(sale, cardOrder)
-
-      return settled
-    }
-
     // A statement uploaded to settle a shortfall, not to answer a denial. The
-    // checkpoint above is the whole of its job; there is no dispute to uphold.
+    // checkpoint above is the whole of its job, and it is the whole of it
+    // **whichever way the document came out** — an order nobody denied has no
+    // denial for a credit to overturn.
+    //
+    // **Asked before the finding, and it used to be asked after it.** Only the
+    // refusing branch was guarded, so a statement that *found* the credit went
+    // on to confirm an order the seller had confirmed himself hours earlier.
+    // Transacto answered `106 Order already executed` — which was then read as
+    // a failure — and the upload came back a `503`, after the checkpoint and
+    // the correction had already been written. The seller was shown an error
+    // for a document that had done everything it was sent to do, and the
+    // wasted `orders_execute` left a fresh execution marker on a settled order
+    // for `handleOrderPaid` to interpret.
     if (cardOrder.state !== SaleCardOrderState.DISPUTED) return this.reread(saleId, sale)
+
+    if (verification.finding === StatementFinding.CREDITED)
+      return this.cardOrders.confirmFromStatement(sale, cardOrder)
 
     return this.upholdDenial(sale, cardOrder)
   }

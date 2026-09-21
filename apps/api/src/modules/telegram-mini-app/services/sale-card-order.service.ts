@@ -430,6 +430,25 @@ export class SaleCardOrderService {
         await this.orderDbService.markAwaitingUpstreamConfirmation(orderId)
       }
     } catch (error: unknown) {
+      // **Already executed, which is the state this was asking for.** Not a
+      // refusal and nothing to retry: an operator settling the order in the
+      // panel while the seller answers is an ordinary race here — it is how a
+      // fiat top-up gets credited too — and a second `orders_execute` on a
+      // call that already succeeded answers the same way.
+      //
+      // Read as a failure it cost a whole verdict. A statement that proved a
+      // denied order paid was refused with a `503` because the order had been
+      // executed in the meantime, so the one document that could settle the
+      // dispute settled nothing. Returning lets the caller record locally what
+      // upstream already believes.
+      if (transactoErrorCodeOf(error) === TransactoErrorCode.ORDER_ALREADY_EXECUTED) {
+        this.logger.warn(
+          `Order ${orderId} was already executed upstream; taking that as confirmation`
+        )
+
+        return
+      }
+
       // A status Transacto will not execute — `EXPIRED_HOLD`, `CLIENT_CANCELLED`
       // or `DECLINED` — answers `VALIDATION`, and it is final. An honest seller
       // who tapped the button an hour late has to be told that rather than shown
