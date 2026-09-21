@@ -6,6 +6,7 @@ import {
   PageHeaderComponent,
   SearchFieldComponent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import { ORDER_COLUMNS } from '../../constants/orders-columns.const';
 import { ordersCollection } from '../../store/orders.collection';
 
@@ -26,7 +27,7 @@ export class OrdersListComponent {
   readonly rowId = ordersCollection.idOf;
 
   constructor() {
-    this.store.dispatch(ordersCollection.actions.entered());
+    bindListQuery(ordersCollection);
   }
 
   onSearch(search: string): void {

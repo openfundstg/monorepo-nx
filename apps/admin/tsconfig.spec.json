@@ -2,7 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "./out-tsc/spec",
-    "types": ["vitest/globals"]
+    // `node` because one spec reads the source tree: `list-query.spec.ts`
+    // checks that every list page applies the query string it was opened with,
+    // and there is no type that can express that — only the source can say.
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src/**/*.spec.ts", "src/**/*.d.ts", "src/test-setup.ts"]
 }

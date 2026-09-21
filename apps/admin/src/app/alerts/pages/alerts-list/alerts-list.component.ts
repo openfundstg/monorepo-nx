@@ -10,7 +10,7 @@ import {
   SearchFieldComponent,
   type RowActionEvent,
 } from '../../../shared/components';
-import { formatUah } from '../../../shared/utils';
+import { bindListQuery, formatUah } from '../../../shared/utils';
 import {
   ALERT_COLUMNS,
   ALERT_ROW_ACTIONS,
@@ -37,7 +37,7 @@ export class AlertsListComponent {
   readonly rowId = alertsCollection.idOf;
 
   constructor() {
-    this.store.dispatch(alertsCollection.actions.entered());
+    bindListQuery(alertsCollection);
   }
 
   onSearch(search: string): void {

@@ -10,6 +10,7 @@ import {
   SearchFieldComponent,
   type RowActionEvent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import {
   TRADER_COLUMNS,
   TRADER_ROW_ACTIONS,
@@ -35,7 +36,7 @@ export class TraderListComponent {
   readonly rowId = tradersCollection.idOf;
 
   constructor() {
-    this.store.dispatch(tradersCollection.actions.entered());
+    bindListQuery(tradersCollection);
   }
 
   onSearch(search: string): void {

@@ -6,6 +6,7 @@ import {
   PageHeaderComponent,
   SearchFieldComponent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import { FIAT_DEPOSIT_WATCH_COLUMNS } from '../../constants/fiat-deposit-watches-columns.const';
 import { fiatDepositWatchesCollection } from '../../store/fiat-deposit-watches.collection';
 
@@ -32,7 +33,7 @@ export class FiatDepositWatchListComponent {
   readonly rowId = fiatDepositWatchesCollection.idOf;
 
   constructor() {
-    this.store.dispatch(fiatDepositWatchesCollection.actions.entered());
+    bindListQuery(fiatDepositWatchesCollection);
   }
 
   onSearch(search: string): void {

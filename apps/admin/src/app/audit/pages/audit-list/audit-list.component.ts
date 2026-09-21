@@ -6,6 +6,7 @@ import {
   PageHeaderComponent,
   SearchFieldComponent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import { AUDIT_COLUMNS } from '../../constants/audit-columns.const';
 import { auditCollection } from '../../store/audit.collection';
 
@@ -26,7 +27,7 @@ export class AuditListComponent {
   readonly rowId = auditCollection.idOf;
 
   constructor() {
-    this.store.dispatch(auditCollection.actions.entered());
+    bindListQuery(auditCollection);
   }
 
   onSearch(search: string): void {

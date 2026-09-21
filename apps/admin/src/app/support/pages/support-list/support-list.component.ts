@@ -8,6 +8,7 @@ import {
   PageHeaderComponent,
   SearchFieldComponent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import { SUPPORT_TOPIC_COLUMNS, SUPPORT_USER_COLUMNS } from '../../constants/support-columns.const';
 import { supportTopicsCollection, supportUsersCollection } from '../../store/support.collections';
 
@@ -49,8 +50,8 @@ export class SupportListComponent {
   readonly userRowId = supportUsersCollection.idOf;
 
   constructor() {
-    this.store.dispatch(supportTopicsCollection.actions.entered());
-    this.store.dispatch(supportUsersCollection.actions.entered());
+    bindListQuery(supportTopicsCollection);
+    bindListQuery(supportUsersCollection);
   }
 
   onTopicSearch(search: string): void {

@@ -6,6 +6,7 @@ import {
   PageHeaderComponent,
   SearchFieldComponent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import { SAFE_BOX_COLUMNS } from '../../constants/safe-box-columns.const';
 import { safeBoxCollection } from '../../store/safe-box.collection';
 
@@ -26,7 +27,7 @@ export class SafeBoxListComponent {
   readonly rowId = safeBoxCollection.idOf;
 
   constructor() {
-    this.store.dispatch(safeBoxCollection.actions.entered());
+    bindListQuery(safeBoxCollection);
   }
 
   onSearch(search: string): void {

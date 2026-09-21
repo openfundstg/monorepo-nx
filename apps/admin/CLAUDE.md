@@ -180,6 +180,15 @@ applies them through `bindListQuery`. A link that merely opened a list would be
 a link to a haystack with a note about which needle. Absent parameters change
 nothing, so a list keeps its state when an operator navigates away and back.
 
+**A list opens with `bindListQuery` and never with a bare `entered()`.** The two
+are not alternatives: `bindListQuery` sends `entered` itself, and only when the
+URL asked for nothing. This shipped wrong — links were built to ten lists that
+still opened themselves with `entered()`, so `/admin/orders?search=30323` listed
+every order on every card. Nothing threw, nothing failed, and the only symptom
+was a destination showing everything. `shared/list-query.spec.ts` now reads the
+source of every page that renders `app-collection-table` and fails on either
+mistake, because no type can express "this component read its query string".
+
 ### Documents are shown, and their bytes are ours to serve
 
 `/documents` lists every file this product holds — statements and receipts

@@ -24,6 +24,10 @@ error rather than a dead link — and render it with `ColumnType.ROUTER_LINK` or
 `ColumnType.REFS`. A link carries `search`/`filter` as query parameters and the destination
 applies them through `bindListQuery`; a link that merely opens a list is a link to a haystack.
 
+**Open the list with `bindListQuery(collection)`, never `dispatch(entered())`.** It sends
+`entered` itself when the URL asked for nothing. `shared/list-query.spec.ts` fails the build on
+either mistake — it exists because ten lists once ignored the query string and nothing noticed.
+
 ---
 
 ## Step 1 — The row, in `@transacto/contracts`

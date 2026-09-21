@@ -15,7 +15,7 @@ import {
   SearchFieldComponent,
   type RowActionEvent,
 } from '../../../shared/components';
-import { formatUsdt } from '../../../shared/utils';
+import { bindListQuery, formatUsdt } from '../../../shared/utils';
 import { USER_COLUMNS, USER_ROW_ACTIONS, UserAction } from '../../constants/user-columns.const';
 import { userActions, usersCollection } from '../../store/users.collection';
 
@@ -47,7 +47,7 @@ export class UserListComponent {
   readonly rowId = usersCollection.idOf;
 
   constructor() {
-    this.store.dispatch(usersCollection.actions.entered());
+    bindListQuery(usersCollection);
   }
 
   onSearch(search: string): void {

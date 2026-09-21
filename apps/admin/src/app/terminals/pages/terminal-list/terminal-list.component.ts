@@ -15,6 +15,7 @@ import {
   SearchFieldComponent,
   type RowActionEvent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import {
   TERMINAL_COLUMNS,
   TERMINAL_ROW_ACTIONS,
@@ -90,7 +91,7 @@ export class TerminalListComponent {
   readonly rowId = terminalsCollection.idOf;
 
   constructor() {
-    this.store.dispatch(terminalsCollection.actions.entered());
+    bindListQuery(terminalsCollection);
   }
 
   onSearch(search: string): void {

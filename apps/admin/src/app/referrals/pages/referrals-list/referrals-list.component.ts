@@ -6,6 +6,7 @@ import {
   PageHeaderComponent,
   SearchFieldComponent,
 } from '../../../shared/components';
+import { bindListQuery } from '../../../shared/utils';
 import { REFERRAL_COLUMNS } from '../../constants/referrals-columns.const';
 import { referralsCollection } from '../../store/referrals.collection';
 
@@ -26,7 +27,7 @@ export class ReferralsListComponent {
   readonly rowId = referralsCollection.idOf;
 
   constructor() {
-    this.store.dispatch(referralsCollection.actions.entered());
+    bindListQuery(referralsCollection);
   }
 
   onSearch(search: string): void {
