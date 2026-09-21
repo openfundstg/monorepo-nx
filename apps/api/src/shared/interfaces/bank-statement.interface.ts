@@ -207,23 +207,45 @@ export const MONOBANK_STATEMENT_LABELS = {
  * └ date    └ time └ card+contract └ details  └operation└cur └card   └fee  └disc └balance
  * ```
  *
- * Three things are load-bearing, beyond the separators above:
+ * Five things are load-bearing, beyond the separators above:
  *
- * - **Every page carries a header that begins with a date and a time**, and so
+ * - **Every page carries a footer that begins with a date and a time**, and so
  *   looks exactly like the start of a row:
  *   `17.09.2026 12:20 № QB00000000000000 Сторінка 1 з 11`. In the captured
- *   document there were 83 date-and-time anchors: 73 rows and 10 page headers.
+ *   document there were 83 date-and-time anchors: 73 rows and 10 page footers.
  *   A reader that counted anchors and subtracted the rows it parsed would have
  *   declared ten unreadable rows on a statement it had read perfectly, and
- *   refused it. **Page headers are recognised and excluded before anything is
+ *   refused it. **Page footers are recognised and excluded before anything is
  *   counted.**
  * - **The time carries no seconds** (`14:12`), where monobank's does.
- * - **The document number in the page header is the same string as the file's
- *   own name** — `QB…` — and `pb.ua/check` will show the document for it. That
- *   is the shape of a far stronger check than reading an upload, and it is not
- *   built: `document[type]` for a statement at
- *   `privatbank.ua/pb/ajax/find-document` has never been captured, and
- *   `PrivatbankDocumentType` therefore still names only `receipt`.
+ * - **The document number in the page footer is the same string as the file's
+ *   own name**, and `find-document` answers for it — verified 2026-09-21
+ *   against two of them, with the bank then serving its own copy of each. That
+ *   is what makes a PrivatBank statement provable without trusting the upload
+ *   at all, and `PrivatbankDocumentType.STATEMENT` is the call that does it.
+ *
+ *   **It carries no fixed prefix.** The first sample began `QB` and that was
+ *   read as part of the format; the two captured on 2026-09-21 began `IR` and
+ *   `Q2`. Sixteen uppercase letters and digits is the whole of what has been
+ *   observed, and a tighter rule refused every statement a user ever sent —
+ *   with `UNREADABLE`, which reads as an accusation about their file.
+ *
+ *   It is stated **only** in that footer. The transaction details also carry
+ *   `Угода №` and `документ №` — the latter followed by sixteen digits — so the
+ *   footer has to be asserted in full, page count and all, rather than found by
+ *   its `№`.
+ * - **`Період` may be a single date**, `Період: 20.09.2026`, where a statement
+ *   covers one day; monobank prints `18.09.2026 - 18.09.2026` for the same
+ *   thing. Reading only ranges refused every one-day document, which is the
+ *   commonest kind — a seller answering a dispute pulls the day the order
+ *   arrived.
+ * - **The same statement is issued with and without the running balance.**
+ *   Privat24 offers «Довідка містить тільки інформацію про рух коштів без
+ *   відображення залишків по картці/рахунку», and that one drops the last
+ *   column of every row. The shorter row is a *prefix* of the longer one, so
+ *   which shape a document is must be decided from the `Залишок після операції`
+ *   column heading before a row is read — trying the long pattern and falling
+ *   back to the short one reads a truncated table as a clean one.
  *
  * The transaction details are full of Latin/Cyrillic homoglyphs — `Iрпiнь`
  * spelled with a Latin `I` and `i` — which is one more reason nothing here

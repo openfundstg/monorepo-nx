@@ -62,19 +62,37 @@ const monoStatement = (
     'Операційний директор Документ підписано електронним цифровим підписом.'
   ].join(' ')
 
+/**
+ * One PrivatBank row.
+ *
+ * `balance: null` is the shorter statement Privat24 also issues — «без
+ * відображення залишків» — where every row ends one column early. It is not a
+ * truncated row: the whole document is written that way, and the column heading
+ * says so.
+ */
 const privatRow = (
   date: string,
   time: string,
   cardAmount: string,
-  balance = '-12 345,67'
+  balance: string | null = '-12 345,67'
 ): string =>
   `${date} ${time} ${PRIVAT_MASK}Угода № SAMD00000000000 від 01.01.2024 р. ` +
   `Переказ, УКРАЇНА, документ № 0000000000000000, Коментар до платежу: - ` +
-  `${cardAmount} UAH ${cardAmount} 0,00 0,00 ${balance}`
+  `${cardAmount} UAH ${cardAmount} 0,00 0,00${balance === null ? '' : ` ${balance}`}`
 
-/** The header PrivatBank repeats on every page — it begins exactly like a row. */
-const privatPageHeader = (page: number): string =>
-  `17.09.2026 12:20 № QB00000000000000 Сторінка ${page} з 11`
+/**
+ * Invented to the captured shape: sixteen uppercase letters and digits, with no
+ * fixed prefix. A real one resolves at `pb.ua/check` to a real person's
+ * statement, which is why none is written down anywhere in this repository.
+ */
+const PRIVAT_NUMBER = 'QB00ABCDEFGH0000'
+
+/** The footer PrivatBank repeats on every page — it begins exactly like a row. */
+const privatPageFooter = (page: number, number = PRIVAT_NUMBER): string =>
+  `17.09.2026 12:20 № ${number} Сторінка ${page} з 11`
+
+/** The column heading whose presence declares the running-balance column. */
+const RUNNING_BALANCE_HEADING = 'Залишок після операції'
 
 const privatStatement = (
   options: {
@@ -82,6 +100,9 @@ const privatStatement = (
     period?: string
     totalCredited?: string
     pages?: number
+    number?: string
+    /** `false` for the shorter statement, which drops the last column. */
+    runningBalance?: boolean
   } = {}
 ): string =>
   [
@@ -92,9 +113,24 @@ const privatStatement = (
     `Інформація по картці: ${PRIVAT_MASK}`,
     `Рахунок IBAN: ${IBAN}`,
     `Період: ${options.period ?? '31.07.2026 — 31.08.2026'}`,
-    'Дата операції Картка / Рахунок Деталі операції Сума у валюті операції Сума у валюті картки Сума комісій Сума знижок Залишок після операції',
-    ...(options.rows ?? [privatRow('14.08.2026', '14:12', '1 428,00')]),
-    ...Array.from({ length: options.pages ?? 1 }, (_, index) => privatPageHeader(index + 1))
+    ...(options.runningBalance === false
+      ? ['Довідка містить тільки інформацію про рух коштів без відображення залишків по картці/рахунку.']
+      : []),
+    'Дата операції Картка / Рахунок Деталі операції Сума у валюті операції ' +
+      'Сума у валюті картки Сума комісій Сума знижок' +
+      (options.runningBalance === false ? '' : ` ${RUNNING_BALANCE_HEADING}`),
+    ...(options.rows ??
+      [
+        privatRow(
+          '14.08.2026',
+          '14:12',
+          '1 428,00',
+          options.runningBalance === false ? null : undefined
+        )
+      ]),
+    ...Array.from({ length: options.pages ?? 1 }, (_, index) =>
+      privatPageFooter(index + 1, options.number)
+    )
   ].join(' ')
 
 describe('readAmount', () => {
@@ -276,16 +312,94 @@ describe('parseStatement — PrivatBank', () => {
 
   /**
    * **The one that would have refused every real statement.** Every page
-   * carries a header beginning with a date and a time, so it looks exactly like
+   * carries a footer beginning with a date and a time, so it looks exactly like
    * the start of a row. In the captured document there were 83 such anchors:
-   * 73 rows and 10 page headers. Counting anchors and subtracting parsed rows
+   * 73 rows and 10 page footers. Counting anchors and subtracting parsed rows
    * would have reported ten unreadable rows on a document read perfectly.
    */
-  it('does not mistake a page header for a row it failed to read', () => {
+  it('does not mistake a page footer for a row it failed to read', () => {
     const parsed = parse(privatStatement({ pages: 11 }))
 
     expect(parsed?.movements).toHaveLength(1)
     expect(parsed?.unreadableRows).toBe(0)
+  })
+
+  /**
+   * **A statement for a single day, which is the commonest one there is.**
+   *
+   * PrivatBank prints a bare date rather than a range when the period is one
+   * day, and reading only ranges refused every such document outright — with
+   * `UNREADABLE`, which reads as an accusation about the file. It is what a
+   * seller answering a dispute pulls: two of them, for the day the orders
+   * arrived, were refused in production on 2026-09-20.
+   */
+  it('reads a period printed as one date as the whole of that day', () => {
+    const parsed = parse(
+      privatStatement({
+        period: '20.09.2026',
+        rows: [privatRow('20.09.2026', '17:52', '1 428,00')]
+      })
+    )
+
+    expect(parsed?.periodFrom.toISOString()).toBe('2026-09-19T21:00:00.000Z')
+    expect(parsed?.periodTo.toISOString()).toBe('2026-09-20T20:59:59.999Z')
+  })
+
+  /**
+   * A range this build cannot read must refuse, not quietly become its first
+   * day. A shorter period still satisfies every check a caller makes — it is
+   * simply a document covering less than it says, which is the one thing a
+   * statement asked to prove a negative may never be.
+   */
+  it('refuses a malformed range rather than reading it as a single day', () => {
+    expect(parse(privatStatement({ period: '20.09.2026 - 21.9.2026' }))).toBeNull()
+  })
+
+  /**
+   * **Privat24 issues the same statement with and without a running balance**,
+   * and the shorter one drops the last column of every row. Captured
+   * 2026-09-21 from two statements of one account pulled minutes apart; the
+   * reader could only read the longer, and refused the other as `UNREADABLE`.
+   */
+  it('reads the shorter statement that carries no running balance', () => {
+    const parsed = parse(
+      privatStatement({
+        runningBalance: false,
+        rows: [
+          privatRow('20.09.2026', '17:49', '714,00', null),
+          privatRow('20.09.2026', '17:52', '714,00', null)
+        ],
+        totalCredited: '1 428,00'
+      })
+    )
+
+    expect(parsed?.movements.map((movement) => movement.amountKopecks)).toEqual([71_400, 71_400])
+    expect(parsed?.unreadableRows).toBe(0)
+    expect(parsed?.creditsReconciled).toBe(true)
+  })
+
+  /**
+   * **The guard on the shape above, and the reason the heading decides.**
+   *
+   * The short row pattern is a *prefix* of the full one, so a reader that tried
+   * the full pattern and fell back to the short one would read a truncated row
+   * as a complete one — and report a misread table as a clean one, which is the
+   * single outcome this whole reconciliation exists to prevent. The column's
+   * presence is asserted from the heading, so a row that ends early in a
+   * document that declares the column is counted unread.
+   */
+  it('counts a row missing its balance as unread when the column is declared', () => {
+    const parsed = parse(
+      privatStatement({
+        rows: [
+          privatRow('14.08.2026', '14:12', '1 428,00'),
+          privatRow('15.08.2026', '15:00', '1 428,00', null)
+        ]
+      })
+    )
+
+    expect(parsed?.movements).toHaveLength(1)
+    expect(parsed?.unreadableRows).toBe(1)
   })
 })
 
@@ -344,8 +458,7 @@ describe('what is not a statement at all', () => {
 })
 
 describe('readStatementNumber', () => {
-  /** Invented to the captured shape: `QB` and fourteen more. */
-  const NUMBER = 'QB00ABCDEFGH0000'
+  const NUMBER = PRIVAT_NUMBER
 
   /**
    * The name first, because a document the bank served is named after its own
@@ -357,22 +470,70 @@ describe('readStatementNumber', () => {
     ).toBe(NUMBER)
   })
 
-  it('falls back to the page header for a file somebody renamed', () => {
+  it('falls back to the page footer for a file somebody renamed', () => {
     expect(
-      readStatementNumber(BankProvider.PRIVAT, 'downloaded.pdf', `17.09.2026 12:20 № ${NUMBER} Сторінка 1 з 11`)
+      readStatementNumber(BankProvider.PRIVAT, 'downloaded.pdf', privatPageFooter(1))
     ).toBe(NUMBER)
   })
+
+  /**
+   * **There is no fixed prefix, and believing there was one refused every
+   * statement this product was ever sent.**
+   *
+   * The pattern demanded `QB`, read off the single sample the reader was built
+   * against. Two numbers captured 2026-09-21 began `IR` and `Q2`; PrivatBank
+   * confirmed both through `find-document` and served its own copy of each,
+   * while this build could not so much as read them off the file name. The
+   * length and the alphabet are all the samples agree on.
+   */
+  it.each(['IR0ABCDEFGH00000', 'Q20ABCDEFGH00000', '0000000000000000'])(
+    'reads %p, which carries no particular prefix',
+    (number) => {
+      expect(readStatementNumber(BankProvider.PRIVAT, `statement-${number}.pdf`, '')).toBe(number)
+    }
+  )
 
   /**
    * Bounded on both sides, so it cannot take a prefix of something longer and
    * present it to the bank as a whole number.
    */
-  it.each([`${NUMBER}0`, `0${NUMBER}`, 'QB00ABCDEFGH000', 'QX00ABCDEFGH0000'])(
+  it.each([`${NUMBER}0`, `0${NUMBER}`, 'QB00ABCDEFGH000', 'QB00-ABCDEFGH0000'])(
     'refuses %p',
     (candidate) => {
       expect(readStatementNumber(BankProvider.PRIVAT, candidate, candidate)).toBeNull()
     }
   )
+
+  /**
+   * **In the text the `№` and the page count are both required**, and the
+   * document is why. A row's own details carry `Угода № SAMD…` and `документ №`
+   * followed by sixteen digits — a transaction narrative is somebody else's
+   * text and entitled to contain anything. The footer is asserted in full, so
+   * the only thing that can be read as this document's number is the line that
+   * numbers its pages.
+   */
+  it('reads the number off the page footer and not out of a row’s details', () => {
+    const statement = privatStatement()
+
+    expect(statement).toContain('документ № 0000000000000000')
+    expect(readStatementNumber(BankProvider.PRIVAT, 'renamed.pdf', statement)).toBe(NUMBER)
+  })
+
+  it('reads nothing from a bare number standing in the text with no footer', () => {
+    expect(readStatementNumber(BankProvider.PRIVAT, 'renamed.pdf', `Угода № ${NUMBER} від`)).toBeNull()
+  })
+
+  /**
+   * The footer pattern is global and shared with the page-footer count, so
+   * `exec` on it would carry `lastIndex` between the two callers and read from
+   * the middle of the document — or, on the second call, not at all.
+   */
+  it('reads the same number however many times it is asked', () => {
+    const statement = privatStatement({ pages: 11 })
+    const read = () => readStatementNumber(BankProvider.PRIVAT, 'renamed.pdf', statement)
+
+    expect([read(), read(), read()]).toEqual([NUMBER, NUMBER, NUMBER])
+  })
 
   /**
    * Monobank numbers nothing: its statements are proven by the signature on the
