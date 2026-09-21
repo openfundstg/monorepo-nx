@@ -2,13 +2,16 @@ import {
   AdminDepositKind,
   AdminFiatDepositAction,
   isFiatDepositHeld,
+  TmaDepositStatus,
+  TmaFiatDepositStatus,
   type AdminDepositRowItem,
-  type TmaFiatDepositStatus,
 } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction, RowLink } from '../../shared/interfaces';
-import type { FilterChip } from '../../shared/components';
+import type { FilterOption } from '../../shared/components';
 import {
+  bankBadge,
+  bankRowClass,
   depositLink,
   depositRowTone,
   depositStatusPrefix,
@@ -28,10 +31,28 @@ import {
  * deposit *by either method* lifts it — so a screen showing one rail cannot
  * explain why somebody's cap lifted.
  */
-export const DEPOSIT_FILTERS: readonly FilterChip[] = [
-  { value: null, label: 'deposits.filter_all' },
+export const DEPOSIT_VARIANTS: readonly FilterOption[] = [
   { value: AdminDepositKind.CRYPTO, label: 'deposits.filter_crypto' },
   { value: AdminDepositKind.FIAT, label: 'deposits.filter_fiat' },
+];
+
+/**
+ * Every status either rail can be in.
+ *
+ * Two enums in one list, and no attempt to reconcile them: a deposit is on one
+ * rail or the other, so a status belongs to exactly one of them and picking it
+ * narrows to that rail anyway. Flattening the two into a third enum would be a
+ * status written down in three places and agreeing in two.
+ */
+export const DEPOSIT_STATUSES: readonly FilterOption[] = [
+  ...Object.values(TmaDepositStatus).map((status) => ({
+    value: status,
+    label: `DEPOSIT_STATUS.${status}`,
+  })),
+  ...Object.values(TmaFiatDepositStatus).map((status) => ({
+    value: status,
+    label: `FIAT_DEPOSIT_STATUS.${status}`,
+  })),
 ];
 
 /**
@@ -56,13 +77,29 @@ export const DEPOSIT_COLUMNS: readonly ColumnDef<AdminDepositRowItem>[] = [
     width: '140px',
   },
   {
+    // Neither rail is better than the other; the chip is here to be read.
     key: 'kind',
     header: 'deposits.method',
     type: ColumnType.CHIP,
     value: (row) => row.kind,
     translatePrefix: 'DEPOSIT_KIND',
-    // Neither rail is better than the other; the chip is here to be read.
     tone: unknownTone,
+    width: '110px',
+  },
+  {
+    /**
+     * Where the hryvnia came from, once a receipt has said so.
+     *
+     * Empty on the crypto rail and on a top-up nobody has sent a receipt for —
+     * neither is a gap. USDT has no bank, and an unpaid top-up has not yet
+     * named one.
+     */
+    key: 'bank',
+    header: 'deposits.bank',
+    type: ColumnType.CHIP,
+    value: (row) => row.bank,
+    tone: unknownTone,
+    badgeClass: (row) => bankBadge(row.bank),
     width: '110px',
   },
   {
@@ -177,3 +214,7 @@ export const DEPOSIT_ROW_ACTIONS: readonly RowAction<AdminDepositRowItem>[] = [
     destructive: true,
   },
 ];
+
+/** The tint a deposit's row carries — see `saleRowClass` for the reasoning. */
+export const depositRowClass = (row: AdminDepositRowItem): string | null =>
+  bankRowClass(row.bank);

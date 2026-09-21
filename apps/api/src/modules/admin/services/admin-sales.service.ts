@@ -48,11 +48,13 @@ import { AdminAuditService } from 'src/modules/admin/services/admin-audit.servic
 import { AdminDocumentsService } from 'src/modules/admin/services/admin-documents.service'
 import { AdminUsersService } from 'src/modules/admin/services/admin-users.service'
 import {
+  bookFilterClauses,
   disputedCardSaleFilter,
   isSaleActionAllowed,
   toAdminOrder,
   toAdminSale,
   toAdminSaleCardOrder,
+  toAdminSaleHistory,
   toAdminTerminal,
   toPageQuery,
   toPaginatedRes
@@ -191,7 +193,12 @@ export class AdminSalesService {
       cardOrders: (sale.cardOrders ?? []).map(toAdminSaleCardOrder),
       transactoOrders: orders.items.map(toAdminOrder),
       terminal: terminal === null ? null : toAdminTerminal(terminal),
-      documents
+      documents,
+      // The sale's own timeline, already on the document. A jar sale's entries
+      // are the scraper's observations and a card sale's are assertions and
+      // what corroborated them — `evidence` is what says which, and it is the
+      // whole reason this reaches the panel at all.
+      history: (sale.events ?? []).map(toAdminSaleHistory)
     }
   }
 
@@ -357,9 +364,17 @@ export class AdminSalesService {
    * widen a filtered list back to the whole book.
    */
   private filterFor(request: AdminSalesPageReq): QueryFilter<TmaSale> {
-    const clauses = [this.sliceFilter(request.filter), this.searchFilter(request.search)].filter(
-      (clause) => Object.keys(clause).length > 0
-    )
+    const clauses = [
+      this.sliceFilter(request.filter),
+      // A sale carries a hryvnia target and a USDT stake, and "over ₴5 000" and
+      // "staking over 100 USDT" are different questions about the same row.
+      bookFilterClauses(request, {
+        date: 'createdAt',
+        uah: 'fiatAmount',
+        usdt: 'frozenUsdt'
+      }),
+      this.searchFilter(request.search)
+    ].filter((clause) => Object.keys(clause).length > 0)
 
     if (clauses.length === 0) return {}
     if (clauses.length === 1) return clauses[0]

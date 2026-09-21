@@ -1,5 +1,5 @@
 <app-page-header title="documents.title" subtitle="documents.subtitle">
-  <app-filter-chips [chips]="filters" [active]="state().filter" (select)="onFilter($event)" />
+  <app-filter-chips [chips]="filters" [active]="state().filters['filter'] ?? null" (select)="onFilter($event)" />
   <app-search-field
     [value]="state().search"
     placeholder="documents.search_placeholder"

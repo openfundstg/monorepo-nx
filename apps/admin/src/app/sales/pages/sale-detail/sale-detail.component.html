@@ -160,6 +160,18 @@
     </section>
   }
 
+  <!--
+    What happened, and on whose word.
+
+    The card variant's answer to the jar's scraping history: a jar is watched,
+    a seller's own card cannot be, so this is a record of assertions and what
+    later corroborated them rather than of observations.
+  -->
+  <section class="card detail-section">
+    <h2>{{ 'sales.history' | translate }}</h2>
+    <app-sale-timeline [entries]="data.history" [documentUrl]="statementUrl" />
+  </section>
+
   <!-- Every file sent about this, rendered by the one component that knows how. -->
   <section class="card detail-section">
     <h2>{{ 'documents.title' | translate }}</h2>

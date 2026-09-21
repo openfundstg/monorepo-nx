@@ -39,6 +39,7 @@ export interface AdminDepositFeedRow {
   readonly coveredUah: number | null
   readonly documentCount: number
   readonly acceptedDocumentCount: number
+  readonly bank: BankProvider | null
   readonly payoutId: number | null
   readonly txId: string | null
   readonly deadlineAt: Date

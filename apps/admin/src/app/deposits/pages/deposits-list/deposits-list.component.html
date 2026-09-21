@@ -1,5 +1,4 @@
 <app-page-header title="deposits.title" subtitle="deposits.subtitle">
-  <app-filter-chips [chips]="filters" [active]="state().filter" (select)="onFilter($event)" />
   <app-search-field
     [value]="state().search"
     placeholder="deposits.search_placeholder"
@@ -7,8 +6,17 @@
   />
 </app-page-header>
 
+<app-book-filters
+  list="deposits"
+  variantLabel="deposits.variant"
+  [variants]="variants"
+  [statuses]="statuses"
+  (apply)="onFilters($event)"
+/>
+
 <app-collection-table
   [rowId]="rowId"
+  [rowClass]="rowClass"
   [columns]="columns"
   [rows]="state().items"
   [total]="state().total"

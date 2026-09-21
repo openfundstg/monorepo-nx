@@ -5,6 +5,7 @@ import {
   FiatDepositWatchMode,
   OrderStatus,
   SaleCardOrderState,
+  SaleEvidence,
   SaleStatementStatus,
   SupportTopicStatus,
   TmaDepositStatus,
@@ -269,3 +270,29 @@ export const depositRowTone = (kind: AdminDepositKind, status: string): ChipTone
 
 export const depositStatusPrefix = (kind: AdminDepositKind): string =>
   DEPOSIT_PRESENTATION[kind].prefix;
+
+/**
+ * How strong a claim an event stands on.
+ *
+ * **Not a status, and the one place it must not read as one.** A timeline's job
+ * here is to separate what a bank proved from what a seller asserted, so the
+ * colour has to answer *how well do we know this* rather than *is this good
+ * news*. A confirmed order is good news either way; whether it is a fact
+ * depends entirely on who said so.
+ *
+ * `null` is every entry written before evidence was recorded. Deliberately
+ * neutral rather than optimistic: nobody wrote down whose word those stood on,
+ * and colouring them as proven would invent a fact about somebody's money.
+ */
+const EVIDENCE_TONES: Readonly<Record<SaleEvidence, ChipTone>> = {
+  // A bank signed it and it was checked. The strongest thing this product has.
+  [SaleEvidence.STATEMENT]: ChipTone.POSITIVE,
+  // Somebody's testimony about their own money, uncorroborated until a document
+  // covers the moment they gave it.
+  [SaleEvidence.SELLER]: ChipTone.WARNING,
+  [SaleEvidence.UPSTREAM]: ChipTone.NEUTRAL,
+  [SaleEvidence.SYSTEM]: ChipTone.NEUTRAL,
+};
+
+export const evidenceTone = (evidence: SaleEvidence | null): ChipTone =>
+  evidence === null ? ChipTone.NEUTRAL : EVIDENCE_TONES[evidence];

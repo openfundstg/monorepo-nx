@@ -92,6 +92,14 @@ export class CollectionTableComponent<T> {
    * whichever of them the differ happened to pair it with.
    */
   readonly rowId = input<((row: T) => string) | null>(null);
+  /**
+   * A class for the whole row — today, which bank it belongs to.
+   *
+   * A book that mixes banks is one an operator reads by bank first and by row
+   * second: which jar a payment landed in decides who to ask about it. Colour
+   * does that without anybody reading a column.
+   */
+  readonly rowClass = input<((row: T) => string | null) | null>(null);
 
   readonly pageChange = output<{ page: number; limit: number }>();
   readonly sortChange = output<{ sort: string; direction: AdminSortDirection }>();
@@ -190,6 +198,16 @@ export class CollectionTableComponent<T> {
     if (prefix === undefined) return null;
 
     return typeof prefix === 'function' ? prefix(row) : prefix;
+  }
+
+  badgeFor(column: ColumnDef<T>, row: T): string | null {
+    return column.badgeClass ? column.badgeClass(row) : null;
+  }
+
+  classFor(row: T): string {
+    const paint = this.rowClass();
+
+    return paint ? (paint(row) ?? '') : '';
   }
 
   linkFor(column: ColumnDef<T>, row: T): RowLink | null {

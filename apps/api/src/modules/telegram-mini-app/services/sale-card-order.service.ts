@@ -12,6 +12,7 @@ import {
   OrderExecutionReason,
   SaleCardOrderState,
   SaleEventType,
+  SaleEvidence,
   SaleMethod
 } from '@transacto/contracts'
 import { OrderDbService, OrderStatus } from 'src/modules/repositories/order-db'
@@ -65,6 +66,24 @@ const SETTLED = [SaleCardOrderState.CONFIRMED, SaleCardOrderState.PROVEN_PAID] a
  * `moveCardOrder` is what makes the second tap a no-op rather than a second
  * confirmation.
  */
+/**
+ * The two ways an order is settled *as paid*, and whose word each stands on.
+ *
+ * Narrower than {@link OrderExecutionReason} on purpose: `settleConfirmed` can
+ * only ever be reached by a seller confirming or by a statement contradicting
+ * their denial, and saying so in the type is what makes the evidence below
+ * total rather than a lookup with a fallback. A fallback here would quietly
+ * record a bank's document as somebody's testimony.
+ */
+type SettlingReason =
+  | OrderExecutionReason.USER_CONFIRMED
+  | OrderExecutionReason.STATEMENT_PROVEN
+
+const SETTLING_EVIDENCE: Readonly<Record<SettlingReason, SaleEvidence>> = {
+  [OrderExecutionReason.USER_CONFIRMED]: SaleEvidence.SELLER,
+  [OrderExecutionReason.STATEMENT_PROVEN]: SaleEvidence.STATEMENT
+}
+
 @Injectable()
 export class SaleCardOrderService {
   private readonly logger = new Logger(SaleCardOrderService.name)
@@ -182,7 +201,13 @@ export class SaleCardOrderService {
           `short, which is past the allowance. Not executed; a statement settles it.`
       )
 
-      return this.dispute(sale, cardOrder, `confirmed ${shortfall} kopecks short`, declared)
+      return this.dispute(
+        sale,
+        cardOrder,
+        `confirmed ${shortfall} kopecks short`,
+        SaleEvidence.SELLER,
+        declared
+      )
     }
 
     await this.executeUpstream(orderId)
@@ -243,7 +268,7 @@ export class SaleCardOrderService {
     if (cardOrder.confirmDeadlineAt > new Date())
       throw new ConflictException(ERROR.SALE_CARD.ORDER_NOT_OVERDUE)
 
-    return this.dispute(sale, cardOrder, 'denied by the seller')
+    return this.dispute(sale, cardOrder, 'denied by the seller', SaleEvidence.SELLER)
   }
 
   /**
@@ -258,7 +283,9 @@ export class SaleCardOrderService {
   async expire(sale: StoredSale, cardOrder: TmaSaleCardOrder): Promise<StoredSale | null> {
     if (cardOrder.state !== SaleCardOrderState.AWAITING_CONFIRMATION) return null
 
-    return this.dispute(sale, cardOrder, 'unanswered past its deadline')
+    // Nobody asserted anything here. Silence is the fact, and recording it as
+    // the seller's word would put a claim in the trail they never made.
+    return this.dispute(sale, cardOrder, 'unanswered past its deadline', SaleEvidence.SYSTEM)
   }
 
   /**
@@ -296,7 +323,10 @@ export class SaleCardOrderService {
         type: SaleEventType.ORDER_CONFIRMED,
         amount: cardOrder?.amount,
         orderId,
-        at: Date.now()
+        at: Date.now(),
+        // Somebody settled it in Transacto's panel. The seller was never asked,
+        // so this is not their claim and must not read as one.
+        evidence: SaleEvidence.UPSTREAM
       })) ?? moved
 
     await this.resumeIfSettled(withEvent)
@@ -366,13 +396,36 @@ export class SaleCardOrderService {
     )
     if (!moved) return null
 
+    // **This left no trace at all before.** The order moved to `PROVEN_UNPAID`
+    // and the timeline said nothing, so the strongest verdict this product can
+    // reach — a bank's document showing no such credit — was the one outcome
+    // an operator could not read afterwards.
+    const recorded =
+      (await this.saleDbService.appendEvent(saleId, {
+        type: SaleEventType.ORDER_DISPUTED,
+        amount: cardOrder.amount,
+        orderId: cardOrder.orderId,
+        at: Date.now(),
+        evidence: SaleEvidence.STATEMENT
+      })) ?? moved
+
     // The question is answered, so payers may be routed here again. The order
     // itself is finished either way — what is resumed is the *sale*, which
     // still has a target to fill and a stake frozen against it.
+    //
+    // **Decided from `moved`, not from `recorded`.** `moved` is the transition
+    // this method performed and knows the state it established; `recorded` is
+    // whatever a record-keeping write handed back, and routing a payer at a
+    // sale is not a decision to make on the return value of a journal entry.
+    // Reading it from there resumed routing on a sale with another order still
+    // disputed.
     await this.resumeIfSettled(moved)
-    await this.progressService.emit(moved)
 
-    return moved
+    // The snapshot, on the other hand, wants the freshest document — the new
+    // entry is part of what the seller's screen is about to draw.
+    await this.progressService.emit(recorded)
+
+    return recorded
   }
 
   /**
@@ -483,7 +536,7 @@ export class SaleCardOrderService {
     sale: StoredSale,
     cardOrder: TmaSaleCardOrder,
     state: SaleCardOrderState,
-    reason: OrderExecutionReason,
+    reason: SettlingReason,
     creditedKopecks: number = cardOrder.amount
   ): Promise<StoredSale> {
     const saleId = sale._id.toString()
@@ -512,7 +565,11 @@ export class SaleCardOrderService {
         type: SaleEventType.ORDER_CONFIRMED,
         amount: creditedKopecks,
         orderId: cardOrder.orderId,
-        at: Date.now()
+        at: Date.now(),
+        // Derived from the reason rather than passed beside it. They are one
+        // fact — a seller's testimony or a bank's document — and two
+        // parameters carrying it is two things that can disagree.
+        evidence: SETTLING_EVIDENCE[reason]
       })) ?? moved
 
     // What landed, not what was ordered. A jar sale credits the growth the
@@ -559,6 +616,7 @@ export class SaleCardOrderService {
     sale: StoredSale,
     cardOrder: TmaSaleCardOrder,
     context: string,
+    evidence: SaleEvidence,
     declaredAmount?: number
   ): Promise<StoredSale> {
     const saleId = sale._id.toString()
@@ -592,7 +650,11 @@ export class SaleCardOrderService {
         type: SaleEventType.ORDER_DISPUTED,
         amount: cardOrder.amount,
         orderId: cardOrder.orderId,
-        at: Date.now()
+        at: Date.now(),
+        // **Passed, never guessed.** A dispute is reached three ways — the
+        // seller denying, a deadline passing, a document showing no credit —
+        // and the only thing that tells them apart afterwards is this.
+        evidence
       })) ?? moved
 
     this.announce(TMA_DOMAIN_EVENT.SALE_CARD_ORDER_DISPUTED, withEvent, {

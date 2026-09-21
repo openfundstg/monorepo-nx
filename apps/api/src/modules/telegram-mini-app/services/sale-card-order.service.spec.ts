@@ -4,6 +4,7 @@ import {
   OrderExecutionReason,
   SaleCardOrderState,
   SaleEventType,
+  SaleEvidence,
   SaleMethod,
   TmaSaleStatus
 } from '@transacto/contracts'
@@ -799,4 +800,118 @@ describe('SaleCardOrderService', () => {
     })
   })
 
+
+  /**
+   * Whose word each entry stands on.
+   *
+   * **The one column a card sale's timeline exists to have.** This variant has no
+   * witness of its own — the seller types sixteen digits and a name, and both are
+   * claims — so "₴1 428 reached this card" is a completely different fact
+   * depending on who is saying it. Before `evidence` was recorded, a seller
+   * tapping yes and a bank's signed document produced identical entries, and an
+   * operator reading the trail afterwards could not tell which had happened.
+   *
+   * Every one of these is reachable, and three of them write the *same event
+   * type* — which is exactly why the evidence cannot be derived from the type.
+   */
+  describe('evidence', () => {
+    const entry = (call: number) => db.appendEvent.mock.calls[call]?.[1]
+
+    const lastEvidence = (): SaleEvidence | undefined => {
+      const calls = db.appendEvent.mock.calls
+      return calls[calls.length - 1]?.[1]?.evidence
+    }
+
+    describe('an order confirmed', () => {
+      it('stands on the seller when they tapped yes', async () => {
+        await service.confirm(TELEGRAM_ID, SALE_ID, ORDER_ID)
+
+        expect(lastEvidence()).toBe(SaleEvidence.SELLER)
+      })
+
+      /**
+       * The opposite situation, and the same event type.
+       *
+       * A seller denied the payment and a document showed the credit anyway. The
+       * order settles — but on the bank's word, contradicting theirs, and a trail
+       * that recorded this as their confirmation would say they confirmed
+       * something they had denied.
+       */
+      it('stands on the document when a statement contradicted a denial', async () => {
+        await service.confirmFromStatement(
+          sale({ cardOrders: [cardOrder({ state: SaleCardOrderState.DISPUTED })] }),
+          cardOrder({ state: SaleCardOrderState.DISPUTED })
+        )
+
+        expect(lastEvidence()).toBe(SaleEvidence.STATEMENT)
+      })
+    })
+
+    describe('an order disputed', () => {
+      it('stands on the seller when they denied it', async () => {
+        await service.deny(TELEGRAM_ID, SALE_ID, ORDER_ID)
+
+        expect(lastEvidence()).toBe(SaleEvidence.SELLER)
+      })
+
+      /**
+       * Silence is not a claim.
+       *
+       * Nobody asserted anything — a clock ran out. Recording it as the seller's
+       * word would put an assertion in the trail they never made, and a statement
+       * would then be shown to have corroborated a claim that never existed.
+       */
+      it('stands on nobody when the deadline simply passed', async () => {
+        await service.expire(
+          sale({ cardOrders: [cardOrder()] }),
+          cardOrder({ state: SaleCardOrderState.AWAITING_CONFIRMATION })
+        )
+
+        expect(lastEvidence()).toBe(SaleEvidence.SYSTEM)
+      })
+
+      /**
+       * The strongest verdict this product reaches, and it used to leave no trace.
+       *
+       * `denyFromStatement` moved the order to `PROVEN_UNPAID` and wrote nothing
+       * at all — so a bank's document showing no such credit was the one outcome
+       * an operator could not read afterwards.
+       */
+      it('stands on the document when a statement showed no credit', async () => {
+        await service.denyFromStatement(
+          sale({ cardOrders: [cardOrder({ state: SaleCardOrderState.DISPUTED })] }),
+          cardOrder({ state: SaleCardOrderState.DISPUTED })
+        )
+
+        expect(db.appendEvent).toHaveBeenCalledWith(
+          SALE_ID,
+          expect.objectContaining({
+            type: SaleEventType.ORDER_DISPUTED,
+            evidence: SaleEvidence.STATEMENT
+          })
+        )
+      })
+    })
+
+    /**
+     * An operator settled it in Transacto's own panel.
+     *
+     * The seller was never asked, so this is not their claim — and a trail saying
+     * otherwise would attribute a decision to somebody who did not make it.
+     */
+    it('stands on Transacto when an order was settled upstream', async () => {
+      db.moveCardOrder.mockResolvedValue(
+        sale({ cardOrders: [cardOrder({ state: SaleCardOrderState.CONFIRMED })] })
+      )
+
+      await service.markSettledUpstream(sale({ cardOrders: [cardOrder()] }), ORDER_ID)
+
+      expect(entry(0)).toEqual(
+        expect.objectContaining({
+          type: SaleEventType.ORDER_CONFIRMED,
+          evidence: SaleEvidence.UPSTREAM
+        })
+      )
+    })
+  })
 })

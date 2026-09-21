@@ -223,3 +223,19 @@ export enum AdminDocumentDisposition {
   /** Saved, for filing against an appeal. */
   ATTACHMENT = 'attachment',
 }
+
+/**
+ * Which of a row's two figures an amount range applies to.
+ *
+ * Every row in both books carries one of each — a sale has a hryvnia target and
+ * a USDT stake, a deposit has a hryvnia amount and the USDT it credits — and
+ * "over ₴5 000" and "staking over 100 USDT" are different questions about the
+ * same row. A single amount filter would have to answer one of them and be
+ * silently wrong about the other.
+ */
+export enum AdminAmountCurrency {
+  /** Kopecks, on the wire. */
+  UAH = 'UAH',
+  /** Cents, on the wire. */
+  USDT = 'USDT',
+}

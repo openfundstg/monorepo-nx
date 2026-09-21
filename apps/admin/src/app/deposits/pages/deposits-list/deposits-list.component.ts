@@ -9,7 +9,7 @@ import {
 import { filter } from 'rxjs';
 import {
   CollectionTableComponent,
-  FilterChipsComponent,
+  BookFiltersComponent,
   PageHeaderComponent,
   ReasonDialogComponent,
   SearchFieldComponent,
@@ -18,8 +18,10 @@ import {
 import { bindListQuery, formatUah, formatUsdt } from '../../../shared/utils';
 import {
   DEPOSIT_COLUMNS,
-  DEPOSIT_FILTERS,
+  DEPOSIT_VARIANTS,
+  DEPOSIT_STATUSES,
   DEPOSIT_ROW_ACTIONS,
+  depositRowClass,
 } from '../../constants/deposits-columns.const';
 import { depositActions, depositsCollection } from '../../store/deposits.collection';
 
@@ -52,7 +54,7 @@ const ACTION_COPY: Readonly<
   imports: [
     PageHeaderComponent,
     SearchFieldComponent,
-    FilterChipsComponent,
+    BookFiltersComponent,
     CollectionTableComponent,
   ],
   templateUrl: './deposits-list.component.html',
@@ -63,11 +65,14 @@ export class DepositsListComponent {
   private readonly dialog = inject(MatDialog);
 
   readonly columns = DEPOSIT_COLUMNS;
-  readonly filters = DEPOSIT_FILTERS;
+  readonly variants = DEPOSIT_VARIANTS;
+  readonly statuses = DEPOSIT_STATUSES;
   readonly rowActions = DEPOSIT_ROW_ACTIONS;
   readonly state = this.store.selectSignal(depositsCollection.selectors.selectState);
   /** Row identity, from the collection itself — never guessed from a column. */
   readonly rowId = depositsCollection.idOf;
+  /** Which bank the hryvnia came from — see `depositRowClass`. */
+  readonly rowClass = depositRowClass;
 
   constructor() {
     bindListQuery(depositsCollection);
@@ -77,9 +82,9 @@ export class DepositsListComponent {
     this.store.dispatch(depositsCollection.actions.searchChanged({ search }));
   }
 
-  /** `slice`, not `filter`: the name is taken by rxjs at the top of this file. */
-  onFilter(slice: string | null): void {
-    this.store.dispatch(depositsCollection.actions.filterChanged({ filter: slice }));
+  /** The whole form at once — see `BookFiltersComponent.apply`. */
+  onFilters(filters: Readonly<Record<string, string>>): void {
+    this.store.dispatch(depositsCollection.actions.filtersChanged({ filters }));
   }
 
   onPage(event: { page: number; limit: number }): void {

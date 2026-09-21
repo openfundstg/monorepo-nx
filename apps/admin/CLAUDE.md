@@ -189,6 +189,46 @@ was a destination showing everything. `shared/list-query.spec.ts` now reads the
 source of every page that renders `app-collection-table` and fails on either
 mistake, because no type can express "this component read its query string".
 
+### Colour says identity; `ChipTone` says how worried to be
+
+`ChipTone` has four members and that is the point — a palette with a colour per status is one
+where two screens disagree about whether `BLOCKED` is amber or red. So a **bank** and a **sale
+method** do not go through it: neither is good or bad news, and a fifth tone meaning
+"PrivatBank" would make the vocabulary mean nothing. They go through `badge.util.ts`, which is
+the same discipline (`Record<Enum, string>`, no fallback) over a separate axis, and a chip may
+wear a tone and a badge at once. Rows are tinted by bank through the table's `rowClass`, far
+weaker than the badge: a row is a band of colour several hundred pixels wide.
+
+### One filter mechanism, and the units convert at its edge
+
+`CollectionState.filters` is a `Record<string, string>` — the archive's one chip and the two
+books' seven fields are the same mechanism, and `bindListQuery` puts every query parameter that
+is not `search` into it, so a link can narrow a list by anything the destination's DTO accepts.
+
+`BookFiltersComponent` is one component because it mirrors one contract: `AdminBookFilters` is
+the same shape for both books, which is why the backend builds both with one
+`bookFilterClauses`. Only the enumerations differ, and those are inputs.
+
+**It converts at the edge and nowhere else.** A person types hryvnia and USDT; the wire carries
+kopecks and cents, as it does everywhere. A form that sent what was typed would filter "sales
+over ₴5 000" as "sales over ₴50" — not an error anywhere, just a plausible-looking list that is
+wrong by a hundred, on the screen used to answer questions about money. It also **drops
+empties**, because the backend refuses an empty filter and a filter matching nothing is exactly
+what that refusal prevents.
+
+What an operator last narrowed a list to is remembered in `localStorage` per list, through
+`FilterStorageService` — a working preference, not shared state, and every read and write is
+guarded because a private window makes the accessor throw.
+
+### A sale's timeline, and whose word each entry stands on
+
+`/sales/:id` renders `app-sale-timeline`, which is **not** the jar history's shape and must not
+become it. A jar row is an observation; a card row is an assertion plus whatever later
+corroborated it. `evidence` is therefore a column rather than a detail, and an entry whose
+evidence is `SELLER` with no `corroboratedBy` is drawn as what it is — a claim nobody has
+checked. `evidence: null` is every entry written before this was recorded, and is shown as
+unknown rather than guessed. See the card-sale note in the root `CLAUDE.md` for the rule itself.
+
 ### Documents are shown, and their bytes are ours to serve
 
 `/documents` lists every file this product holds — statements and receipts

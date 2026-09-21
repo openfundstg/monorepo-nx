@@ -1,10 +1,18 @@
-import { AdminSaleAction, AdminSaleFilter, type AdminSaleListItem } from '@transacto/contracts';
+import {
+  AdminSaleAction,
+  AdminSaleFilter,
+  TmaSaleStatus,
+  type AdminSaleListItem,
+} from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction, RowLink } from '../../shared/interfaces';
-import type { FilterChip } from '../../shared/components';
+import type { FilterOption } from '../../shared/components';
 import {
+  bankBadge,
+  bankRowClass,
   cardOrderTone,
   documentsForLink,
+  saleMethodBadge,
   unknownTone,
   ordersLink,
   saleLink,
@@ -15,20 +23,28 @@ import {
 } from '../../shared/utils';
 
 /**
- * The three slices of the sales book.
+ * The slices of the sales book.
  *
  * **The dispute queue is one of them rather than a screen**, which is the whole
  * point of the merge. An operator arriving from Transacto's panel holding an
  * order number used to land on a list that could find the dispute and nothing
  * around it — not the seller, not the stake, not the terminal. Here the same
- * number finds the sale, and the queue is a chip away.
+ * number finds the sale, and the queue is one selection away.
+ *
+ * `DISPUTED` sits beside the two methods although it is not one: it is the
+ * queue only a person empties, and burying it a level deeper than the thing it
+ * is a slice *of* would be filing it where nobody looks.
  */
-export const SALE_FILTERS: readonly FilterChip[] = [
-  { value: null, label: 'sales.filter_all' },
+export const SALE_VARIANTS: readonly FilterOption[] = [
   { value: AdminSaleFilter.JAR, label: 'sales.filter_jar' },
   { value: AdminSaleFilter.CARD, label: 'sales.filter_card' },
   { value: AdminSaleFilter.DISPUTED, label: 'sales.filter_disputed' },
 ];
+
+/** Every status a sale can be in, as the form offers them. */
+export const SALE_STATUSES: readonly FilterOption[] = Object.values(TmaSaleStatus).map(
+  (status) => ({ value: status, label: `SALE_STATUS.${status}` }),
+);
 
 /**
  * A sale, with the three figures that say what it is doing:
@@ -68,14 +84,36 @@ export const SALE_COLUMNS: readonly ColumnDef<AdminSaleListItem>[] = [
     width: '110px',
   },
   {
+    /**
+     * How this sale pays out, drawn as an identity rather than a verdict.
+     *
+     * Neither method is better than the other — they are answered in completely
+     * different ways, and that is what the colour is for. A `ChipTone` would
+     * say "be worried", which is not what a method means.
+     */
     key: 'saleMethod',
     header: 'sales.method',
     type: ColumnType.CHIP,
     value: (order) => order.saleMethod,
     translatePrefix: 'SALE_METHOD',
-    // Neither method is better than the other, so neither is toned: the chip is
-    // here to be read, not to alarm.
     tone: unknownTone,
+    badgeClass: (order) => saleMethodBadge(order.saleMethod),
+    width: '110px',
+  },
+  {
+    /**
+     * Which bank the money moves through.
+     *
+     * Back as a column, and coloured: a book that mixes banks is read by bank
+     * first and by row second, because which bank a payment went through
+     * decides who can be asked about it and what document could prove it.
+     */
+    key: 'bankType',
+    header: 'sales.bank',
+    type: ColumnType.CHIP,
+    value: (order) => order.bankType,
+    tone: unknownTone,
+    badgeClass: (order) => bankBadge(order.bankType),
     width: '110px',
   },
   {
@@ -231,3 +269,12 @@ export const SALE_ROW_ACTIONS: readonly RowAction<AdminSaleListItem>[] = [
     destructive: true,
   },
 ];
+
+/**
+ * The tint a sale's row carries.
+ *
+ * Exported beside the columns rather than built in the page, so anything that
+ * lists sales paints them the same.
+ */
+export const saleRowClass = (order: AdminSaleListItem): string | null =>
+  bankRowClass(order.bankType);

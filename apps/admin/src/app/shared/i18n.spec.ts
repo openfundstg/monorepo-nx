@@ -9,6 +9,8 @@ import {
   OrderStatus,
   SaleBlockReason,
   SaleCardOrderState,
+  SaleEventType,
+  SaleEvidence,
   SaleMethod,
   SaleStatementRejection,
   SaleStatementStatus,
@@ -110,6 +112,19 @@ describe('translation keys built by concatenation', () => {
     expectEveryMember('RECEIPT_STATUS', Object.values(TmaFiatReceiptStatus));
     expectEveryMember('STATEMENT_REJECTION', Object.values(SaleStatementRejection));
     expectEveryMember('RECEIPT_REJECTION', Object.values(TmaFiatReceiptRejection));
+  });
+
+  /**
+   * `'SALE_EVENT.' + type` and `'SALE_EVIDENCE.' + evidence`.
+   *
+   * The sale's timeline is the one screen where an unrendered key is worse than
+   * useless rather than merely ugly: the column says *whose word this stands
+   * on*, and a row reading `SALE_EVIDENCE.STATEMENT` next to somebody's money
+   * is a row an operator cannot act on.
+   */
+  it('covers every timeline event and every kind of evidence', () => {
+    expectEveryMember('SALE_EVENT', Object.values(SaleEventType));
+    expectEveryMember('SALE_EVIDENCE', Object.values(SaleEvidence));
   });
 
   /** `'SALE_BLOCK_REASON.' + reason` — the chip on a blocked sale's own page. */

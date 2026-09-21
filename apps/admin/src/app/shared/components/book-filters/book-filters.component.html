@@ -1,0 +1,90 @@
+<section class="filters card">
+  <header class="filters__head">
+    <button type="button" class="filters__toggle" (click)="toggle()">
+      <mat-icon>{{ expanded() ? 'expand_less' : 'expand_more' }}</mat-icon>
+      {{ 'filters.title' | translate }}
+      <!--
+        The count is on the *collapsed* header for a reason: a folded form hides
+        why a list is short, and a short list under a forgotten filter reads
+        exactly like a book with nothing in it.
+      -->
+      @if (activeCount() > 0) {
+        <span class="filters__count">{{ activeCount() }}</span>
+      }
+    </button>
+
+    @if (activeCount() > 0) {
+      <button mat-button type="button" (click)="clear()">
+        <mat-icon>filter_alt_off</mat-icon>
+        {{ 'filters.clear' | translate }}
+      </button>
+    }
+  </header>
+
+  @if (expanded()) {
+    <form class="filters__body" [formGroup]="form">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ variantLabel() | translate }}</mat-label>
+        <mat-select formControlName="filter">
+          <mat-option value="">{{ 'filters.any' | translate }}</mat-option>
+          @for (option of variants(); track option.value) {
+            <mat-option [value]="option.value">{{ option.label | translate }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'common.status' | translate }}</mat-label>
+        <mat-select formControlName="status">
+          <mat-option value="">{{ 'filters.any' | translate }}</mat-option>
+          @for (option of statuses(); track option.value) {
+            <mat-option [value]="option.value">{{ option.label | translate }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <!--
+        A native date input rather than a Material datepicker: two fields do not
+        justify a date adapter, a locale provider and a module in every screen
+        that shows a book.
+      -->
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'filters.from' | translate }}</mat-label>
+        <input matInput type="date" formControlName="from" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'filters.to' | translate }}</mat-label>
+        <input matInput type="date" formControlName="to" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="filters__currency">
+        <mat-label>{{ 'filters.currency' | translate }}</mat-label>
+        <mat-select formControlName="currency">
+          <mat-option [value]="Currency.UAH">{{ 'filters.uah' | translate }}</mat-option>
+          <mat-option [value]="Currency.USDT">{{ 'filters.usdt' | translate }}</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <!--
+        Typed in hryvnia and USDT, sent in kopecks and cents. The conversion is
+        in `toSubunits`, and it is the only place in this app that does it.
+      -->
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'filters.amount_from' | translate }}</mat-label>
+        <input matInput inputmode="decimal" formControlName="minAmount" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'filters.amount_to' | translate }}</mat-label>
+        <input matInput inputmode="decimal" formControlName="maxAmount" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline">
+        <mat-label>{{ 'filters.user' | translate }}</mat-label>
+        <input matInput inputmode="numeric" formControlName="telegramId" />
+        <mat-hint>{{ 'filters.user_hint' | translate }}</mat-hint>
+      </mat-form-field>
+    </form>
+  }
+</section>

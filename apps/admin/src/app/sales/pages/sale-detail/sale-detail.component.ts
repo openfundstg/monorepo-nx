@@ -6,7 +6,12 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AdminDocumentKind, SaleMethod } from '@transacto/contracts';
-import { DocumentRowComponent, StatusChipComponent } from '../../../shared/components';
+import {
+  DocumentRowComponent,
+  SaleTimelineComponent,
+  StatusChipComponent,
+} from '../../../shared/components';
+import { DocumentFileService } from '../../../shared/services';
 import { DateTimePipe, UahPipe, UsdtPipe } from '../../../shared/pipes';
 import {
   cardOrderTone,
@@ -44,6 +49,7 @@ import { SaleDetailService } from '../../services/sale-detail.service';
     TranslatePipe,
     StatusChipComponent,
     DocumentRowComponent,
+    SaleTimelineComponent,
     UahPipe,
     UsdtPipe,
     DateTimePipe,
@@ -56,6 +62,18 @@ export class SaleDetailComponent {
   readonly id = input.required<string>();
 
   private readonly sales = inject(SaleDetailService);
+  private readonly files = inject(DocumentFileService);
+
+  /**
+   * Where a statement named on the timeline opens.
+   *
+   * A bound field rather than a method call in the template: an arrow rebuilt
+   * on every change detection is a new input reference every time, which
+   * `OnPush` will happily re-render forever. Statements are the only kind a
+   * sale's timeline can name.
+   */
+  protected readonly statementUrl = (statementId: string): string =>
+    this.files.url({ kind: AdminDocumentKind.SALE_STATEMENT, id: statementId });
 
   readonly detail = this.sales.detail;
   readonly loading = this.sales.loading;

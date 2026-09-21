@@ -2,8 +2,10 @@ import { StatementSubject } from 'src/shared/interfaces'
 import {
   BankProvider,
   ERROR,
+  SALE_EVENT_EVIDENCE,
   SaleCardOrderState,
   SaleEventType,
+  SaleEvidence,
   SaleMethod,
   SaleReceiverNameSource,
   SaleRemainderPolicy,
@@ -658,6 +660,12 @@ export class TmaSaleDbService {
   /**
    * Appends a timeline entry and, for money events, advances `receivedAmount`
    * in the same atomic update so the two can never disagree.
+   *
+   * `evidence` says **who says so**, and defaults to the one answer its type
+   * usually has — see `SALE_EVENT_EVIDENCE`. Three types are reached on more
+   * than one kind of word and those callers pass their own: an order can be
+   * confirmed by a seller tapping yes or by a bank statement contradicting
+   * their denial, and a dispute can be a denial, a deadline or a document.
    */
   async appendEvent(
     id: string,
@@ -666,6 +674,8 @@ export class TmaSaleDbService {
       amount?: number
       orderId?: number
       at: number
+      evidence?: SaleEvidence
+      statementId?: Types.ObjectId
     },
     receivedDelta = 0
   ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
@@ -678,7 +688,11 @@ export class TmaSaleDbService {
               type: event.type,
               amount: event.amount ?? null,
               orderId: event.orderId ?? null,
-              at: event.at
+              at: event.at,
+              evidence: event.evidence ?? SALE_EVENT_EVIDENCE[event.type],
+              statementId: event.statementId ?? null,
+              corroboratedByStatementId: null,
+              corroboratedAt: null
             }
           },
           ...(receivedDelta !== 0 ? { $inc: { receivedAmount: receivedDelta } } : {})
@@ -686,6 +700,62 @@ export class TmaSaleDbService {
         { returnDocument: 'after' }
       )
       .lean()
+  }
+
+  /**
+   * Stamps every claim an accepted statement covers as settled by it.
+   *
+   * **The checkpoint, and it writes backwards.** A statement vouches for a
+   * period; everything the *seller* asserted inside that period is now a matter
+   * of record rather than of their word, and those entries were written days
+   * earlier. `arrayFilters` is what makes that one atomic update rather than a
+   * read, a rewrite of the whole array, and a race with whatever else is
+   * touching this sale.
+   *
+   * Four conditions, each deliberate:
+   *
+   * - **`evidence: SELLER` only.** An order arriving and an order executing are
+   *   Transacto's facts and were never in doubt; a deadline passing is a clock.
+   *   Stamping those would claim a document corroborated something it has
+   *   nothing to say about.
+   * - **Not already stamped.** The first statement to cover a claim is the one
+   *   that settled it. Keeping the first keeps the trail honest about *when* a
+   *   claim stopped being only a claim.
+   * - **Inside the document's own period**, inclusive — a statement proves
+   *   nothing about a moment it does not cover, which is the same rule that
+   *   makes `PERIOD_TOO_SHORT` a refusal.
+   * - **`at` is epoch milliseconds**, so the bounds are converted rather than
+   *   compared as dates. Comparing a `Date` against a `number` in Mongo matches
+   *   nothing at all and does it silently.
+   *
+   * Answers how many entries it stamped.
+   */
+  async corroborateEvents(
+    id: string,
+    period: { from: Date; to: Date },
+    statementId: Types.ObjectId,
+    at: Date
+  ): Promise<number> {
+    const result = await this.saleModel.updateOne(
+      { _id: new Types.ObjectId(id) },
+      {
+        $set: {
+          'events.$[claim].corroboratedByStatementId': statementId,
+          'events.$[claim].corroboratedAt': at
+        }
+      },
+      {
+        arrayFilters: [
+          {
+            'claim.evidence': SaleEvidence.SELLER,
+            'claim.corroboratedByStatementId': null,
+            'claim.at': { $gte: period.from.getTime(), $lte: period.to.getTime() }
+          }
+        ]
+      }
+    )
+
+    return result.modifiedCount ?? 0
   }
 
   /**

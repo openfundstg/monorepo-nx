@@ -33,10 +33,54 @@ export interface AdminDepositFeedFilter {
    * match a row on either rail.
    */
   readonly id?: Types.ObjectId
+  /**
+   * The narrowing both books share, already turned into Mongo clauses.
+   *
+   * **Applied after the union, not per branch**, and that is forced rather than
+   * chosen: `cryptoCents` does not exist on either collection — the crypto rail
+   * stores whole USDT and the pipeline converts — so a range over it can only
+   * be asked of the projected shape. Doing it there also means one clause
+   * instead of two that can drift.
+   */
+  readonly clauses?: Record<string, unknown>
 }
 
 /** USDT cents per whole USDT. The crypto collection stores whole units. */
 const CENTS_PER_USDT = 100
+
+/**
+ * Which bank a hryvnia top-up's money came from.
+ *
+ * **The accepted receipt's bank first, then any receipt that named one.** A
+ * refused receipt still says where the payer banks, and that is usually the
+ * fact an operator is after — they are asking *about* the refusal. `null`
+ * where nobody has sent a receipt, and on every receipt uploaded before the
+ * bank was recorded at all.
+ */
+const bankOfReceipts = (acceptedOnly: boolean): Record<string, unknown> => ({
+  $last: {
+    $map: {
+      input: {
+        $filter: {
+          input: { $ifNull: ['$receipts', []] },
+          as: 'receipt',
+          cond: acceptedOnly
+            ? {
+                $and: [
+                  { $eq: ['$$receipt.status', TmaFiatReceiptStatus.ACCEPTED] },
+                  { $ne: ['$$receipt.bank', null] }
+                ]
+              }
+            : { $ne: ['$$receipt.bank', null] }
+        }
+      },
+      as: 'receipt',
+      in: '$$receipt.bank'
+    }
+  }
+})
+
+const BANK_OF_RECEIPTS = { $ifNull: [bankOfReceipts(true), bankOfReceipts(false), null] }
 
 /**
  * The two ways money comes in, read as one book.
@@ -72,7 +116,7 @@ export class AdminDepositFeedDbService {
   ): Promise<Page<AdminDepositFeedRow>> {
     return facetPage<AdminDepositFeedRow, TmaDepositDocument>(
       this.depositModel,
-      [...this.cryptoBranch(filter), ...this.fiatBranch(filter)],
+      [...this.cryptoBranch(filter), ...this.fiatBranch(filter), ...this.narrowing(filter)],
       page
     )
   }
@@ -103,6 +147,8 @@ export class AdminDepositFeedDbService {
           coveredUah: { $literal: null },
           documentCount: { $literal: 0 },
           acceptedDocumentCount: { $literal: 0 },
+          // USDT arrives over a chain, not through a bank.
+          bank: { $literal: null },
           payoutId: { $literal: null },
           txId: 1,
           deadlineAt: '$expiresAt',
@@ -141,6 +187,7 @@ export class AdminDepositFeedDbService {
                     }
                   }
                 },
+                bank: BANK_OF_RECEIPTS,
                 payoutId: 1,
                 txId: { $literal: null },
                 deadlineAt: '$payDeadlineAt',
@@ -207,6 +254,18 @@ export class AdminDepositFeedDbService {
         ...(Number.isFinite(asNumber) ? [{ payoutId: asNumber }, { telegramId: asNumber }] : [])
       ]
     }
+  }
+
+  /**
+   * The caller's own clauses, over the projected shape.
+   *
+   * Empty when nothing was asked, which is the ordinary case — an extra `$match`
+   * of `{}` would be a stage that reads every document to keep all of them.
+   */
+  private narrowing(filter: AdminDepositFeedFilter): PipelineStage[] {
+    const clauses = filter.clauses ?? {}
+
+    return Object.keys(clauses).length > 0 ? [{ $match: clauses }] : []
   }
 
   /** The narrowing both branches share: one person, or one row. */

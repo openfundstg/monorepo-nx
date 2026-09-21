@@ -129,7 +129,11 @@ export class SaleStatementService {
     await this.saleDbService.appendEvent(saleId, {
       type: SaleEventType.STATEMENT_SUBMITTED,
       orderId,
-      at: Date.now()
+      at: Date.now(),
+      // So the timeline entry can open the document it is about. Sending a file
+      // is an act of the seller's rather than evidence of anything — nothing
+      // has read it yet — which is what `SALE_EVENT_EVIDENCE` records.
+      statementId
     })
 
     return this.judge(stored, cardOrder, statementId, { bank, uploaded: file })
@@ -170,7 +174,8 @@ export class SaleStatementService {
       await this.saleDbService.appendEvent(saleId, {
         type: SaleEventType.STATEMENT_REJECTED,
         orderId: cardOrder.orderId,
-        at: Date.now()
+        at: Date.now(),
+        statementId
       })
 
       return this.reread(saleId, sale)
@@ -186,7 +191,7 @@ export class SaleStatementService {
     // covers a period, and every claim the seller made inside that period has
     // now been read — so they are all settled here, not just the one this upload
     // was addressed to.
-    if (statement !== null) await this.checkpoint(sale, statement)
+    if (statement !== null) await this.checkpoint(sale, statement, statementId)
 
     // A statement uploaded to settle a shortfall, not to answer a denial. The
     // checkpoint above is the whole of its job, and it is the whole of it
@@ -230,8 +235,31 @@ export class SaleStatementService {
    * guessing which was the order's would either invent a correction or miss a
    * real one. It is logged, and an operator has the document.
    */
-  private async checkpoint(sale: StoredSale, statement: ParsedStatement): Promise<void> {
+  private async checkpoint(
+    sale: StoredSale,
+    statement: ParsedStatement,
+    statementId: Types.ObjectId
+  ): Promise<void> {
     const saleId = sale._id.toString()
+
+    // The checkpoint event itself, and the only entry that marks a document
+    // *holding up*. An accepted statement often changes no order's state at all
+    // — it agrees with everything the seller already said — and without this
+    // the strongest evidence this product ever obtains would leave no trace on
+    // the one screen built to show what is proven and what is merely claimed.
+    // No `orderId`: a checkpoint is about a *period*, not about one payment.
+    // Pinning it to the order this upload happened to answer would hide that it
+    // settles every claim inside its window.
+    await this.saleDbService.appendEvent(saleId, {
+      type: SaleEventType.STATEMENT_ACCEPTED,
+      at: Date.now(),
+      statementId
+    })
+
+    // **And the claims it covers stop being claims.** This writes backwards
+    // over entries recorded days earlier — see
+    // `TmaSaleDbService.corroborateEvents` for which ones and why only those.
+    await this.corroborate(sale, statement, statementId)
 
     const { correctionKopecks, unsettled } = statementCorrection(
       sale.cardOrders ?? [],
@@ -267,6 +295,48 @@ export class SaleStatementService {
     if (updated === null) {
       this.logger.debug(
         `Sale ${sale.publicId}: a later statement already reaches past this one; nothing moved.`
+      )
+    }
+  }
+
+  /**
+   * Settles every claim this document vouches for.
+   *
+   * **A statement proves nothing about a moment it does not cover** — the same
+   * rule that makes `PERIOD_TOO_SHORT` a refusal — so a document whose dates
+   * could not be read corroborates nothing, and that is an outcome rather than
+   * a failure.
+   *
+   * Swallowed, like every other write on this path that is a record rather than
+   * a decision: the statement has already been judged and the order has already
+   * moved, and a failure to stamp a trail must not turn a settled dispute into
+   * an error on somebody's screen.
+   */
+  private async corroborate(
+    sale: StoredSale,
+    statement: ParsedStatement,
+    statementId: Types.ObjectId
+  ): Promise<void> {
+    if (statement.periodFrom === null || statement.periodTo === null) return
+
+    try {
+      const stamped = await this.saleDbService.corroborateEvents(
+        sale._id.toString(),
+        { from: statement.periodFrom, to: statement.periodTo },
+        statementId,
+        new Date()
+      )
+
+      if (stamped > 0) {
+        this.logger.log(
+          `Sale ${sale.publicId}: statement ${statementId.toString()} corroborated ${stamped} ` +
+            `earlier claim(s) of the seller's`
+        )
+      }
+    } catch (error: unknown) {
+      this.logger.error(
+        `Sale ${sale.publicId}: statement ${statementId.toString()} could not corroborate ` +
+          `earlier claims: ${describeError(error)}`
       )
     }
   }

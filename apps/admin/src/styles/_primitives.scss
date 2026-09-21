@@ -213,3 +213,84 @@
   width: 15px;
   height: 15px;
 }
+
+/*
+ * Identity badges: which bank, and which way a sale pays out.
+ *
+ * Beside `.chip` rather than inside it, and carrying no tone: `ChipTone` says
+ * how worried to be, and neither of these is a worry. A chip may wear one of
+ * these *and* a tone — the method badge does, so that it reads as a badge and
+ * not as a verdict.
+ */
+.badge--bank-MONO {
+  background: var(--bank-mono-dim);
+  color: var(--bank-mono);
+}
+
+.badge--bank-PRIVAT {
+  background: var(--bank-privat-dim);
+  color: var(--bank-privat);
+}
+
+.badge--bank-PUMB {
+  background: var(--bank-pumb-dim);
+  color: var(--bank-pumb);
+}
+
+.badge--bank-NOVAPAY {
+  background: var(--bank-novapay-dim);
+  color: var(--bank-novapay);
+}
+
+.badge--method-JAR {
+  background: var(--method-jar-dim);
+  color: var(--method-jar);
+}
+
+.badge--method-CARD {
+  background: var(--method-card-dim);
+  color: var(--method-card);
+}
+
+/*
+ * A row tinted by its bank.
+ *
+ * A left border carries most of the signal and the wash behind it only helps —
+ * on a dark surface a 5% tint is at the edge of visible, while a border is
+ * unambiguous and costs no contrast anywhere else in the row.
+ */
+.row--bank-MONO td:first-child {
+  box-shadow: inset 3px 0 0 var(--bank-mono);
+}
+
+.row--bank-PRIVAT td:first-child {
+  box-shadow: inset 3px 0 0 var(--bank-privat);
+}
+
+.row--bank-PUMB td:first-child {
+  box-shadow: inset 3px 0 0 var(--bank-pumb);
+}
+
+.row--bank-NOVAPAY td:first-child {
+  box-shadow: inset 3px 0 0 var(--bank-novapay);
+}
+
+.row--bank-MONO td {
+  background: color-mix(in srgb, var(--bank-mono) calc(var(--row-tint-alpha) * 100%), transparent);
+}
+
+.row--bank-PRIVAT td {
+  background: color-mix(in srgb, var(--bank-privat) calc(var(--row-tint-alpha) * 100%), transparent);
+}
+
+.row--bank-PUMB td {
+  background: color-mix(in srgb, var(--bank-pumb) calc(var(--row-tint-alpha) * 100%), transparent);
+}
+
+.row--bank-NOVAPAY td {
+  background: color-mix(
+    in srgb,
+    var(--bank-novapay) calc(var(--row-tint-alpha) * 100%),
+    transparent
+  );
+}

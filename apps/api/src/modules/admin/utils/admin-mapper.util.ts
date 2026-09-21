@@ -12,6 +12,7 @@ import {
   type AdminDocumentListItem,
   type AdminSaleCardOrder,
   type AdminSaleCardOrderSummary,
+  type AdminSaleHistoryItem,
   type AdminSaleStatement,
   type AdminFiatDepositListItem,
   type AdminFiatDepositWatchListItem,
@@ -37,6 +38,7 @@ import { allowedSaleActions } from './sale-actions.util'
 import type { StoredTmaUser } from 'src/modules/repositories/tma-user-db/services'
 import type {
   TmaSaleCardOrder,
+  TmaSaleEvent,
   TmaSaleStatement
 } from 'src/modules/repositories/tma-sale-db/schemas'
 import type {
@@ -716,9 +718,38 @@ export const toAdminDepositRow = (
   coveredUah: row.coveredUah,
   documentCount: row.documentCount,
   acceptedDocumentCount: row.acceptedDocumentCount,
+  bank: row.bank ?? null,
   payoutId: row.payoutId,
   txId: row.txId,
   deadlineAt: isoRequired(row.deadlineAt),
   completedAt: iso(row.completedAt),
   createdAt: isoRequired(row.createdAt)
+})
+
+/**
+ * One entry of a sale's timeline.
+ *
+ * The `evidence` and `corroboratedBy` pair is what this row has that the jar's
+ * scraping history does not, and the reason it exists: a seller's claim and a
+ * bank's document say the same sentence and mean opposite things, and until
+ * this was recorded nothing told them apart afterwards.
+ *
+ * **`evidence` is `null` on every entry written before it existed.** Read as
+ * unknown rather than defaulted to anything — nobody recorded whose word those
+ * stood on, and picking an answer now would invent a fact about somebody's
+ * money.
+ */
+export const toAdminSaleHistory = (event: TmaSaleEvent): AdminSaleHistoryItem => ({
+  id: event._id.toString(),
+  orderId: event.orderId,
+  type: event.type,
+  evidence: event.evidence ?? null,
+  amount: event.amount,
+  // Epoch milliseconds on the way in, ISO on the way out — the conversion every
+  // other row here makes, in the one place that makes it.
+  at: new Date(event.at).toISOString(),
+  statementId: event.statementId?.toString() ?? null,
+  corroboratedBy: event.corroboratedByStatementId?.toString() ?? null,
+  corroboratedAt: iso(event.corroboratedAt),
+  metadata: null
 })

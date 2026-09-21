@@ -3,6 +3,7 @@ import type {
   AdminAuditTargetType,
   AdminBalanceOperation,
   AdminBalanceTarget,
+  AdminAmountCurrency,
   AdminDepositKind,
   AdminDocumentKind,
   AdminFiatDepositAction,
@@ -17,6 +18,8 @@ import type { TerminalSource } from '../enums/terminal-source.enum.js';
 import type {
   SaleBlockReason,
   SaleCardOrderState,
+  SaleEventType,
+  SaleEvidence,
   SaleMethod,
   SaleReceiverNameSource,
   SaleRemainderPolicy,
@@ -82,13 +85,45 @@ export interface AdminPageReq {
   readonly filter?: string;
 }
 
+/**
+ * The narrowing the two books share.
+ *
+ * **Every amount here is in the base unit** — kopecks for hryvnia, cents for
+ * USDT — like every other figure on this wire. The form a person types into
+ * deals in hryvnia and USDT and converts once, on the way out; a range that
+ * travelled in human units would be the one place in the product where a
+ * number means something different from everywhere else.
+ */
+export interface AdminBookFilters {
+  /** ISO date. Inclusive, from the start of that day in the server's timezone. */
+  readonly from?: string;
+  /** ISO date. Inclusive, to the end of that day. */
+  readonly to?: string;
+  /**
+   * Which figure the range below applies to.
+   *
+   * A sale has a hryvnia target and a USDT stake, and a deposit has a hryvnia
+   * amount and the USDT it credits. They are different questions — "sales over
+   * ₴5 000" and "sales staking over 100 USDT" — and a single amount field
+   * would have to pick one and be wrong for the other half of the time.
+   */
+  readonly currency?: AdminAmountCurrency;
+  /** Base units of {@link currency}. Inclusive. */
+  readonly minAmount?: number;
+  readonly maxAmount?: number;
+  /** One status, as that list's own enum spells it. */
+  readonly status?: string;
+  /** Whose rows to show. */
+  readonly telegramId?: number;
+}
+
 /** `GET /api/admin/sales`, whose slice is {@link AdminSaleFilter}. */
-export interface AdminSalesPageReq extends AdminPageReq {
+export interface AdminSalesPageReq extends AdminPageReq, AdminBookFilters {
   readonly filter?: AdminSaleFilter;
 }
 
 /** `GET /api/admin/deposits`, whose slice is {@link AdminDepositKind}. */
-export interface AdminDepositsPageReq extends AdminPageReq {
+export interface AdminDepositsPageReq extends AdminPageReq, AdminBookFilters {
   readonly filter?: AdminDepositKind;
 }
 
@@ -939,6 +974,55 @@ export interface AdminSaleCardOrder extends AdminSaleCardOrderSummary {
 }
 
 /**
+ * One thing that happened to a card sale, and who says so.
+ *
+ * **The card variant's answer to the jar's scraping history**, and deliberately
+ * not the same shape. A jar row is an observation — the bank was asked what the
+ * balance was — so it carries balances and deltas. Nobody can ask a seller's
+ * own card anything, so a card sale's row carries an assertion and the thing
+ * that later backed it up.
+ *
+ * Rendered as `'SALE_EVENT.' + type`, with {@link metadata} supplying whatever
+ * the sentence interpolates — the same rule as everywhere else, so nothing here
+ * is a stored sentence.
+ */
+export interface AdminSaleHistoryItem {
+  readonly id: string;
+  /** Transacto's order number this concerns, or `null` for a sale-wide event. */
+  readonly orderId: number | null;
+  readonly type: SaleEventType;
+  /**
+   * Whose word this stands on.
+   *
+   * `null` on every entry written before this was recorded — read as unknown
+   * rather than as any particular answer, because nobody wrote one down and
+   * picking one now would invent a fact about somebody's money.
+   */
+  readonly evidence: SaleEvidence | null;
+  /** UAH kopecks the event is about, where it is about a sum. */
+  readonly amount: number | null;
+  readonly at: string;
+  /**
+   * The statement this entry is *about* — set on the statement events
+   * themselves, so the row can link to the document.
+   */
+  readonly statementId: string | null;
+  /**
+   * The statement that later vouched for this entry, or `null`.
+   *
+   * **This is the checkpoint.** An accepted statement covers a period, and
+   * everything the seller asserted inside it is settled by the document rather
+   * than by their word — recorded here after the fact, on entries that were
+   * written long before. A `SELLER` row with this empty is a claim nobody has
+   * corroborated yet, which is exactly what an operator needs to see.
+   */
+  readonly corroboratedBy: string | null;
+  readonly corroboratedAt: string | null;
+  /** Everything `'SALE_EVENT.' + type` interpolates. Never a rendered sentence. */
+  readonly metadata: Readonly<Record<string, unknown>> | null;
+}
+
+/**
  * `GET /api/admin/sales/:id` — one sale and everything attached to it.
  *
  * **Assembled here rather than linked to.** An operator working a complaint
@@ -964,6 +1048,19 @@ export interface AdminSaleDetailRes {
   readonly terminal: AdminTerminalListItem | null;
   /** Every document sent about this sale, newest first. */
   readonly documents: readonly AdminDocumentListItem[];
+  /**
+   * What happened to this sale, oldest first.
+   *
+   * The sale's own timeline — the same one the seller is shown in the Mini App,
+   * plus the entries that are an operator's business and not theirs. On a jar
+   * sale these are the scraper's observations; on a card sale they are
+   * assertions and whatever later corroborated them, which is a difference
+   * {@link AdminSaleHistoryItem.evidence} exists to make legible.
+   *
+   * Oldest first because it is read as a story rather than scanned as a book —
+   * the opposite of every list in this panel, and deliberately.
+   */
+  readonly history: readonly AdminSaleHistoryItem[];
 }
 
 // --- The deposits book -----------------------------------------------------
@@ -1011,6 +1108,18 @@ export interface AdminDepositRowItem {
   readonly documentCount: number;
   /** Of those, the ones that were accepted. */
   readonly acceptedDocumentCount: number;
+  /**
+   * Which bank the hryvnia came from, once a receipt has said so.
+   *
+   * The accepted receipt's bank where there is one, otherwise the last receipt
+   * that named a bank at all — a refused receipt still says where the payer
+   * banks, which is the fact an operator is usually after. `null` on a crypto
+   * deposit, which has no bank, and on a top-up nobody has sent a receipt for.
+   *
+   * Carried so the book can be read by bank at a glance. It decides who can be
+   * asked about a payment and what document could prove it.
+   */
+  readonly bank: BankProvider | null;
   /** Transacto's payout id on a fiat top-up, `null` on a crypto deposit. */
   readonly payoutId: number | null;
   /** The chain transaction on a crypto deposit, `null` on a fiat top-up. */

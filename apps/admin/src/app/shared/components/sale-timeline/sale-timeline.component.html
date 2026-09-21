@@ -1,0 +1,73 @@
+@if (rows().length === 0) {
+  <p class="muted">{{ 'sales.no_history' | translate }}</p>
+} @else {
+  <ol class="timeline">
+    @for (row of rows(); track row.entry.id) {
+      <li class="timeline__row" [class.timeline__row--unproven]="row.unproven">
+        <span class="timeline__time muted">{{ row.entry.at | dateTime }}</span>
+
+        <span class="timeline__what">{{ 'SALE_EVENT.' + row.entry.type | translate }}</span>
+
+        @if (row.entry.orderId; as orderId) {
+          <a class="ref mono" [routerLink]="['/orders']" [queryParams]="{ search: orderId }">
+            {{ orderId }}
+          </a>
+        }
+
+        @if (row.entry.amount !== null) {
+          <span class="timeline__amount">{{ row.entry.amount | uah }}</span>
+        }
+
+        <!--
+          Whose word. The column this screen exists to have — see the component.
+        -->
+        @if (row.entry.evidence; as evidence) {
+          <app-status-chip
+            [value]="evidence"
+            [tone]="evidenceTone(evidence)"
+            translatePrefix="SALE_EVIDENCE"
+          />
+        } @else {
+          <!--
+            Written before evidence was recorded. Shown as unknown rather than
+            guessed: nobody wrote down whose word it stood on.
+          -->
+          <app-status-chip value="SALE_EVIDENCE_UNKNOWN" translatePrefix="SALE_EVIDENCE" />
+        }
+
+        @if (row.entry.corroboratedBy; as statementId) {
+          <!--
+            The checkpoint, seen from the claim's side: this assertion stopped
+            being an assertion when that document was accepted.
+          -->
+          <span class="timeline__proof" [matTooltip]="'sales.corroborated_hint' | translate">
+            <mat-icon class="ref__icon">verified</mat-icon>
+            @if (fileUrl(statementId); as href) {
+              <a class="ref" [href]="href" target="_blank" rel="noopener noreferrer">
+                {{ 'sales.corroborated' | translate }}
+              </a>
+            } @else {
+              {{ 'sales.corroborated' | translate }}
+            }
+            <span class="muted">{{ row.entry.corroboratedAt | dateTime }}</span>
+          </span>
+        } @else if (row.unproven) {
+          <span class="timeline__unproven" [matTooltip]="'sales.unproven_hint' | translate">
+            <mat-icon class="ref__icon">help</mat-icon>
+            {{ 'sales.unproven' | translate }}
+          </span>
+        }
+
+        <!-- The document this entry is *about*, for the statement events. -->
+        @if (row.entry.statementId; as statementId) {
+          @if (fileUrl(statementId); as href) {
+            <a class="ref" [href]="href" target="_blank" rel="noopener noreferrer">
+              <mat-icon class="ref__icon">description</mat-icon>
+              {{ 'documents.open' | translate }}
+            </a>
+          }
+        }
+      </li>
+    }
+  </ol>
+}

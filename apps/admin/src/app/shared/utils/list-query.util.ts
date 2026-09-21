@@ -30,15 +30,26 @@ export const bindListQuery = <T>(collection: CollectionApi<T>): void => {
 
   route.queryParamMap.pipe(takeUntilDestroyed(destroyRef)).subscribe((params) => {
     const search = params.get('search');
-    const filter = params.get('filter');
+
+    // **Everything else is a filter**, whatever it is called. A link built by
+    // `links.util.ts` may narrow by a chip, a person or a date, and listing the
+    // names here would mean a link nobody could follow until this file learnt
+    // about it. The destination's own DTO is what decides whether a parameter
+    // means anything; an unknown one is refused there, loudly, rather than
+    // dropped here, silently.
+    const filters = Object.fromEntries(
+      params.keys.filter((key) => key !== 'search').map((key) => [key, params.get(key) ?? '']),
+    );
 
     if (search !== null) store.dispatch(collection.actions.searchChanged({ search }));
-    if (filter !== null) store.dispatch(collection.actions.filterChanged({ filter }));
+    if (Object.keys(filters).length > 0)
+      store.dispatch(collection.actions.filtersChanged({ filters }));
 
     // **Only when the URL said nothing.** Both actions above already end in a
-    // load — `filterChanged` immediately, `searchChanged` after the typing
+    // load — `filtersChanged` immediately, `searchChanged` after the typing
     // debounce — so sending `entered` as well would fetch the same page twice,
     // and the second answer would arrive after the first had already painted.
-    if (search === null && filter === null) store.dispatch(collection.actions.entered());
+    if (search === null && Object.keys(filters).length === 0)
+      store.dispatch(collection.actions.entered());
   });
 };

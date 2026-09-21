@@ -103,8 +103,11 @@ export class DocumentListComponent {
     this.store.dispatch(documentsCollection.actions.searchChanged({ search }));
   }
 
+  /** The archive's one axis, carried in the same map the books use for five. */
   onFilter(slice: string | null): void {
-    this.store.dispatch(documentsCollection.actions.filterChanged({ filter: slice }));
+    this.store.dispatch(
+      documentsCollection.actions.filtersChanged({ filters: slice === null ? {} : { filter: slice } }),
+    );
   }
 
   onPage(event: { page: number; limit: number }): void {

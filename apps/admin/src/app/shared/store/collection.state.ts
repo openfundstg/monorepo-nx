@@ -17,14 +17,19 @@ export interface CollectionState<T> {
   readonly limit: number;
   readonly search: string;
   /**
-   * The one named slice this list is showing, or `null` for all of it.
+   * Everything narrowing this list beyond its search box.
    *
-   * A single string rather than a filter object, because every list that has
-   * more than one slice has exactly one axis of them and an operator picks one
-   * chip — see `AdminPageReq.filter`. A list with no slices leaves this `null`
-   * forever and never sends it.
+   * A map rather than the single `filter` this once was, because the two books
+   * grew a form: a date range, an amount range and the figure it applies to, a
+   * status, a person. One field could not carry them, and a field per filter
+   * would put five names into the state, five into the query builder and five
+   * into every list that has none of them.
+   *
+   * **Values are strings**, as a query string carries them. The form converts
+   * at its edges — hryvnia to kopecks on the way out — so nothing downstream
+   * has to know which of these is a number.
    */
-  readonly filter: string | null;
+  readonly filters: Readonly<Record<string, string>>;
   readonly sort: string | null;
   readonly direction: AdminSortDirection;
   readonly loading: boolean;
@@ -50,14 +55,14 @@ export const DEFAULT_PAGE_LIMIT = 25;
 export const initialCollectionState = <T>(
   sort: string | null,
   direction: AdminSortDirection = AdminSortDirection.DESC,
-  filter: string | null = null,
+  filters: Readonly<Record<string, string>> = {},
 ): CollectionState<T> => ({
   items: [],
   total: 0,
   page: 1,
   limit: DEFAULT_PAGE_LIMIT,
   search: '',
-  filter,
+  filters,
   sort,
   direction,
   loading: false,

@@ -9,7 +9,7 @@ import {
 import { filter } from 'rxjs';
 import {
   CollectionTableComponent,
-  FilterChipsComponent,
+  BookFiltersComponent,
   PageHeaderComponent,
   ReasonDialogComponent,
   RefundDialogComponent,
@@ -19,8 +19,10 @@ import {
 import { bindListQuery, formatUah, formatUsdt } from '../../../shared/utils';
 import {
   SALE_COLUMNS,
-  SALE_FILTERS,
+  SALE_VARIANTS,
+  SALE_STATUSES,
   SALE_ROW_ACTIONS,
+  saleRowClass,
 } from '../../constants/sales-columns.const';
 import { saleActions, salesCollection } from '../../store/sales.collection';
 
@@ -87,7 +89,7 @@ const ACTION_COPY: Readonly<
   imports: [
     PageHeaderComponent,
     SearchFieldComponent,
-    FilterChipsComponent,
+    BookFiltersComponent,
     CollectionTableComponent,
   ],
   templateUrl: './sale-list.component.html',
@@ -98,11 +100,14 @@ export class SaleListComponent {
   private readonly dialog = inject(MatDialog);
 
   readonly columns = SALE_COLUMNS;
-  readonly filters = SALE_FILTERS;
+  readonly variants = SALE_VARIANTS;
+  readonly statuses = SALE_STATUSES;
   readonly rowActions = SALE_ROW_ACTIONS;
   readonly state = this.store.selectSignal(salesCollection.selectors.selectState);
   /** Row identity, from the collection itself — never guessed from a column. */
   readonly rowId = salesCollection.idOf;
+  /** Which bank this sale's money moves through — see `saleRowClass`. */
+  readonly rowClass = saleRowClass;
 
   constructor() {
     // Opens the list and applies whatever a link asked for — see
@@ -115,9 +120,9 @@ export class SaleListComponent {
     this.store.dispatch(salesCollection.actions.searchChanged({ search }));
   }
 
-  /** `slice`, not `filter`: the name is taken by rxjs at the top of this file. */
-  onFilter(slice: string | null): void {
-    this.store.dispatch(salesCollection.actions.filterChanged({ filter: slice }));
+  /** The whole form at once — see `BookFiltersComponent.apply`. */
+  onFilters(filters: Readonly<Record<string, string>>): void {
+    this.store.dispatch(salesCollection.actions.filtersChanged({ filters }));
   }
 
   onPage(event: { page: number; limit: number }): void {

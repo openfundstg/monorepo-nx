@@ -7,3 +7,5 @@ export * from './confirm-dialog';
 export * from './search-field/search-field.component';
 export * from './filter-chips/filter-chips.component';
 export * from './document-row/document-row.component';
+export * from './sale-timeline/sale-timeline.component';
+export * from './book-filters/book-filters.component';

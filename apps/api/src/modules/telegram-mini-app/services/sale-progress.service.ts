@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import {
+  OPERATOR_SALE_EVENTS,
   SaleMethod,
   saleCardMaxOrders,
   saleCardMinOrderKopecks,
@@ -112,12 +113,25 @@ export class SaleProgressService {
    * that never renders it.
    */
   async build(order: StoredSale): Promise<SaleProgress> {
-    const events: SaleEvent[] = (order.events ?? []).map((event) => ({
-      type: event.type,
-      ...(event.amount !== null && event.amount !== undefined ? { amount: event.amount } : {}),
-      ...(event.orderId !== null && event.orderId !== undefined ? { orderId: event.orderId } : {}),
-      at: event.at
-    }))
+    // **Filtered, so the seller's timeline stays the seller's.** Some entries
+    // exist to answer an operator's question — *how do we know* — and telling
+    // a user their document parsed is telling them about our plumbing. What
+    // they learn from a statement is the entry that follows it: their order
+    // confirmed, or their denial upheld.
+    //
+    // `evidence` and `corroboratedBy` are dropped here for the same reason:
+    // recorded on every entry, carried to the panel, and no part of what the
+    // Mini App draws.
+    const events: SaleEvent[] = (order.events ?? [])
+      .filter((event) => !OPERATOR_SALE_EVENTS.includes(event.type))
+      .map((event) => ({
+        type: event.type,
+        ...(event.amount !== null && event.amount !== undefined ? { amount: event.amount } : {}),
+        ...(event.orderId !== null && event.orderId !== undefined
+          ? { orderId: event.orderId }
+          : {}),
+        at: event.at
+      }))
 
     return {
       saleId: order._id.toString(),

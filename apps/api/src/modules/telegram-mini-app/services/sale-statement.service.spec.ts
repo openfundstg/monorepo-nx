@@ -94,6 +94,7 @@ describe('SaleStatementService', () => {
       appendEvent: jest.fn(async () => sale()),
       markStatementParsed: jest.fn(async () => sale()),
       applyStatementCheckpoint: jest.fn(async () => sale()),
+      corroborateEvents: jest.fn(async () => 0),
       rewriteReceiverName: jest.fn(async () => sale()),
       findById: jest.fn(async () => sale())
     }
@@ -349,5 +350,68 @@ describe('SaleStatementService', () => {
     await expect(service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())).rejects.toBeDefined()
 
     expect(storage.remove).toHaveBeenCalledWith(`${SALE_ID}.pdf`)
+  })
+
+  /**
+   * The checkpoint, which is the whole reason a statement is worth having.
+   *
+   * A card sale has no witness of its own, so every entry on its timeline is
+   * somebody's claim until a bank's document covers the moment it was made.
+   * Accepting one therefore writes *backwards*: it reaches over claims recorded
+   * days earlier and settles them, and that stamp is what an operator reads to
+   * tell "the seller said so" from "a bank confirmed it".
+   */
+  describe('the checkpoint a statement leaves', () => {
+    it('records the document holding up, not only what it changed', async () => {
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(db.appendEvent).toHaveBeenCalledWith(
+        SALE_ID,
+        expect.objectContaining({ type: SaleEventType.STATEMENT_ACCEPTED })
+      )
+    })
+
+    it('settles the claims the document covers', async () => {
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(db.corroborateEvents).toHaveBeenCalledWith(
+        SALE_ID,
+        { from: parsed().periodFrom, to: parsed().periodTo },
+        expect.anything(),
+        expect.any(Date)
+      )
+    })
+
+    /**
+     * A document whose dates could not be read proves nothing about any
+     * particular moment — the same rule that makes `PERIOD_TOO_SHORT` a
+     * refusal. Stamping claims from one would be the checkpoint vouching for a
+     * window it never covered.
+     */
+    it('settles nothing when the period could not be read', async () => {
+      verification.verify.mockResolvedValue({
+        finding: StatementFinding.CREDITED,
+        statement: { ...parsed(), periodFrom: null, periodTo: null }
+      })
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(db.corroborateEvents).not.toHaveBeenCalled()
+    })
+
+    /**
+     * A record, not a decision.
+     *
+     * The statement has already been judged and the order has already moved by
+     * the time this runs. A trail that could not be written must not turn a
+     * settled dispute into an error on somebody's screen.
+     */
+    it('does not fail the upload when the stamp cannot be written', async () => {
+      db.corroborateEvents.mockRejectedValue(new Error('mongo is down'))
+
+      await expect(
+        service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+      ).resolves.toBeDefined()
+    })
   })
 })

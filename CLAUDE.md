@@ -299,6 +299,20 @@ build` chain.
     client also sends the browser's own `User-Agent`: the proxy fixes the address, and
     `axios/1.18.1` from a datacentre is the other half of the signal.
 
+- **A card sale's timeline records whose word each entry stands on.** A jar sale keeps its
+  history by being *watched* — the scraper polls a balance, so every row is an observation of
+  money that is either there or not. Nobody can poll a seller's own card:
+  `CardSaleDestinationService` says it plainly, the seller types sixteen digits and a name and
+  both are claims. So `SaleEvidence` is a field on every event — `SELLER`, `STATEMENT`,
+  `UPSTREAM`, `SYSTEM` — and it is **not** a property of the event type: `ORDER_CONFIRMED` is
+  ordinarily a seller tapping yes and is sometimes a bank statement contradicting their denial,
+  which are the same event and opposite evidence. **An accepted statement is a checkpoint**: it
+  covers a period, and `TmaSaleDbService.corroborateEvents` reaches back over every `SELLER`
+  claim inside that period and stamps it, because a claim nobody has corroborated and one a bank
+  has confirmed must not look identical. A statement with no readable period corroborates
+  nothing — it proves nothing about a moment it does not cover, the same rule that makes
+  `PERIOD_TOO_SHORT` a refusal.
+
 - **Every file this product handles is archived, and the archive is the panel's own
   screen.** Two of them — a statement sent to settle a disputed card order, and a payment
   receipt sent to prove a fiat top-up — and both live on mounted volumes

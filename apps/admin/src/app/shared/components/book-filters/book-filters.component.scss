@@ -1,0 +1,50 @@
+.filters {
+  padding: var(--gap-sm) var(--gap-md);
+  margin-bottom: var(--gap-md);
+}
+
+.filters__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-md);
+}
+
+.filters__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: var(--gap-xs) 0;
+}
+
+.filters__toggle:hover {
+  color: var(--text-primary);
+}
+
+/* How many filters are narrowing the list, readable while the form is folded. */
+.filters__count {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.filters__body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--gap-sm) var(--gap-md);
+  padding-top: var(--gap-sm);
+}
+
+/* Narrower than the rest: it holds two words, never a number. */
+.filters__currency {
+  max-width: 140px;
+}

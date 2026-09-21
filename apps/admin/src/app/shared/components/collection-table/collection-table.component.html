@@ -47,11 +47,28 @@
           >
             @switch (column.type) {
               @case (ColumnType.CHIP) {
-                <app-status-chip
-                  [value]="'' + column.value(row)"
-                  [tone]="chipTone(column, row)"
-                  [translatePrefix]="prefixFor(column, row)"
-                />
+                <!--
+                  A chip needs a value to be a chip.
+
+                  `column.value(row)` is `null` wherever a status does not apply
+                  — a jar sale has no card order to be in a state. Rendered
+                  anyway it became the key `SALE_CARD_ORDER.null`, which
+                  ngx-translate echoes verbatim, so the column an operator scans
+                  for rows that need a person was full of the word "null". Every
+                  other column type routes through `cell()`, which has answered
+                  this with an em dash all along; the chip was the one that did
+                  not.
+                -->
+                @if (column.value(row) !== null && column.value(row) !== '') {
+                  <app-status-chip
+                    [value]="'' + column.value(row)"
+                    [tone]="chipTone(column, row)"
+                    [translatePrefix]="prefixFor(column, row)"
+                    [badgeClass]="badgeFor(column, row)"
+                  />
+                } @else {
+                  <span class="muted">—</span>
+                }
               }
               @case (ColumnType.BOOL) {
                 <app-status-chip [value]="boolLabel(column, row)" [tone]="boolTone(column, row)" />
@@ -146,7 +163,7 @@
       }
 
       <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
-      <tr mat-row *matRowDef="let row; columns: displayedColumns()"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns()" [class]="classFor(row)"></tr>
     </table>
   </div>
 

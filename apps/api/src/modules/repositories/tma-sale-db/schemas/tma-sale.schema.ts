@@ -4,6 +4,7 @@ import {
   BankProvider,
   TmaSaleStatus,
   SaleEventType,
+  SaleEvidence,
   SaleBlockReason,
   SaleRemainderPolicy,
   SaleMethod,
@@ -37,6 +38,15 @@ export {
  */
 @Schema({ _id: false, versionKey: false })
 export class TmaSaleEvent {
+  /**
+   * Mongo's own, declared so it is visible on the lean type.
+   *
+   * Every entry already had one — an array of subdocuments gets them unless the
+   * schema says otherwise — and nothing named it, so the panel had nothing
+   * stable to track a row by.
+   */
+  _id: Types.ObjectId
+
   @Prop({ type: String, enum: SaleEventType, required: true })
   type: SaleEventType
 
@@ -51,6 +61,37 @@ export class TmaSaleEvent {
   /** Epoch milliseconds. */
   @Prop({ type: Number, required: true })
   at: number
+
+  /**
+   * Who says so — see {@link SaleEvidence}.
+   *
+   * Absent on every event written before this existed, which is honest: nobody
+   * recorded whose word those stood on, and defaulting them to one answer would
+   * invent a fact. `toAdminSaleHistory` reads a missing value as unknown rather
+   * than as a claim.
+   */
+  @Prop({ type: String, enum: SaleEvidence, default: null })
+  evidence: SaleEvidence | null
+
+  /** The statement this event is about, on the statement events. */
+  @Prop({ type: Types.ObjectId, default: null })
+  statementId: Types.ObjectId | null
+
+  /**
+   * The statement that later vouched for this entry.
+   *
+   * **Written long after the entry was.** An accepted statement covers a
+   * period, and everything the seller asserted inside it stops being their word
+   * and becomes a matter of record — so accepting one reaches back over this
+   * sale's earlier claims and stamps them. That retroactive write is the point:
+   * until it existed, a claim nobody had corroborated and one a bank had
+   * confirmed looked identical.
+   */
+  @Prop({ type: Types.ObjectId, default: null })
+  corroboratedByStatementId: Types.ObjectId | null
+
+  @Prop({ type: Date, default: null })
+  corroboratedAt: Date | null
 }
 
 export const TmaSaleEventSchema = SchemaFactory.createForClass(TmaSaleEvent)

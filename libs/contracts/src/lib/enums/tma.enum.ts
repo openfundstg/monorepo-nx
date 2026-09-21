@@ -430,4 +430,96 @@ export enum SaleEventType {
    * and the upload card is where the user is looking.
    */
   STATEMENT_REJECTED = 'STATEMENT_REJECTED',
+  /**
+   * A statement's signature held and the document was read. Carries `orderId`.
+   *
+   * **Operator-only** — see {@link OPERATOR_SALE_EVENTS}. The seller learns the
+   * outcome from the entry that follows it, which is the order being confirmed
+   * or disputed on the document's word; being told separately that a file
+   * parsed is being told about our plumbing.
+   */
+  STATEMENT_ACCEPTED = 'STATEMENT_ACCEPTED',
 }
+
+/*
+ * There is deliberately no `ORDER_EXECUTED`.
+ *
+ * An order is settled in three ways — the seller says so, a statement
+ * contradicts their denial, or an operator confirms it in Transacto's own
+ * panel — and all three are {@link SaleEventType.ORDER_CONFIRMED}. Which one it
+ * was is {@link SaleEvidence}, not a fourth event: a timeline with both would
+ * ask a reader to reconcile two columns that can only ever agree.
+ */
+
+/**
+ * Who says so.
+ *
+ * **The column a card sale's timeline exists to have.** A jar sale keeps its
+ * history by being watched — the scraper polls a balance, and every row is an
+ * observation of money that is either there or not. A card sale has no such
+ * witness: `CardSaleDestinationService` says it plainly, the seller types
+ * sixteen digits and a name and both are claims. So the same sentence — "₴1 200
+ * reached this card" — is a completely different fact depending on who is
+ * saying it, and nothing else on an event records which.
+ *
+ * It is **not** a property of {@link SaleEventType}. `ORDER_CONFIRMED` is
+ * ordinarily the seller tapping yes and is sometimes a bank statement
+ * contradicting their denial; those are the same event and opposite evidence.
+ */
+export enum SaleEvidence {
+  /** The seller tapped something. Until a statement arrives, the only word there is. */
+  SELLER = 'SELLER',
+  /** A bank's signed document, checked. The strongest thing this product holds. */
+  STATEMENT = 'STATEMENT',
+  /** Transacto said so — an order arrived, or executed. */
+  UPSTREAM = 'UPSTREAM',
+  /** A clock ran out, or this product concluded it. Nobody asserted anything. */
+  SYSTEM = 'SYSTEM',
+}
+
+/**
+ * The events the seller is not shown.
+ *
+ * Their timeline answers "what is happening to my sale"; these answer "how do
+ * we know", which is an operator's question. Adding a member to
+ * {@link SaleEventType} without deciding which side of this line it falls on
+ * silently changes what a user sees, so `toSaleContract` filters on this and
+ * a spec pins it.
+ */
+export const OPERATOR_SALE_EVENTS: readonly SaleEventType[] = [SaleEventType.STATEMENT_ACCEPTED];
+
+/**
+ * What each event stands on when nobody says otherwise.
+ *
+ * A `Record` with no fallback, so a new event type must answer the question
+ * before it compiles. Three of these are defaults rather than facts —
+ * `ORDER_CONFIRMED` and `ORDER_DISPUTED` can each be reached on a statement's
+ * word, and `STATEMENT_SUBMITTED` is an act of the seller's rather than
+ * evidence of anything. Those call sites pass their own.
+ */
+export const SALE_EVENT_EVIDENCE: Readonly<Record<SaleEventType, SaleEvidence>> = {
+  [SaleEventType.TERMINAL_CREATED]: SaleEvidence.SYSTEM,
+  [SaleEventType.ORDER_RECEIVED]: SaleEvidence.UPSTREAM,
+  // The scraper observed a balance and the matcher reconciled it. That is this
+  // product's own witness, which is exactly what a card sale lacks.
+  [SaleEventType.PAYMENT_MATCHED]: SaleEvidence.SYSTEM,
+  [SaleEventType.ORDER_CANCELLED]: SaleEvidence.UPSTREAM,
+  [SaleEventType.CLOSING_REQUESTED]: SaleEvidence.SELLER,
+  [SaleEventType.COMPLETED]: SaleEvidence.SYSTEM,
+  [SaleEventType.FAILED]: SaleEvidence.SYSTEM,
+  [SaleEventType.BLOCKED]: SaleEvidence.SYSTEM,
+  [SaleEventType.JAR_CLOSED]: SaleEvidence.SYSTEM,
+  [SaleEventType.STOPPED_BY_USER]: SaleEvidence.SELLER,
+  [SaleEventType.REMAINDER_REFUNDED]: SaleEvidence.SYSTEM,
+  [SaleEventType.RESUMED_BY_ADMIN]: SaleEvidence.SYSTEM,
+  [SaleEventType.RELEASED_BY_ADMIN]: SaleEvidence.SYSTEM,
+  // The ordinary case is the seller tapping yes; `confirmFromStatement` and
+  // `denyFromStatement` pass `STATEMENT` instead, and the sweep that expires an
+  // unanswered order passes `SYSTEM`.
+  [SaleEventType.ORDER_CONFIRMED]: SaleEvidence.SELLER,
+  [SaleEventType.ORDER_DISPUTED]: SaleEvidence.SELLER,
+  // Sending a document is an act, not yet evidence: nothing has read it.
+  [SaleEventType.STATEMENT_SUBMITTED]: SaleEvidence.SELLER,
+  [SaleEventType.STATEMENT_REJECTED]: SaleEvidence.STATEMENT,
+  [SaleEventType.STATEMENT_ACCEPTED]: SaleEvidence.STATEMENT,
+};

@@ -18,7 +18,12 @@ import { ADMIN_SORTABLE } from 'src/modules/admin/constants'
 import { clampLimit } from 'src/modules/admin/dto'
 import { AdminDocumentsService } from 'src/modules/admin/services/admin-documents.service'
 import { AdminUsersService } from 'src/modules/admin/services/admin-users.service'
-import { toAdminDepositRow, toPageQuery, toPaginatedRes } from 'src/modules/admin/utils'
+import {
+  bookFilterClauses,
+  toAdminDepositRow,
+  toPageQuery,
+  toPaginatedRes
+} from 'src/modules/admin/utils'
 
 /**
  * Money coming in, on both rails, as one book.
@@ -50,7 +55,17 @@ export class AdminDepositsService {
     const paging = { ...request, limit }
 
     const page = await this.feed.findPage(
-      { kind: request.filter, search: request.search },
+      {
+        kind: request.filter,
+        search: request.search,
+        // Over the *projected* names — `cryptoCents` is computed by the
+        // pipeline and exists on neither collection.
+        clauses: bookFilterClauses(request, {
+          date: 'createdAt',
+          uah: 'fiatAmount',
+          usdt: 'cryptoCents'
+        })
+      },
       toPageQuery(paging, ADMIN_SORTABLE.DEPOSITS)
     )
 

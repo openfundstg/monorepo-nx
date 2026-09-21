@@ -69,6 +69,13 @@ export interface ColumnDef<T> {
   readonly link?: (row: T) => RowLink | null;
   /** What else this row is connected to, for `ColumnType.REFS`. */
   readonly refs?: (row: T) => readonly RowLink[];
+  /**
+   * An identity class for a `CHIP` — see `badge.util.ts`.
+   *
+   * For the columns that show *what a row is* rather than how it is doing: its
+   * bank, the way it pays out. Absent leaves the chip toned and nothing else.
+   */
+  readonly badgeClass?: (row: T) => string | null;
   /** Whether the header offers sorting. Only fields the API allows should be. */
   readonly sortable?: boolean;
   /** Fixed width, where a column would otherwise stretch to fill. */

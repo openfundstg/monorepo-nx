@@ -38,6 +38,46 @@
   --neutral: #8b97a8;
   --neutral-dim: rgba(139, 151, 168, 0.14);
 
+  /*
+   * The banks, and the one thing these colours are for: telling rows apart at a
+   * glance without reading them.
+   *
+   * **Identity, not status.** A bank is not good or bad news, so it deliberately
+   * does not go through `ChipTone` — those four tones mean "money arrived",
+   * "somebody must act", "money at risk", "nothing to say", and a fifth meaning
+   * "PrivatBank" would make the vocabulary mean nothing.
+   *
+   * The hues are the Chrome extension's own, copied rather than reinvented so a
+   * trader and an operator looking at the same terminal see the same colour.
+   * `novapay` is new here — the extension never drew one.
+   */
+  --bank-mono: #9aa3ad;
+  --bank-mono-dim: rgba(50, 50, 52, 0.55);
+  --bank-privat: #4ade8b;
+  --bank-privat-dim: rgba(27, 126, 74, 0.2);
+  --bank-pumb: #ff8095;
+  --bank-pumb-dim: rgba(185, 49, 68, 0.2);
+  --bank-novapay: #c084fc;
+  --bank-novapay-dim: rgba(147, 51, 234, 0.2);
+
+  /*
+   * How a sale reaches the seller. Also identity rather than status: one is not
+   * better than the other, they are answered in completely different ways.
+   */
+  --method-jar: #56b6ff;
+  --method-jar-dim: rgba(86, 182, 255, 0.16);
+  --method-card: #f0a35e;
+  --method-card-dim: rgba(240, 163, 94, 0.16);
+
+  /*
+   * The tint a whole row carries for its bank.
+   *
+   * Far weaker than the badge — a row is a band of colour several hundred
+   * pixels wide, and at badge strength a table of them is unreadable. Strong
+   * enough to group, too weak to compete with a status chip.
+   */
+  --row-tint-alpha: 0.05;
+
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;

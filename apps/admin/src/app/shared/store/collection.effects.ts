@@ -76,7 +76,7 @@ export const createCollectionEffects = <T>(
           ofType(
             actions.pageChanged,
             actions.sortChanged,
-            actions.filterChanged,
+            actions.filtersChanged,
             actions.refreshed,
           ),
           map(() => actions.load()),

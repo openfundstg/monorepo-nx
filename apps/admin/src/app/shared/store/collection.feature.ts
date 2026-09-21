@@ -72,8 +72,17 @@ const buildActions = <T>(name: string) => ({
   loadSuccess: createAction(`[${name}] Load Success`, props<{ res: AdminPaginatedRes<T> }>()),
   loadFailure: createAction(`[${name}] Load Failure`, props<{ error: ApiError }>()),
   searchChanged: createAction(`[${name}] Search Changed`, props<{ search: string }>()),
-  /** The operator picked a different chip. */
-  filterChanged: createAction(`[${name}] Filter Changed`, props<{ filter: string | null }>()),
+  /**
+   * The operator narrowed the list — a chip, or the whole form at once.
+   *
+   * The map replaces what was there rather than merging into it, so clearing a
+   * field clears it. A merge would make "remove this filter" impossible to
+   * express without a second action for it.
+   */
+  filtersChanged: createAction(
+    `[${name}] Filters Changed`,
+    props<{ filters: Readonly<Record<string, string>> }>(),
+  ),
   pageChanged: createAction(`[${name}] Page Changed`, props<{ page: number; limit: number }>()),
   sortChanged: createAction(
     `[${name}] Sort Changed`,
@@ -90,12 +99,12 @@ export interface CollectionOptions<T> {
   readonly defaultSort: string | null;
   readonly defaultDirection?: AdminSortDirection;
   /**
-   * Which slice the list opens on, for the lists that have chips.
+   * What the list is narrowed to before anybody touches anything.
    *
-   * `null` — the whole book — everywhere except where opening on everything
+   * Empty — the whole book — everywhere except where opening on everything
    * would bury the rows somebody came for.
    */
-  readonly defaultFilter?: string | null;
+  readonly defaultFilters?: Readonly<Record<string, string>>;
   /**
    * How a row identifies itself.
    *
@@ -113,7 +122,7 @@ export const createCollection = <T>(
   const initial = initialCollectionState<T>(
     options.defaultSort,
     options.defaultDirection ?? AdminSortDirection.DESC,
-    options.defaultFilter ?? null,
+    options.defaultFilters ?? {},
   );
 
   const reducer = createReducer(
@@ -135,9 +144,9 @@ export const createCollection = <T>(
     // A new search starts at page one. Staying on page four of the previous
     // result set shows an empty table for a term that matched plenty.
     on(actions.searchChanged, (state, { search }) => ({ ...state, search, page: 1 })),
-    // A different slice starts at page one, for the same reason a search does:
-    // page four of the whole book is rarely page four of one chip's worth of it.
-    on(actions.filterChanged, (state, { filter }) => ({ ...state, filter, page: 1 })),
+    // A narrower list starts at page one, for the same reason a search does:
+    // page four of the whole book is rarely page four of one filter's worth.
+    on(actions.filtersChanged, (state, { filters }) => ({ ...state, filters, page: 1 })),
     on(actions.pageChanged, (state, { page, limit }) => ({ ...state, page, limit })),
     on(actions.sortChanged, (state, { sort, direction }) => ({
       ...state,
@@ -173,9 +182,11 @@ export const createCollection = <T>(
         page: state.page,
         limit: state.limit,
         search: state.search || undefined,
-        // Never an empty string — the backend refuses one, and an empty filter
-        // that matched nothing is the bug that refusal exists to prevent.
-        filter: state.filter ?? undefined,
+        // Spread, so a list with no filters sends none. Empty values never
+        // reach here — the form drops them — because the backend refuses an
+        // empty one, and a filter that matched nothing is what that refusal
+        // exists to prevent.
+        ...state.filters,
         sort: state.sort ?? undefined,
         direction: state.direction,
       })),

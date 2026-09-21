@@ -21,8 +21,18 @@ export class StatusChipComponent {
   readonly value = input.required<string>();
   readonly tone = input<ChipTone>(ChipTone.NEUTRAL);
   readonly translatePrefix = input<string | null>(null);
+  /**
+   * An identity class from `badge.util.ts` — which bank, or which method.
+   *
+   * Beside the tone rather than instead of it: a badge says *what this is*
+   * where a tone says *how worried to be*, and a chip may legitimately need
+   * both. `null` leaves the chip toned and nothing else.
+   */
+  readonly badgeClass = input<string | null>(null);
 
-  readonly toneClass = computed(() => `chip--${this.tone()}`);
+  readonly toneClass = computed(() =>
+    [`chip--${this.tone()}`, this.badgeClass()].filter(Boolean).join(' '),
+  );
 
   /**
    * The key to render, or the raw value when there is no prefix.

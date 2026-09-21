@@ -1,0 +1,57 @@
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: var(--gap-sm) 0 var(--gap-sm) var(--gap-md);
+  border-top: 1px solid var(--border);
+  /* The rail every entry hangs off, so the column reads as one thread. */
+  box-shadow: inset 2px 0 0 var(--border-strong);
+}
+
+/*
+ * A claim nothing has backed up.
+ *
+ * Amber rather than red: an uncorroborated claim is not a wrong one, it is one
+ * nobody has checked — which is the ordinary state of every card sale until a
+ * statement arrives. Colouring it as a fault would make the whole screen read
+ * as a list of problems.
+ */
+.timeline__row--unproven {
+  box-shadow: inset 2px 0 0 var(--warning);
+}
+
+.timeline__time {
+  min-width: 128px;
+  font-size: 12px;
+}
+
+.timeline__what {
+  font-weight: 500;
+}
+
+.timeline__amount {
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline__proof,
+.timeline__unproven {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  font-size: 12px;
+}
+
+.timeline__proof {
+  color: var(--positive);
+}
+
+.timeline__unproven {
+  color: var(--warning);
+}
