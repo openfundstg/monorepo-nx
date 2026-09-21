@@ -54,6 +54,17 @@
         data.deposit.completedAt | dateTime
       }}</span>
     </div>
+    <!--
+      A number to carry, not a link to follow: Transacto numbers payouts and
+      orders separately, and this panel lists only orders.
+    -->
+    @if (data.deposit.payoutId; as payoutId) {
+      <div class="card figure">
+        <span class="figure__label">{{ 'deposits.payout' | translate }}</span>
+        <span class="figure__value figure__value--text mono">{{ payoutId }}</span>
+        <span class="figure__hint">{{ 'deposits.payout_hint' | translate }}</span>
+      </div>
+    }
   </section>
 
   <section class="card detail-section">
@@ -63,12 +74,6 @@
         <a class="ref" [routerLink]="['/users', user.telegramId]">
           <mat-icon>person</mat-icon>
           {{ user.username || user.firstName }}
-        </a>
-      }
-      @if (data.deposit.payoutId; as payoutId) {
-        <a class="ref" [routerLink]="['/orders']" [queryParams]="{ search: payoutId }">
-          <mat-icon>receipt_long</mat-icon>
-          {{ 'deposits.payout' | translate }} {{ payoutId }}
         </a>
       }
       <a class="ref" [routerLink]="['/audit']" [queryParams]="{ search: data.deposit.id }">

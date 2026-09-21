@@ -137,8 +137,15 @@ const aboutLink = (row: AdminDocumentListItem): RowLink | null => {
   return null;
 };
 
-/** The Transacto number behind it — the order it answers, or the payout it pays. */
+/**
+ * The Transacto order a statement answers.
+ *
+ * **A receipt gets none, and that is not an omission.** What a receipt names is
+ * a *payout*, which is a different entity from an order and numbered
+ * separately; linking it into the orders list produced an unrelated order
+ * whenever the two numberings happened to overlap. Its payout number is on the
+ * `about` column instead, where it opens the top-up it actually belongs to.
+ */
 const documentRefs = (row: AdminDocumentListItem): readonly RowLink[] => [
   ...(row.cardOrderId === null ? [] : [ordersLink(row.cardOrderId)]),
-  ...(row.payoutId === null ? [] : [ordersLink(row.payoutId)]),
 ];

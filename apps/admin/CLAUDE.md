@@ -189,6 +189,19 @@ was a destination showing everything. `shared/list-query.spec.ts` now reads the
 source of every page that renders `app-collection-table` and fails on either
 mistake, because no type can express "this component read its query string".
 
+**A number is not an address until something says which book it counts in.**
+Transacto numbers its **orders** and its **payouts** separately: a card order a
+sale answers for and a payout a hryvnia top-up settles are different entities
+that both count from one, and `/orders` lists only the first. Three links here
+fed a `payoutId` into it anyway — a deposit row, a receipt row and the deposit
+page — and each answered with an empty list or, where the numberings happened
+to overlap, with somebody else's order presented as this row's. A payout is
+therefore shown as **plain text**, because the panel has no payouts screen and
+the errand is carrying the number across to Transacto's own panel by hand. The
+same collision is why `documentsForLink` takes a kind: the archive searches
+both numberings, so a deposit promising "2 documents" must ask for receipts or
+its count and its destination disagree.
+
 ### Colour says identity; `ChipTone` says how worried to be
 
 `ChipTone` has four members and that is the point — a palette with a colour per status is one

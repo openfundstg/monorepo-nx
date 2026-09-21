@@ -127,11 +127,26 @@ export const depositLink = (
 
 // --- Documents -------------------------------------------------------------
 
-/** The archive, narrowed to one sale, one top-up or one order. */
-export const documentsForLink = (search: string | number, count: number): RowLink => ({
+/**
+ * The archive, narrowed to what one row is about.
+ *
+ * **`kind` is not decoration.** Searching the archive by a number searches two
+ * numberings at once: a statement is filed under its Transacto *order* and a
+ * receipt under its *payout*, and those are separate books that happen to share
+ * the integers. A deposit offering "its 2 documents" without saying which kind
+ * can therefore land on a statement about somebody else's sale, with a count
+ * that no longer matches what is on screen. Saying the kind makes the promise
+ * and the destination agree. A sale passes none because its own code is a
+ * string and collides with nothing.
+ */
+export const documentsForLink = (
+  search: string | number,
+  count: number,
+  kind?: AdminDocumentKind,
+): RowLink => ({
   label: count,
   commands: ['/documents'],
-  queryParams: { search },
+  queryParams: kind === undefined ? { search } : { search, filter: kind },
   icon: 'description',
   tooltip: 'links.documents_for',
 });
@@ -170,7 +185,17 @@ export const terminalLink = (search: number, label?: string | number): RowLink =
   tooltip: 'links.terminal',
 });
 
-/** Transacto orders, narrowed to one card, trader or order number. */
+/**
+ * Transacto orders, narrowed to one card, trader or order number.
+ *
+ * **Never a payout id.** A payout in Transacto's panel and an order in its API
+ * are different entities that merely both count from one — this list holds only
+ * the second. Handed a payout number it answers with an empty list, or worse
+ * with the coincidental order carrying that number, which reads as a connection
+ * the product does not have. There is deliberately no payout link at all: the
+ * panel has no payouts screen to open, so a payout id is shown as the plain
+ * number an operator carries across to Transacto by hand.
+ */
 export const ordersLink = (search: number, label?: string | number): RowLink => ({
   label: label ?? search,
   commands: ['/orders'],

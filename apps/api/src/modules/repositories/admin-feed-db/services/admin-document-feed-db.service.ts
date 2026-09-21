@@ -160,6 +160,12 @@ export class AdminDocumentFeedDbService {
     if (!search) return []
 
     const asNumber = Number(search)
+    // **Three separate numberings, asked together on purpose.** A Transacto
+    // order and a Transacto payout are different entities that both count from
+    // one, so a typed number may name either and this cannot know which was
+    // meant — each row says its own kind. What must never happen is the panel
+    // *itself* equating them: a link that has a payout id narrows by kind, so
+    // only a person typing into the box sees both books at once.
     const numeric =
       Number.isSafeInteger(asNumber) && asNumber > 0
         ? [{ cardOrderId: asNumber }, { payoutId: asNumber }, { telegramId: asNumber }]

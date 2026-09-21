@@ -1,5 +1,6 @@
 import {
   AdminDepositKind,
+  AdminDocumentKind,
   AdminFiatDepositAction,
   isFiatDepositHeld,
   TmaDepositStatus,
@@ -16,7 +17,6 @@ import {
   depositRowTone,
   depositStatusPrefix,
   documentsForLink,
-  ordersLink,
   unknownTone,
   userLink,
 } from '../../shared/utils';
@@ -153,14 +153,32 @@ export const DEPOSIT_COLUMNS: readonly ColumnDef<AdminDepositRowItem>[] = [
     sortable: true,
   },
   {
+    /**
+     * The payout this top-up is settling, in Transacto's own numbering.
+     *
+     * **Plain text, and that is the point.** A payout is not an order — they
+     * are separate entities in Transacto with separate numbering, and this
+     * panel has no payouts screen — so the number is here to be read across to
+     * Transacto's panel by hand, not followed. It was a link into the orders
+     * list, which found either nothing or the wrong thing.
+     */
+    key: 'payoutId',
+    header: 'deposits.payout',
+    type: ColumnType.TEXT,
+    value: (row) => row.payoutId,
+    width: '120px',
+  },
+  {
     key: 'documentCount',
     header: 'deposits.documents',
     type: ColumnType.ROUTER_LINK,
     value: (row) => (row.documentCount === 0 ? null : row.documentCount),
+    // Narrowed to receipts: the archive searches by payout *and* order number,
+    // and a statement filed under the same integer is a different sale.
     link: (row) =>
       row.documentCount === 0 || row.payoutId === null
         ? null
-        : documentsForLink(row.payoutId, row.documentCount),
+        : documentsForLink(row.payoutId, row.documentCount, AdminDocumentKind.FIAT_RECEIPT),
     width: '110px',
   },
   {
@@ -173,12 +191,13 @@ export const DEPOSIT_COLUMNS: readonly ColumnDef<AdminDepositRowItem>[] = [
   },
 ];
 
-/** Where one deposit's row can take an operator. */
+/**
+ * Where one deposit's row can take an operator.
+ *
+ * The payout number is deliberately not among them — see the `payoutId` column.
+ */
 const depositRefs = (row: AdminDepositRowItem): readonly RowLink[] => [
   depositLink(row.kind, row.id, 'links.open'),
-  // The payout this top-up is settling, in Transacto's own numbering — what an
-  // operator reconciling it is holding.
-  ...(row.payoutId === null ? [] : [ordersLink(row.payoutId)]),
 ];
 
 /**
