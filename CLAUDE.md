@@ -231,6 +231,18 @@ build` chain.
   that hold no write permission, with payment credentials stripped server-side before
   anything is printed. Use it instead of asking for a log paste — and never reach for an
   unrestricted ssh to answer a question it can answer.
+
+- **Every ssh to the origin goes over Tor, and the scripts refuse to do otherwise.** The
+  origin is hidden — DNS for `openfunds.top` points at the public worker VPS, which
+  L4-forwards raw TLS to this host's `web` onion, and the origin's public `:22` is closed.
+  So `inspect.sh` and `migrate.sh` both go to an ssh onion through the local Tor daemon,
+  and `deploy/tor-route.sh` — the one home for that rule — resolves the configured host
+  through ssh's own config and **refuses to build the command** unless it lands on an
+  `.onion`. A host pointed back at the address fails loudly rather than quietly opening a
+  clearnet connection that names the origin to every hop. It needs a local Tor on
+  `127.0.0.1:9050` (`TRANSACTO_TOR_SOCKS` to move it) and `nc`, or your own `ProxyCommand`.
+  **The onion address is not in the repository** — it lives in the gitignored
+  `deploy/inspect.env` or in a `Host` alias — and neither is the server's IP.
   [deploy/inspect/README.md](deploy/inspect/README.md) covers the one-time server setup and
   what each layer actually guarantees. `docker-compose.yml` requires `REDIS_INSPECT_PASSWORD`
   for the read-only Redis account: Redis refuses to start without it rather than starting with

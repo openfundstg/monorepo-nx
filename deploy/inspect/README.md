@@ -13,6 +13,32 @@ thought.
 ./deploy/inspect.sh help
 ```
 
+## It goes over Tor, and cannot stop going over Tor
+
+The origin is hidden: DNS for `openfunds.top` points at the public worker VPS,
+which L4-forwards raw TLS to this host's `web` onion, and its public `:22` is
+**closed** — `ssh` to the machine's address does not connect at all. So the
+route here is an ssh onion through the local Tor daemon.
+
+That is a rule rather than a habit. `deploy/tor-route.sh` resolves the
+configured host through ssh's own config and **refuses to build the command**
+unless it lands on an `.onion`, so a host pointed back at an address fails
+loudly instead of quietly opening a clearnet connection that names the origin to
+every hop on the way. It supplies the SOCKS5 `ProxyCommand` itself when
+`ssh_config` has none, and leaves an existing one alone.
+
+Two consequences worth knowing:
+
+- **A local Tor daemon is a dependency**, on `127.0.0.1:9050` unless
+  `TRANSACTO_TOR_SOCKS` says otherwise, plus `nc` to speak SOCKS5 to it — or
+  your own `ProxyCommand` in `~/.ssh/config`.
+- **`ConnectTimeout` is 60s, not 10.** Building a circuit to an onion routinely
+  outlasts the old budget, and a timeout reads exactly like a server that is
+  down. `migrate.sh` goes the same way, for the same reason.
+
+The onion address lives in `deploy/inspect.env` (gitignored) or in a `Host`
+alias in `~/.ssh/config`. It is not in the repository and should not be.
+
 ## What actually stops a write
 
 Not the client script. `deploy/inspect.sh` only encodes arguments and calls ssh;
@@ -104,7 +130,8 @@ cp deploy/inspect.env.example deploy/inspect.env   # then fill in the two values
 
 `deploy/inspect.env` is gitignored. Its host is `inspector@…`, **not** your own
 login — pointing it at your own account gives you an unrestricted ssh with extra
-steps.
+steps. And it is the server's **onion**, not its address: the public `:22` is
+closed, and `inspect.sh` refuses a host that is not one.
 
 ### 2. The account, on the server
 
@@ -209,9 +236,9 @@ account that reads it.
 ./deploy/inspect.sh logs api --tail 20
 
 # …and the half that matters more:
-ssh -i ~/.ssh/transacto_inspect inspector@HOST 'id'
+ssh -i ~/.ssh/transacto_inspect inspector@ONION 'id'
 #   → transacto-inspect: unknown command 'id' — run 'help' for the list
-ssh -i ~/.ssh/transacto_inspect inspector@HOST
+ssh -i ~/.ssh/transacto_inspect inspector@ONION
 #   → prints the usage and exits; no shell
 ```
 

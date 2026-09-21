@@ -13,10 +13,21 @@
 # server's lifetime. `--rm` so nothing is left behind, `-T` because there is no
 # terminal on the far end of an ssh command.
 #
+# It goes over Tor, for the same reason `inspect.sh` does: the origin's public
+# :22 is closed and `openfunds.top` no longer points at it — that name is the
+# public worker VPS. The host has to resolve to the server's ssh onion, or
+# `tor-route.sh` refuses to build the command.
+#
 # Where it goes:
-#   TRANSACTO_HOST   ssh target, e.g. root@openfunds.top  (required)
+#   TRANSACTO_HOST   ssh target, root@<hash>.onion or a Host alias  (required)
 #   TRANSACTO_DIR    the compose project on that host     (default /var/www/monorepo-nx)
+#   TRANSACTO_TOR_SOCKS   local Tor SOCKS5               (default 127.0.0.1:9050)
 set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=deploy/tor-route.sh
+. "$here/tor-route.sh"
 
 if [ "$#" -eq 0 ]; then
   echo "usage: $0 <status|up|down [name]|unlock>" >&2
@@ -27,9 +38,11 @@ host="${TRANSACTO_HOST:-}"
 dir="${TRANSACTO_DIR:-/var/www/monorepo-nx}"
 
 if [ -z "$host" ]; then
-  echo "TRANSACTO_HOST is not set — e.g. TRANSACTO_HOST=root@openfunds.top $0 $*" >&2
+  echo "TRANSACTO_HOST is not set — e.g. TRANSACTO_HOST=root@<hash>.onion $0 $*" >&2
   exit 1
 fi
+
+tor_route_into route "$host"
 
 # Refuses an image older than the checkout, and this is not paranoia.
 #
@@ -48,7 +61,12 @@ fi
 #
 # `RemoteCommand=none` because a Host entry may carry one — `vlados` opens a
 # login shell in /var/www — and ssh refuses to run a command beside it.
-ssh -o RemoteCommand=none -o RequestTTY=no "$host" "
+#
+# ConnectTimeout is generous because an onion circuit is slower to build than
+# ssh's default budget suggests.
+ssh -o RemoteCommand=none -o RequestTTY=no -o ConnectTimeout=60 \
+  "${route[@]}" \
+  "$host" "
 set -e
 cd '$dir'
 

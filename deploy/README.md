@@ -5,7 +5,8 @@ Host-level configuration that lives outside the containers.
 ## `Caddyfile`
 
 The edge for `openfunds.top`. It terminates TLS and decides which of the three
-containers answers a request:
+containers answers a request. It listens on loopback only — the origin is hidden
+behind the public worker VPS, which forwards to this host's `web` onion:
 
 | Path                    | Container         | Port |
 | ----------------------- | ----------------- | ---- |
@@ -38,6 +39,10 @@ through an ssh key pinned to one allowlist, under database accounts that hold no
 write permission, with payment credentials stripped from every document before
 it leaves the server.
 
+It reaches the server **over Tor**, at the ssh onion: the origin is hidden, its
+public `:22` is closed, and `tor-route.sh` refuses a host that is not an onion
+rather than opening a clearnet connection that names it.
+
 ```sh
 ./deploy/inspect.sh logs api --since 30m --grep FRAUD
 ./deploy/inspect.sh mongo find tma_sales '{"publicId":"8GJPNPDY"}'
@@ -66,10 +71,14 @@ docker compose run --rm -T api node main.js migrate unlock    # after a run that
 command rather than an ssh session:
 
 ```sh
-export TRANSACTO_HOST=root@openfunds.top   # TRANSACTO_DIR defaults to /srv/transacto
+export TRANSACTO_HOST=root@<hash>.onion   # TRANSACTO_DIR defaults to /srv/transacto
 ./deploy/migrate.sh status
 ./deploy/migrate.sh up
 ```
+
+The onion, not `openfunds.top` — that name is the public worker VPS, not the
+origin, and `migrate.sh` goes over Tor through the same `tor-route.sh` as
+`inspect.sh`. A `Host` alias works too, as long as its HostName is the onion.
 
 A one-off container (`run --rm`), not the running one (`exec`): the migration
 needs the database and nothing else, and a container that exits is easier to
@@ -108,7 +117,7 @@ reconstruct, so a movement landing inside that read leaves one user out by its
 amount.
 
 ```sh
-ssh $TRANSACTO_HOST 'cd /srv/transacto && docker compose stop api'
+ssh $TRANSACTO_HOST 'cd /srv/transacto && docker compose stop api'   # same onion
 ./deploy/migrate.sh up
 ssh $TRANSACTO_HOST 'cd /srv/transacto && docker compose start api'
 ```
