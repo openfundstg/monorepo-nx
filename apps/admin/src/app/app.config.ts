@@ -57,7 +57,7 @@ export const appConfig: ApplicationConfig = {
     /**
      * Material ships English paginator labels and offers no hook into
      * `ngx-translate`. Global rather than per-screen because the paginator
-     * lives inside the shared table component that all eleven lists render.
+     * lives inside the shared table component that every list renders.
      */
     { provide: MatPaginatorIntl, useClass: TranslatedPaginatorIntl },
   ],

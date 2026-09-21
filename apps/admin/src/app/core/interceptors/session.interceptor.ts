@@ -21,7 +21,7 @@ const SESSION_PROBE = 'auth/me';
  *
  * Any request can be the one that discovers the session has expired — the
  * cookie has a twelve-hour life and the tab may have been open longer. Without
- * this, each of eleven screens would have to recognise a 401 for itself, and
+ * this, every screen would have to recognise a 401 for itself, and
  * the ones that forgot would sit on a spinner.
  *
  * The error is re-thrown rather than swallowed: the feature's own failure

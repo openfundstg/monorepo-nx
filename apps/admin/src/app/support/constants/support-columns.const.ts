@@ -1,7 +1,7 @@
 import type { AdminSupportTopicListItem, AdminSupportUserListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef } from '../../shared/interfaces';
-import { supportTopicTone } from '../../shared/utils';
+import { supportTopicTone, userLink } from '../../shared/utils';
 
 export const SUPPORT_TOPIC_COLUMNS: readonly ColumnDef<AdminSupportTopicListItem>[] = [
   {
@@ -13,8 +13,9 @@ export const SUPPORT_TOPIC_COLUMNS: readonly ColumnDef<AdminSupportTopicListItem
   {
     key: 'telegramId',
     header: 'users.telegram_id',
-    type: ColumnType.MONO,
+    type: ColumnType.ROUTER_LINK,
     value: (topic) => topic.telegramId,
+    link: (topic) => userLink(topic.telegramId),
   },
   {
     key: 'messageThreadId',
@@ -67,10 +68,19 @@ export const SUPPORT_USER_COLUMNS: readonly ColumnDef<AdminSupportUserListItem>[
       user.username ? `@${user.username}` : [user.firstName, user.lastName].join(' ').trim(),
   },
   {
+    /**
+     * A link only for somebody who has a Mini App account.
+     *
+     * `telegramId` is a join key here and never a foreign key — somebody can
+     * write to the bot without ever opening the app — so a link that always
+     * fired would send an operator to a page that does not exist for a third of
+     * this list.
+     */
     key: 'telegramId',
     header: 'users.telegram_id',
-    type: ColumnType.MONO,
+    type: ColumnType.ROUTER_LINK,
     value: (user) => user.telegramId,
+    link: (user) => (user.hasTmaAccount ? userLink(user.telegramId) : null),
   },
   {
     key: 'languageCode',

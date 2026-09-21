@@ -1,6 +1,7 @@
 import type { AdminReferralEarningListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef } from '../../shared/interfaces';
+import { userLink } from '../../shared/utils';
 
 /**
  * The referral ledger.
@@ -20,16 +21,20 @@ export const REFERRAL_COLUMNS: readonly ColumnDef<AdminReferralEarningListItem>[
     width: '140px',
   },
   {
+    // Both sides of the row lead to their own page. A referral is a claim about
+    // two people's money, and neither of them was reachable from here.
     key: 'referrerUsername',
     header: 'referrals.referrer',
-    type: ColumnType.TEXT,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.referrerUsername,
+    link: (row) => userLink(row.referrerTelegramId, row.referrerUsername),
   },
   {
     key: 'referredUsername',
     header: 'referrals.referred',
-    type: ColumnType.TEXT,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.referredUsername,
+    link: (row) => userLink(row.referredTelegramId, row.referredUsername),
   },
   {
     key: 'amount',

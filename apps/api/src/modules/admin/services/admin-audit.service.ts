@@ -12,8 +12,8 @@ import { AdminAuditLogDbService, type AdminAuditLog } from 'src/modules/reposito
 import { ADMIN_SORTABLE } from 'src/modules/admin/constants'
 import { AdminGateway } from 'src/modules/admin/gateways/admin.gateway'
 import { clampLimit } from 'src/modules/admin/dto'
+import { containsRegex } from 'src/shared/utils'
 import {
-  escapeRegex,
   toAdminAuditEntry,
   toPageQuery,
   toPaginatedRes
@@ -76,7 +76,7 @@ export class AdminAuditService {
     const filter: QueryFilter<AdminAuditLog> = {}
 
     if (request.search) {
-      const pattern = new RegExp(escapeRegex(request.search), 'i')
+      const pattern = containsRegex(request.search)
       filter.$or = [{ actor: pattern }, { targetId: pattern }, { reason: pattern }]
     }
 

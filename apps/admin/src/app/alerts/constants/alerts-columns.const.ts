@@ -2,7 +2,7 @@ import { AlertStatus } from '@transacto/contracts';
 import type { AdminAlertListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction } from '../../shared/interfaces';
-import { alertTone } from '../../shared/utils';
+import { alertTone, safeBoxLink, terminalLink, traderLink } from '../../shared/utils';
 
 /**
  * Alerts across every trader.
@@ -24,14 +24,18 @@ export const ALERT_COLUMNS: readonly ColumnDef<AdminAlertListItem>[] = [
   {
     key: 'traderId',
     header: 'common.trader',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (alert) => alert.traderId,
+    link: (alert) => traderLink(alert.traderId),
   },
   {
+    // The terminal this is about — an alert is always about one jar, and the
+    // first thing anybody asks about an alert is what that jar was doing.
     key: 'terminalId',
     header: 'common.terminal',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (alert) => alert.terminalId,
+    link: (alert) => terminalLink(alert.terminalId),
   },
   {
     key: 'type',
@@ -62,6 +66,17 @@ export const ALERT_COLUMNS: readonly ColumnDef<AdminAlertListItem>[] = [
     header: 'alerts.read',
     type: ColumnType.BOOL,
     value: (alert) => alert.isRead,
+  },
+  {
+    // The safe box, narrowed to this terminal. An unrecognised deposit and the
+    // money it put somewhere are the same event seen twice, and following one
+    // to the other was three navigations.
+    key: 'links',
+    header: 'common.related',
+    type: ColumnType.REFS,
+    value: () => null,
+    refs: (alert) => [terminalLink(alert.terminalId), safeBoxLink(alert.terminalId)],
+    width: '150px',
   },
 ];
 

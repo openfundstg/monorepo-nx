@@ -1,7 +1,7 @@
 import type { AdminFiatDepositWatchListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef } from '../../shared/interfaces';
-import { fiatWatchModeTone } from '../../shared/utils';
+import { fiatWatchModeTone, userDepositsLink, userLink } from '../../shared/utils';
 
 /**
  * A request is two hryvnia figures and a person — nothing else about them.
@@ -21,16 +21,20 @@ export const FIAT_DEPOSIT_WATCH_COLUMNS: readonly ColumnDef<AdminFiatDepositWatc
     width: '140px',
   },
   {
+    // "Everything else about that person is one click away in the users list"
+    // is what this row's contract promises. It is now literally one click.
     key: 'username',
     header: 'fiat_deposit_watches.user',
-    type: ColumnType.TEXT,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.username,
+    link: (row) => userLink(row.telegramId, row.username),
   },
   {
     key: 'telegramId',
     header: 'fiat_deposit_watches.telegram_id',
-    type: ColumnType.MONO,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.telegramId,
+    link: (row) => userDepositsLink(row.telegramId),
   },
   {
     key: 'minAmountUah',

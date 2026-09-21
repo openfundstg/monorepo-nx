@@ -39,6 +39,13 @@ export const fiatReceiptRecord = (
   checkUrl: null,
   // The ordinary case: the recipient was compared with the payout's card.
   recipientChecked: true,
+  // Nothing proved it and nothing archived it — the state a receipt is in for
+  // the moment between being pushed and being judged, which is where most
+  // specs want it.
+  bank: null,
+  storedName: null,
+  sizeBytes: null,
+  purgedAt: null,
   uploadedAt: new Date(),
   ...overrides
 })

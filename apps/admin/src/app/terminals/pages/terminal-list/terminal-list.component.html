@@ -7,6 +7,7 @@
 </app-page-header>
 
 <app-collection-table
+  [rowId]="rowId"
   [columns]="columns"
   [rows]="state().items"
   [total]="state().total"

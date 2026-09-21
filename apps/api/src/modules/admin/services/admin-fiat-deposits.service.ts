@@ -1,31 +1,20 @@
 import {
   AdminAuditAction,
   AdminAuditTargetType,
+  AdminDepositKind,
   AdminFiatDepositAction,
   ERROR,
   TmaFiatDepositStatus,
-  type AdminFiatDepositActionReq,
-  type AdminFiatDepositListItem,
-  type AdminPageReq,
-  type AdminPaginatedRes
+  type AdminDepositRowItem,
+  type AdminFiatDepositActionReq
 } from '@transacto/contracts'
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
-import type { QueryFilter } from 'mongoose'
 import type { AdminPrincipal } from 'src/shared/interfaces'
 import { TmaFiatDepositDbService } from 'src/modules/repositories/tma-fiat-deposit-db/services'
-import type { TmaFiatDeposit } from 'src/modules/repositories/tma-fiat-deposit-db/schemas'
 import type { TmaFiatDepositRecord } from 'src/modules/repositories/tma-fiat-deposit-db/interfaces'
 import { FiatDepositSettlementService } from 'src/modules/telegram-mini-app/services/fiat-deposit-settlement.service'
-import { ADMIN_SORTABLE } from 'src/modules/admin/constants'
-import { clampLimit } from 'src/modules/admin/dto'
 import { AdminAuditService } from 'src/modules/admin/services/admin-audit.service'
-import { AdminUsersService } from 'src/modules/admin/services/admin-users.service'
-import {
-  escapeRegex,
-  toAdminFiatDeposit,
-  toPageQuery,
-  toPaginatedRes
-} from 'src/modules/admin/utils'
+import { AdminDepositsService } from 'src/modules/admin/services/admin-deposits.service'
 
 /** Which audit action each intervention writes. */
 const ACTION_AUDIT: Readonly<Record<AdminFiatDepositAction, AdminAuditAction>> = {
@@ -34,12 +23,14 @@ const ACTION_AUDIT: Readonly<Record<AdminFiatDepositAction, AdminAuditAction>> =
 }
 
 /**
- * Fiat top-ups, as an operator sees and settles them.
+ * The two interventions an operator can make on a fiat top-up.
  *
- * The list is a list. The two actions are the ones the automatic path
- * deliberately will not take on its own — a top-up whose hold ran out with
- * money already in it, or a payout Transacto ended in a way the reconciler
- * could not read — and both are settled through
+ * **Reading them is not this service's job any more** — the deposits book shows
+ * both rails through `AdminDepositsService`, and a second listing here would be
+ * a second projection of the same row. What is left is the pair of writes, and
+ * they are the ones the automatic path deliberately will not take on its own:
+ * a top-up whose hold ran out with money already in it, or a payout Transacto
+ * ended in a way the reconciler could not read. Both are settled through
  * {@link FiatDepositSettlementService}, the same service the reconciler and the
  * Mini App use. A second implementation here would be a second settlement path
  * for the same money, which is exactly what this panel's rules forbid.
@@ -49,25 +40,9 @@ export class AdminFiatDepositsService {
   constructor(
     private readonly fiatDepositDb: TmaFiatDepositDbService,
     private readonly settlement: FiatDepositSettlementService,
-    private readonly usersService: AdminUsersService,
+    private readonly deposits: AdminDepositsService,
     private readonly auditService: AdminAuditService
   ) {}
-
-  async list(request: AdminPageReq): Promise<AdminPaginatedRes<AdminFiatDepositListItem>> {
-    const limit = clampLimit(request.limit)
-    const paging = { ...request, limit }
-
-    const page = await this.fiatDepositDb.findPage(
-      this.searchFilter(request.search),
-      toPageQuery(paging, ADMIN_SORTABLE.FIAT_DEPOSITS)
-    )
-
-    const names = await this.usersService.namesFor(page.items.map((row) => row.telegramId))
-
-    return toPaginatedRes(page, paging, (row) =>
-      toAdminFiatDeposit(row, names.get(row.telegramId) ?? String(row.telegramId))
-    )
-  }
 
   /**
    * Credits a top-up by hand, or gives its payout back.
@@ -81,7 +56,7 @@ export class AdminFiatDepositsService {
     request: AdminFiatDepositActionReq,
     admin: AdminPrincipal,
     ip: string
-  ): Promise<AdminFiatDepositListItem> {
+  ): Promise<AdminDepositRowItem> {
     const deposit = await this.fiatDepositDb.findById(depositId)
     if (deposit === null) throw new NotFoundException(ERROR.FIAT_DEPOSIT.NOT_FOUND)
 
@@ -112,9 +87,14 @@ export class AdminFiatDepositsService {
       ip
     })
 
-    const username = await this.usersService.namesFor([settled.telegramId])
+    // Re-read through the book rather than mapped here. The list, the live
+    // push and this answer are then one projection of one deposit — which is
+    // what stops an operator's own action being the thing that makes their
+    // screen disagree with the next refresh.
+    const row = await this.deposits.row(AdminDepositKind.FIAT, settled._id.toString())
+    if (row === null) throw new NotFoundException(ERROR.FIAT_DEPOSIT.NOT_FOUND)
 
-    return toAdminFiatDeposit(settled, username.get(settled.telegramId) ?? String(settled.telegramId))
+    return row
   }
 
   private async settle(
@@ -124,31 +104,5 @@ export class AdminFiatDepositsService {
     if (action === AdminFiatDepositAction.COMPLETE) return this.settlement.complete(deposit)
 
     return this.settlement.release(deposit, TmaFiatDepositStatus.EXPIRED)
-  }
-
-  /**
-   * Matched against the payout id, the recipient card and the payer's id.
-   *
-   * The payout id is what an operator carries over from Transacto's own panel,
-   * and the card is what a support conversation starts from. Status is not
-   * searchable as text: it is an enum, and typing "review" should not
-   * half-match a card number.
-   */
-  private searchFilter(search: string | undefined): QueryFilter<TmaFiatDeposit> {
-    if (!search) return {}
-
-    const pattern = new RegExp(escapeRegex(search), 'i')
-    const asNumber = Number(search)
-    const asStatus = Object.values(TmaFiatDepositStatus).find(
-      (status) => status === search.toUpperCase()
-    )
-
-    return {
-      $or: [
-        { recipientCard: pattern },
-        ...(asStatus ? [{ status: asStatus }] : []),
-        ...(Number.isFinite(asNumber) ? [{ payoutId: asNumber }, { telegramId: asNumber }] : [])
-      ]
-    }
   }
 }

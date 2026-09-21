@@ -22,6 +22,8 @@ export class OrdersListComponent {
 
   readonly columns = ORDER_COLUMNS;
   readonly state = this.store.selectSignal(ordersCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = ordersCollection.idOf;
 
   constructor() {
     this.store.dispatch(ordersCollection.actions.entered());

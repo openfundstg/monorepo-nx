@@ -3,7 +3,12 @@ import { provideState } from '@ngrx/store';
 import { provideEffects } from '@ngrx/effects';
 import { DEPOSITS_FEATURE, depositsCollection, depositsEffects } from './store/deposits.collection';
 
-/** Slice and effects are route-scoped, so an unopened screen costs nothing. */
+/**
+ * The book and one deposit's page, under one slice.
+ *
+ * `:kind/:id` rather than `:id`, because the two rails are different
+ * collections minting their own ids — see the controller's own note.
+ */
 export const routes: Routes = [
   {
     path: '',
@@ -11,7 +16,21 @@ export const routes: Routes = [
       provideState(DEPOSITS_FEATURE, depositsCollection.reducer),
       provideEffects(depositsEffects),
     ],
-    loadComponent: () =>
-      import('./pages/deposits-list/deposits-list.component').then((m) => m.DepositsListComponent),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./pages/deposits-list/deposits-list.component').then(
+            (m) => m.DepositsListComponent,
+          ),
+      },
+      {
+        path: ':kind/:id',
+        loadComponent: () =>
+          import('./pages/deposit-detail/deposit-detail.component').then(
+            (m) => m.DepositDetailComponent,
+          ),
+      },
+    ],
   },
 ];

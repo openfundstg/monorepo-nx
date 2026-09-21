@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException } from '@nestjs/common'
-import { ERROR, TmaFiatDepositStatus, TmaFiatReceiptRejection } from '@transacto/contracts'
+import { BankProvider, ERROR, TmaFiatDepositStatus, TmaFiatReceiptRejection } from '@transacto/contracts'
 import { Types } from 'mongoose'
 import { FiatDepositReceiptService } from './fiat-deposit-receipt.service'
 import type { FiatDepositSettlementService } from './fiat-deposit-settlement.service'
 import type { TmaFiatDepositDbService } from 'src/modules/repositories/tma-fiat-deposit-db/services'
+import type { FiatReceiptStorageService } from './fiat-receipt-storage.service'
 import type { TransactoPanelPayoutsApiService } from 'src/modules/transacto/services/transacto-panel-payouts.api.service'
 import type { PanelReceiptFile } from 'src/modules/transacto/interfaces'
 import {
@@ -65,11 +66,13 @@ describe('FiatDepositReceiptService', () => {
   }
   let db: {
     pushReceipt: jest.Mock
+    markReceiptArchived: jest.Mock
     markReceiptParsing: jest.Mock
     markReceiptAccepted: jest.Mock
     markReceiptRejected: jest.Mock
     findById: jest.Mock
   }
+  let storage: { save: jest.Mock }
   /** The service looks the top-up up itself now; ownership is a shared rule. */
   let owned: ReturnType<typeof fiatDepositRecord>
   let announce: jest.Mock
@@ -97,6 +100,7 @@ describe('FiatDepositReceiptService', () => {
     }
     db = {
       pushReceipt: jest.fn().mockResolvedValue(new Types.ObjectId()),
+      markReceiptArchived: jest.fn().mockResolvedValue(undefined),
       markReceiptParsing: jest.fn().mockResolvedValue(undefined),
       markReceiptAccepted: jest
         .fn()
@@ -119,11 +123,14 @@ describe('FiatDepositReceiptService', () => {
       officialDocument: jest.fn().mockResolvedValue(officialPdf())
     }
 
+    storage = { save: jest.fn().mockResolvedValue('stored.pdf') }
+
     service = new FiatDepositReceiptService(
       db as unknown as TmaFiatDepositDbService,
       panelPayouts as unknown as TransactoPanelPayoutsApiService,
       { announce, review } as unknown as FiatDepositSettlementService,
-      verification as unknown as ReceiptVerificationFacadeService
+      verification as unknown as ReceiptVerificationFacadeService,
+      storage as unknown as FiatReceiptStorageService
     )
   })
 
@@ -424,7 +431,8 @@ describe('FiatDepositReceiptService — verification', () => {
             fiatDepositRecord({ status: TmaFiatDepositStatus.REVIEW })
           )
       } as unknown as FiatDepositSettlementService,
-      verification as unknown as ReceiptVerificationFacadeService
+      verification as unknown as ReceiptVerificationFacadeService,
+      { save: jest.fn().mockResolvedValue('stored.pdf') } as unknown as FiatReceiptStorageService
     )
   })
 
@@ -646,5 +654,113 @@ describe('FiatDepositReceiptService — verification', () => {
       TEST_PAYOUT_ID,
       expect.objectContaining({ fileName: 'mine.pdf' })
     )
+  })
+})
+
+/**
+ * The archive, and the one case it exists for.
+ *
+ * Receipts were forwarded and forgotten, and what that cost was not the happy
+ * path: a receipt Transacto **took** has a copy in their panel, while a receipt
+ * refused anywhere along this path had a copy nowhere at all — and that is
+ * precisely the one an operator is asked about a month later.
+ *
+ * So the file is written before any verdict is reached, which is the only
+ * ordering that covers every refusal without listing them.
+ */
+describe('FiatDepositReceiptService archiving', () => {
+  const build = (outcome: ReceiptVerificationOutcome) => {
+    const storage = { save: jest.fn().mockResolvedValue('stored.pdf') }
+    const receiptId = new Types.ObjectId()
+    const db = {
+      pushReceipt: jest.fn().mockResolvedValue(receiptId),
+      markReceiptArchived: jest.fn().mockResolvedValue(undefined),
+      markReceiptParsing: jest.fn().mockResolvedValue(undefined),
+      markReceiptAccepted: jest.fn().mockImplementation(async () => fiatDepositRecord()),
+      markReceiptRejected: jest.fn().mockImplementation(async () => fiatDepositRecord()),
+      findById: jest.fn().mockImplementation(async () => fiatDepositRecord())
+    }
+
+    const verification = {
+      isConfigured: true,
+      verify: jest.fn().mockResolvedValue(
+        outcome === ReceiptVerificationOutcome.VERIFIED
+          ? verified()
+          : { outcome, bank: BankProvider.MONOBANK, code: '6K4A-0000-0000-0000', reasons: [] }
+      ),
+      officialDocument: jest.fn().mockResolvedValue(officialPdf())
+    }
+
+    const service = new FiatDepositReceiptService(
+      db as unknown as TmaFiatDepositDbService,
+      {
+        uploadCheck: jest.fn().mockResolvedValue(confirmedCheck()),
+        getCheckParseStatus: jest.fn(),
+        getActiveCheckParse: jest.fn().mockResolvedValue({ status: 'idle' }),
+        confirmCheck: jest.fn().mockResolvedValue(confirmedCheck())
+      } as unknown as TransactoPanelPayoutsApiService,
+      {
+        announce: jest.fn(),
+        review: jest.fn().mockImplementation(async () => fiatDepositRecord())
+      } as unknown as FiatDepositSettlementService,
+      verification as unknown as ReceiptVerificationFacadeService,
+      storage as unknown as FiatReceiptStorageService
+    )
+
+    return { service, storage, db, receiptId }
+  }
+
+  it('keeps the file of a receipt nobody accepted', async () => {
+    const { service, storage, db, receiptId } = build(ReceiptVerificationOutcome.MISMATCHED)
+
+    await service.submit(TEST_TELEGRAM_ID, DEPOSIT_ID.toString(), pdf())
+
+    expect(storage.save).toHaveBeenCalledWith(receiptId.toString(), expect.anything(), 'pdf')
+    expect(db.markReceiptRejected).toHaveBeenCalled()
+  })
+
+  it('names the file after the row, never after anything the user sent', async () => {
+    const { service, storage, receiptId } = build(ReceiptVerificationOutcome.VERIFIED)
+
+    await service.submit(
+      TEST_TELEGRAM_ID,
+      DEPOSIT_ID.toString(),
+      pdf({ fileName: '../../etc/passwd.pdf' })
+    )
+
+    expect(storage.save).toHaveBeenCalledWith(receiptId.toString(), expect.anything(), 'pdf')
+  })
+
+  /**
+   * **The bytes exactly as they arrived**, envelope and all.
+   *
+   * A receipt saved out of a banking app is a signed PKCS#7 container and the
+   * signature is over those precise bytes. Unwrapping before storing would
+   * destroy the only thing that makes the document evidence — which is a
+   * different decision from what goes *upstream*, where Transacto's recognition
+   * needs a plain PDF.
+   */
+  it('archives what arrived, not what was forwarded', async () => {
+    const { service, storage } = build(ReceiptVerificationOutcome.VERIFIED)
+    const uploaded = pdf({ buffer: Buffer.from('envelope-bytes') })
+
+    await service.submit(TEST_TELEGRAM_ID, DEPOSIT_ID.toString(), uploaded)
+
+    expect(storage.save).toHaveBeenCalledWith(expect.any(String), uploaded, 'pdf')
+  })
+
+  /**
+   * A full disk must not refuse somebody's top-up.
+   *
+   * The archive is for an operator reading a dispute later; this product
+   * breaking over its own bookkeeping is the worse failure.
+   */
+  it('does not fail the upload when the archive does', async () => {
+    const { service, storage } = build(ReceiptVerificationOutcome.VERIFIED)
+    storage.save.mockRejectedValue(new Error('ENOSPC'))
+
+    await expect(
+      service.submit(TEST_TELEGRAM_ID, DEPOSIT_ID.toString(), pdf())
+    ).resolves.toBeDefined()
   })
 })

@@ -22,6 +22,8 @@ export class AuditListComponent {
 
   readonly columns = AUDIT_COLUMNS;
   readonly state = this.store.selectSignal(auditCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = auditCollection.idOf;
 
   constructor() {
     this.store.dispatch(auditCollection.actions.entered());

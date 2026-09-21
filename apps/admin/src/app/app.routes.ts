@@ -27,17 +27,19 @@ export const routes: Routes = [
       },
       { path: 'deposits', loadChildren: () => import('./deposits/routes').then((m) => m.routes) },
       {
-        path: 'fiat-deposits',
-        loadChildren: () => import('./fiat-deposits/routes').then((m) => m.routes),
+        path: 'documents',
+        loadChildren: () => import('./documents/routes').then((m) => m.routes),
       },
       {
         path: 'fiat-deposit-watches',
         loadChildren: () => import('./fiat-deposit-watches/routes').then((m) => m.routes),
       },
-      {
-        path: 'card-orders',
-        loadChildren: () => import('./card-orders/routes').then((m) => m.routes),
-      },
+      // The two screens these replaced. Kept as redirects rather than deleted:
+      // an operator's bookmark and a link pasted into a support thread both
+      // outlive a refactor, and a dead one lands on the Mini App by way of the
+      // catch-all — which reads as the panel being broken.
+      { path: 'fiat-deposits', redirectTo: 'deposits', pathMatch: 'full' },
+      { path: 'card-orders', redirectTo: 'sales', pathMatch: 'full' },
       { path: 'referrals', loadChildren: () => import('./referrals/routes').then((m) => m.routes) },
       { path: 'terminals', loadChildren: () => import('./terminals/routes').then((m) => m.routes) },
       { path: 'orders', loadChildren: () => import('./orders/routes').then((m) => m.routes) },

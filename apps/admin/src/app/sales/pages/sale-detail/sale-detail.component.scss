@@ -1,0 +1,15 @@
+/*
+ * Only what is this page's own.
+ *
+ * The identity block, the figure grid, the rows and the links are the shape of
+ * every detail page and live in `styles/_primitives.scss` — three copies of
+ * them is how "identical" screens come to differ by four pixels and a border.
+ */
+.header {
+  margin-bottom: var(--gap-md);
+}
+
+/** An order and the statements filed under it read as one block. */
+.card-order + .card-order {
+  margin-top: var(--gap-sm);
+}

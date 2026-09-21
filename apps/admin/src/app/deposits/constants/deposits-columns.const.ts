@@ -1,69 +1,179 @@
-import type { AdminDepositListItem } from '@transacto/contracts';
+import {
+  AdminDepositKind,
+  AdminFiatDepositAction,
+  isFiatDepositHeld,
+  type AdminDepositRowItem,
+  type TmaFiatDepositStatus,
+} from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
-import type { ColumnDef } from '../../shared/interfaces';
-import { depositTone } from '../../shared/utils';
+import type { ColumnDef, RowAction, RowLink } from '../../shared/interfaces';
+import type { FilterChip } from '../../shared/components';
+import {
+  depositLink,
+  depositRowTone,
+  depositStatusPrefix,
+  documentsForLink,
+  ordersLink,
+  unknownTone,
+  userLink,
+} from '../../shared/utils';
 
 /**
- * Note `USDT_WHOLE` on `cryptoAmount` and `USDT` nowhere.
+ * The two rails, and the whole book.
  *
- * A deposit stores the figure the user typed on the form — whole USDT — while
- * every balance in the system is cents. Rendering one as the other is a
- * hundredfold error, and the column type is where that decision is recorded.
+ * **They were two screens**, and the split was ours rather than the product's:
+ * a user tops up with USDT or with hryvnia and thinks of neither as a separate
+ * feature. More to the point, the rule that matters most about them treats them
+ * as one — a new account is capped at ₴2 000 per top-up until one settled
+ * deposit *by either method* lifts it — so a screen showing one rail cannot
+ * explain why somebody's cap lifted.
  */
-export const DEPOSIT_COLUMNS: readonly ColumnDef<AdminDepositListItem>[] = [
+export const DEPOSIT_FILTERS: readonly FilterChip[] = [
+  { value: null, label: 'deposits.filter_all' },
+  { value: AdminDepositKind.CRYPTO, label: 'deposits.filter_crypto' },
+  { value: AdminDepositKind.FIAT, label: 'deposits.filter_fiat' },
+];
+
+/**
+ * One deposit, on whichever rail it came over.
+ *
+ * **The money is cents on every row**, converted on the server — see
+ * `AdminDepositRowItem`. A column reading whichever unit its source used would
+ * be a hundredfold error that no type catches, because both are `number`.
+ *
+ * **No recipient card.** It is a payment credential, it is needed for exactly
+ * one errand — reconciling a top-up against Transacto's own panel — and that
+ * errand has a page. It is still *searchable*, because searching for a value
+ * somebody already holds discloses nothing.
+ */
+export const DEPOSIT_COLUMNS: readonly ColumnDef<AdminDepositRowItem>[] = [
   {
     key: 'createdAt',
     header: 'common.created',
     type: ColumnType.DATE,
-    value: (deposit) => deposit.createdAt,
+    value: (row) => row.createdAt,
     sortable: true,
     width: '140px',
   },
   {
-    key: 'username',
-    header: 'deposits.user',
-    type: ColumnType.TEXT,
-    value: (deposit) => deposit.username,
+    key: 'kind',
+    header: 'deposits.method',
+    type: ColumnType.CHIP,
+    value: (row) => row.kind,
+    translatePrefix: 'DEPOSIT_KIND',
+    // Neither rail is better than the other; the chip is here to be read.
+    tone: unknownTone,
+    width: '110px',
   },
   {
-    key: 'cryptoAmount',
-    header: 'deposits.amount',
-    type: ColumnType.USDT_WHOLE,
-    value: (deposit) => deposit.cryptoAmount,
+    key: 'username',
+    header: 'deposits.user',
+    type: ColumnType.ROUTER_LINK,
+    value: (row) => row.username,
+    link: (row) => userLink(row.telegramId, row.username),
+  },
+  {
+    key: 'cryptoCents',
+    header: 'deposits.credited',
+    type: ColumnType.USDT,
+    value: (row) => row.cryptoCents,
     sortable: true,
   },
   {
-    key: 'fiatEquivalent',
+    key: 'fiatAmount',
     header: 'deposits.fiat',
     type: ColumnType.UAH,
-    value: (deposit) => deposit.fiatEquivalent,
+    value: (row) => row.fiatAmount,
+    sortable: true,
   },
   {
-    key: 'exchangeRate',
-    header: 'common.rate',
+    /**
+     * How much of a hryvnia top-up has actually been proven.
+     *
+     * Empty on the crypto rail — `null` rather than zero, because a crypto
+     * deposit is not paid in parts and "none of it has arrived" is not a state
+     * it has.
+     */
+    key: 'coveredUah',
+    header: 'deposits.covered',
     type: ColumnType.UAH,
-    value: (deposit) => deposit.exchangeRate,
+    value: (row) => row.coveredUah,
   },
   {
+    /**
+     * Two enums in one column, discriminated by the row's rail.
+     *
+     * The prefix is a function for the same reason the tone is: flattening the
+     * two into a third status enum would be a status written down in three
+     * places and agreeing in two.
+     */
     key: 'status',
     header: 'common.status',
     type: ColumnType.CHIP,
-    value: (deposit) => deposit.status,
-    tone: (deposit) => depositTone(deposit.status),
-    translatePrefix: 'DEPOSIT_STATUS',
+    value: (row) => row.status,
+    tone: (row) => depositRowTone(row.kind, row.status),
+    translatePrefix: (row) => depositStatusPrefix(row.kind),
     sortable: true,
   },
   {
-    key: 'txId',
-    header: 'deposits.tx',
-    type: ColumnType.MONO,
-    value: (deposit) => deposit.txId,
+    key: 'documentCount',
+    header: 'deposits.documents',
+    type: ColumnType.ROUTER_LINK,
+    value: (row) => (row.documentCount === 0 ? null : row.documentCount),
+    link: (row) =>
+      row.documentCount === 0 || row.payoutId === null
+        ? null
+        : documentsForLink(row.payoutId, row.documentCount),
+    width: '110px',
   },
   {
-    key: 'verifiedAt',
-    header: 'deposits.verified',
-    type: ColumnType.DATE,
-    value: (deposit) => deposit.verifiedAt,
-    sortable: true,
+    key: 'links',
+    header: 'common.related',
+    type: ColumnType.REFS,
+    value: () => null,
+    refs: (row) => depositRefs(row),
+    width: '190px',
+  },
+];
+
+/** Where one deposit's row can take an operator. */
+const depositRefs = (row: AdminDepositRowItem): readonly RowLink[] => [
+  depositLink(row.kind, row.id, 'links.open'),
+  // The payout this top-up is settling, in Transacto's own numbering — what an
+  // operator reconciling it is holding.
+  ...(row.payoutId === null ? [] : [ordersLink(row.payoutId)]),
+];
+
+/**
+ * The two interventions, and only on the hryvnia rail.
+ *
+ * **A crypto deposit offers none on purpose.** It settles against a blockchain
+ * transaction, and the honest correction for one that went wrong is an audited
+ * balance adjustment on the user — not editing a deposit into a state the chain
+ * does not support. Hiding the menu is how the screen says so.
+ *
+ * **The rule itself is `isFiatDepositHeld`, from contracts.** That predicate's
+ * own doc comment states it is the set an operator can still act on — the
+ * payout is still ours in every one of those statuses — so restating the three
+ * members here would be a copy of a rule that already has a home, and the copy
+ * is what drifts. The backend re-checks regardless: the row may have moved
+ * since it was drawn, because the reconciler runs every thirty seconds.
+ */
+const actionable = (row: AdminDepositRowItem): boolean =>
+  row.kind === AdminDepositKind.FIAT && isFiatDepositHeld(row.status as TmaFiatDepositStatus);
+
+export const DEPOSIT_ROW_ACTIONS: readonly RowAction<AdminDepositRowItem>[] = [
+  {
+    id: AdminFiatDepositAction.COMPLETE,
+    label: 'deposits.complete',
+    icon: 'task_alt',
+    visible: actionable,
+  },
+  {
+    id: AdminFiatDepositAction.RELEASE,
+    label: 'deposits.release',
+    icon: 'undo',
+    visible: actionable,
+    destructive: true,
   },
 ];

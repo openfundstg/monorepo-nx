@@ -43,6 +43,10 @@ export class SupportListComponent {
 
   readonly topics = this.store.selectSignal(supportTopicsCollection.selectors.selectState);
   readonly users = this.store.selectSignal(supportUsersCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly topicRowId = supportTopicsCollection.idOf;
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly userRowId = supportUsersCollection.idOf;
 
   constructor() {
     this.store.dispatch(supportTopicsCollection.actions.entered());

@@ -20,10 +20,10 @@ import { CollectionState, initialCollectionState } from './collection.state';
  * One paginated list's actions, reducer and selectors, built from a name and an
  * identity function.
  *
- * Eleven lists share one implementation. The alternative — an actions file, a
- * reducer file and a selectors file per resource — is the same code eleven
- * times over, and the copies drift: the paging arithmetic in the eleventh one
- * is the one that is off by a page.
+ * Every list shares one implementation. The alternative — an actions file, a
+ * reducer file and a selectors file per resource — is the same code a dozen
+ * times over, and the copies drift: the paging arithmetic in the twelfth one is
+ * the one that is off by a page.
  *
  * `createFeature` is deliberately not used. It derives its selector names from
  * a *literal* feature name, which a factory cannot supply, so the generic
@@ -37,6 +37,14 @@ export interface CollectionApi<T> {
   readonly reducer: ActionReducer<CollectionState<T>>;
   readonly selectors: CollectionSelectors<T>;
   readonly name: string;
+  /**
+   * How a row identifies itself — see {@link CollectionOptions.idOf}.
+   *
+   * Exposed because the table needs the same answer the reducer does. It was
+   * captured in the closure and only the reducer could reach it, so the table
+   * guessed instead, by taking its first column's value.
+   */
+  readonly idOf: (item: T) => string;
 }
 
 export interface CollectionSelectors<T> {
@@ -64,6 +72,8 @@ const buildActions = <T>(name: string) => ({
   loadSuccess: createAction(`[${name}] Load Success`, props<{ res: AdminPaginatedRes<T> }>()),
   loadFailure: createAction(`[${name}] Load Failure`, props<{ error: ApiError }>()),
   searchChanged: createAction(`[${name}] Search Changed`, props<{ search: string }>()),
+  /** The operator picked a different chip. */
+  filterChanged: createAction(`[${name}] Filter Changed`, props<{ filter: string | null }>()),
   pageChanged: createAction(`[${name}] Page Changed`, props<{ page: number; limit: number }>()),
   sortChanged: createAction(
     `[${name}] Sort Changed`,
@@ -79,6 +89,13 @@ export interface CollectionOptions<T> {
   /** Which field the list sorts by until the operator says otherwise. */
   readonly defaultSort: string | null;
   readonly defaultDirection?: AdminSortDirection;
+  /**
+   * Which slice the list opens on, for the lists that have chips.
+   *
+   * `null` — the whole book — everywhere except where opening on everything
+   * would bury the rows somebody came for.
+   */
+  readonly defaultFilter?: string | null;
   /**
    * How a row identifies itself.
    *
@@ -96,6 +113,7 @@ export const createCollection = <T>(
   const initial = initialCollectionState<T>(
     options.defaultSort,
     options.defaultDirection ?? AdminSortDirection.DESC,
+    options.defaultFilter ?? null,
   );
 
   const reducer = createReducer(
@@ -117,6 +135,9 @@ export const createCollection = <T>(
     // A new search starts at page one. Staying on page four of the previous
     // result set shows an empty table for a term that matched plenty.
     on(actions.searchChanged, (state, { search }) => ({ ...state, search, page: 1 })),
+    // A different slice starts at page one, for the same reason a search does:
+    // page four of the whole book is rarely page four of one chip's worth of it.
+    on(actions.filterChanged, (state, { filter }) => ({ ...state, filter, page: 1 })),
     on(actions.pageChanged, (state, { page, limit }) => ({ ...state, page, limit })),
     on(actions.sortChanged, (state, { sort, direction }) => ({
       ...state,
@@ -143,6 +164,7 @@ export const createCollection = <T>(
     name,
     actions,
     reducer,
+    idOf: options.idOf,
     selectors: {
       selectState,
       selectItems: createSelector(selectState, (state) => state.items),
@@ -151,6 +173,9 @@ export const createCollection = <T>(
         page: state.page,
         limit: state.limit,
         search: state.search || undefined,
+        // Never an empty string — the backend refuses one, and an empty filter
+        // that matched nothing is the bug that refusal exists to prevent.
+        filter: state.filter ?? undefined,
         sort: state.sort ?? undefined,
         direction: state.direction,
       })),

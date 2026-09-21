@@ -22,6 +22,8 @@ export class SafeBoxListComponent {
 
   readonly columns = SAFE_BOX_COLUMNS;
   readonly state = this.store.selectSignal(safeBoxCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = safeBoxCollection.idOf;
 
   constructor() {
     this.store.dispatch(safeBoxCollection.actions.entered());

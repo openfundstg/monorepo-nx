@@ -73,7 +73,12 @@ export const createCollectionEffects = <T>(
     paging: createEffect(
       () =>
         inject(Actions).pipe(
-          ofType(actions.pageChanged, actions.sortChanged, actions.refreshed),
+          ofType(
+            actions.pageChanged,
+            actions.sortChanged,
+            actions.filterChanged,
+            actions.refreshed,
+          ),
           map(() => actions.load()),
         ),
       { functional: true },

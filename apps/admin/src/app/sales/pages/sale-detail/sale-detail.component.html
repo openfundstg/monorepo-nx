@@ -1,0 +1,195 @@
+<div class="header">
+  <a mat-button [routerLink]="['/sales']">
+    <mat-icon>arrow_back</mat-icon>
+    {{ 'sales.title' | translate }}
+  </a>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (detail(); as data) {
+  <div class="detail-identity card">
+    <div>
+      <h1 class="page-title mono">{{ data.sale.publicId }}</h1>
+      <p class="page-subtitle">{{ data.sale.createdAt | dateTime }}</p>
+    </div>
+    <div class="detail-identity__flags">
+      <app-status-chip [value]="data.sale.saleMethod" translatePrefix="SALE_METHOD" />
+      <app-status-chip
+        [value]="data.sale.status"
+        [tone]="saleTone(data.sale.status)"
+        translatePrefix="SALE_STATUS"
+      />
+      @if (data.sale.blockReason; as reason) {
+        <app-status-chip [value]="reason" translatePrefix="SALE_BLOCK_REASON" />
+      }
+    </div>
+  </div>
+
+  <section class="detail-grid">
+    <div class="card figure">
+      <span class="figure__label">{{ 'sales.target' | translate }}</span>
+      <span class="figure__value">{{ data.sale.fiatAmount | uah }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'sales.received' | translate }}</span>
+      <span class="figure__value">{{ data.sale.receivedAmount | uah }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'sales.jar' | translate }}</span>
+      <!--
+        Empty on a card sale, and that is not a gap: a card sale has no jar.
+        The em dash is the pipe's own answer to `null`.
+      -->
+      <span class="figure__value">{{ data.sale.jarBalance | uah }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'sales.stake' | translate }}</span>
+      <span class="figure__value">{{ data.sale.frozenUsdt | usdt }}</span>
+      <span class="figure__hint"
+        >{{ 'sales.rate' | translate }}: {{ data.sale.exchangeRate | uah }}</span
+      >
+    </div>
+  </section>
+
+  <!--
+    Everything this sale is connected to, as links rather than as ids to copy.
+    This block is the reason the page exists.
+  -->
+  <section class="card detail-section">
+    <h2>{{ 'common.related' | translate }}</h2>
+    <div class="detail-links">
+      @if (data.user; as user) {
+        <a class="ref" [routerLink]="['/users', user.telegramId]">
+          <mat-icon>person</mat-icon>
+          {{ user.username || user.firstName }}
+        </a>
+      }
+      @if (data.terminal; as terminal) {
+        <a class="ref" [routerLink]="['/terminals', terminal.cardId, 'history']">
+          <mat-icon>point_of_sale</mat-icon>
+          {{ terminal.terminalName }}
+        </a>
+        <a class="ref" [routerLink]="['/traders']" [queryParams]="{ search: terminal.traderId }">
+          <mat-icon>badge</mat-icon>
+          {{ 'common.trader' | translate }} {{ terminal.traderId }}
+        </a>
+      }
+      @if (data.sale.dropLink) {
+        <a class="ref" [href]="data.sale.dropLink" target="_blank" rel="noopener noreferrer">
+          <mat-icon>open_in_new</mat-icon>
+          {{ 'sales.drop_link' | translate }}
+        </a>
+      }
+      <a class="ref" [routerLink]="['/audit']" [queryParams]="{ search: data.sale.id }">
+        <mat-icon>history</mat-icon>
+        {{ 'links.audit' | translate }}
+      </a>
+    </div>
+  </section>
+
+  @if (isCardSale()) {
+    <section class="card detail-section">
+      <h2>{{ 'sales.card_orders' | translate }}</h2>
+      @for (cardOrder of data.cardOrders; track cardOrder.orderId) {
+        <div class="card-order">
+          <div class="detail-row">
+            <a
+              class="mono ref"
+              [routerLink]="['/orders']"
+              [queryParams]="{ search: cardOrder.orderId }"
+            >
+              {{ cardOrder.orderId }}
+            </a>
+            <span>{{ cardOrder.amount | uah }}</span>
+            <!--
+              What the seller says landed, beside what was routed. Kept apart
+              because the two are different facts and their disagreement is the
+              thing worth seeing.
+            -->
+            @if (cardOrder.declaredAmount !== null) {
+              <span class="muted"
+                >{{ 'sales.declared' | translate }}: {{ cardOrder.declaredAmount | uah }}</span
+              >
+            }
+            <app-status-chip
+              [value]="cardOrder.state"
+              [tone]="cardOrderTone(cardOrder.state)"
+              translatePrefix="SALE_CARD_ORDER"
+            />
+            <span class="muted">{{ cardOrder.arrivedAt | dateTime }}</span>
+          </div>
+
+          <!--
+            The statements filed under this order, as summaries.
+
+            Deliberately not `<app-document-row>`: that row carries buttons, and
+            the same document would then offer two identical downloads on one
+            screen — here, and again in the archive section below. What this
+            line answers is "was anything sent about *this* order", which is a
+            different question from "what came in about this sale".
+          -->
+          @for (statement of cardOrder.statements; track statement.id) {
+            <div class="detail-row detail-row--nested">
+              <mat-icon class="ref__icon">description</mat-icon>
+              <span>{{ statement.bank }}</span>
+              <app-status-chip
+                [value]="statement.status"
+                [tone]="documentTone(DocumentKind.SALE_STATEMENT, statement.status)"
+                [translatePrefix]="statementStatusPrefix"
+              />
+              @if (statement.rejection; as rejection) {
+                <span class="muted">{{ statementRejectionKey(rejection) | translate }}</span>
+              }
+              @if (statement.periodFrom) {
+                <span class="muted">
+                  {{ statement.periodFrom | dateTime }} — {{ statement.periodTo | dateTime }}
+                </span>
+              }
+              @if (statement.ownerName) {
+                <span class="muted">{{ statement.ownerName }}</span>
+              }
+            </div>
+          }
+        </div>
+      } @empty {
+        <p class="muted">{{ 'sales.no_card_orders' | translate }}</p>
+      }
+    </section>
+  }
+
+  <!-- Every file sent about this, rendered by the one component that knows how. -->
+  <section class="card detail-section">
+    <h2>{{ 'documents.title' | translate }}</h2>
+    @for (document of data.documents; track document.id) {
+      <app-document-row [document]="document" />
+    } @empty {
+      <p class="muted">{{ 'documents.empty' | translate }}</p>
+    }
+  </section>
+
+  <section class="card detail-section">
+    <h2>{{ 'sales.transacto_orders' | translate }}</h2>
+    @for (order of data.transactoOrders; track order.id) {
+      <div class="detail-row">
+        <a class="mono ref" [routerLink]="['/orders']" [queryParams]="{ search: order.orderId }">
+          {{ order.orderId }}
+        </a>
+        <span>{{ order.amount | uah }}</span>
+        <app-status-chip
+          [value]="order.status"
+          [tone]="orderTone(order.status)"
+          translatePrefix="ORDER_STATUS"
+        />
+        @if (order.awaitingUpstreamConfirmation) {
+          <app-status-chip value="orders.awaiting_upstream" [tone]="flagTone(false)" />
+        }
+        <span class="muted">{{ order.createdAt | dateTime }}</span>
+      </div>
+    } @empty {
+      <p class="muted">{{ 'sales.no_transacto_orders' | translate }}</p>
+    }
+  </section>
+}

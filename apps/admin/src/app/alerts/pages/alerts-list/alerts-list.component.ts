@@ -33,6 +33,8 @@ export class AlertsListComponent {
   readonly columns = ALERT_COLUMNS;
   readonly rowActions = ALERT_ROW_ACTIONS;
   readonly state = this.store.selectSignal(alertsCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = alertsCollection.idOf;
 
   constructor() {
     this.store.dispatch(alertsCollection.actions.entered());

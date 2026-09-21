@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { HydratedDocument } from 'mongoose'
 import {
+  BankProvider,
   FIAT_DEPOSIT_HELD_STATUSES,
   FIAT_DEPOSIT_PAYABLE_STATUSES,
   TmaFiatDepositStatus,
@@ -56,8 +57,10 @@ export class TmaFiatDepositReceipt {
    * Where Transacto filed the accepted receipt.
    *
    * Read back off their checks table during reconciliation, for an operator to
-   * open. A rejected receipt has none — we do not store the file ourselves, so
-   * there is nothing to show for one Transacto would not take.
+   * open. A rejected receipt has none, because Transacto files only what it
+   * took — which is exactly why {@link storedName} exists: the receipt an
+   * operator is asked about a month later is usually the refused one, and it
+   * used to have no copy anywhere at all.
    */
   @Prop({ type: String, default: null })
   checkUrl: string | null
@@ -81,6 +84,41 @@ export class TmaFiatDepositReceipt {
    */
   @Prop({ type: Boolean, default: true })
   recipientChecked: boolean
+
+  /**
+   * Which bank's signature vouched for this receipt, or `null`.
+   *
+   * `null` on a receipt refused before any bank was reached — one whose code
+   * could not be read, or one the verifier could not consult. Recorded because
+   * the archive lists both kinds of document side by side and a receipt that
+   * names no bank is a receipt nobody proved.
+   */
+  @Prop({ type: String, enum: BankProvider, default: null })
+  bank: BankProvider | null
+
+  /**
+   * The file's name on disk, relative to `FIAT_RECEIPT_STORAGE_DIR`, or `null`
+   * for a receipt uploaded before this product kept any.
+   *
+   * Never built from anything the user sent: a name they chose is a path they
+   * chose. See `FiatReceiptStorageService`.
+   */
+  @Prop({ type: String, default: null })
+  storedName: string | null
+
+  /** As uploaded. `null` where no file was kept. */
+  @Prop({ type: Number, default: null })
+  sizeBytes: number | null
+
+  /**
+   * When the file itself was deleted, or `null` while it is still on disk.
+   *
+   * **The record outlives the document**, exactly as it does for a statement:
+   * what a top-up was settled on stays, and the bytes — which state a payer's
+   * and a recipient's credentials in full — do not.
+   */
+  @Prop({ type: Date, default: null })
+  purgedAt: Date | null
 
   @Prop({ type: Date, required: true })
   uploadedAt: Date

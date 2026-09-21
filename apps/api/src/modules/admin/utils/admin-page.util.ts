@@ -1,7 +1,7 @@
-import { AdminSortDirection } from '@transacto/contracts'
+import { AdminSortDirection, SaleMethod } from '@transacto/contracts'
 import type { AdminPageReq, AdminPaginatedRes } from '@transacto/contracts'
 import type { Page, PageQuery } from 'src/modules/repositories/interfaces'
-import { ADMIN_PAGE } from 'src/modules/admin/constants'
+import { ADMIN_PAGE, DISPUTED_CARD_ORDER_STATES } from 'src/modules/admin/constants'
 
 /**
  * Turns a validated page request into the offset-and-sort the repository layer
@@ -42,16 +42,6 @@ export const toPaginatedRes = <TDoc, TItem>(
 })
 
 /**
- * Escapes every regular-expression metacharacter in a search term.
- *
- * The lists match a user's free text against names and links with `$regex`, and
- * an unescaped `(((((((((.*)*)*)*` is a query that never returns. Escaping
- * makes the term mean itself, which is also what an operator typing a jar URL
- * with a `?` in it expects.
- */
-export const escapeRegex = (term: string): string => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-/**
  * Midnight today, in the server's timezone.
  *
  * The overview's "today" figures. Deliberately the server's day rather than
@@ -63,3 +53,15 @@ export const startOfToday = (): Date => {
 
   return new Date(now.getFullYear(), now.getMonth(), now.getDate())
 }
+
+/**
+ * Sales waiting on a person, as a Mongo filter.
+ *
+ * Built here rather than at each caller so the dispute chip and the dashboard's
+ * dispute count cannot ask different questions — a figure that disagrees with
+ * the list it links to is worse than no figure.
+ */
+export const disputedCardSaleFilter = (): Record<string, unknown> => ({
+  saleMethod: SaleMethod.CARD,
+  'cardOrders.state': { $in: [...DISPUTED_CARD_ORDER_STATES] }
+})

@@ -1,6 +1,7 @@
 import type { AdminTerminalListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction } from '../../shared/interfaces';
+import { alertsLink, ordersLink, terminalHistoryLink, traderLink } from '../../shared/utils';
 
 /**
  * `enabled` and `acceptingOrders` are two columns, not one.
@@ -21,14 +22,18 @@ export const TERMINAL_COLUMNS: readonly ColumnDef<AdminTerminalListItem>[] = [
   {
     key: 'traderId',
     header: 'common.trader',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (terminal) => terminal.traderId,
+    link: (terminal) => traderLink(terminal.traderId),
   },
   {
+    // The card, and the scraping history filed under it — which is the next
+    // question about every terminal whose balance looks wrong.
     key: 'cardId',
     header: 'common.card_id',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (terminal) => terminal.cardId,
+    link: (terminal) => terminalHistoryLink(terminal.cardId),
   },
   {
     key: 'bankProvider',
@@ -79,6 +84,17 @@ export const TERMINAL_COLUMNS: readonly ColumnDef<AdminTerminalListItem>[] = [
     header: 'terminals.url',
     type: ColumnType.LINK,
     value: (terminal) => terminal.url,
+  },
+  {
+    key: 'links',
+    header: 'common.related',
+    type: ColumnType.REFS,
+    value: () => null,
+    refs: (terminal) => [
+      ordersLink(terminal.cardId),
+      ...(terminal.terminalId === null ? [] : [alertsLink(terminal.terminalId)]),
+    ],
+    width: '150px',
   },
 ];
 

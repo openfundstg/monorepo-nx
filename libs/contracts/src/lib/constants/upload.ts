@@ -25,12 +25,21 @@ export interface UploadedFileType {
   readonly mimeType: string;
 }
 
+/**
+ * The lower-case extension of an uploaded file, without the dot.
+ *
+ * Exported because the archive needs the same answer the acceptance check
+ * reached: a file is stored under an extension from the list it was accepted
+ * against, and two readings of the same name is how those two drift.
+ */
+export const uploadExtension = (fileName: string): string =>
+  fileName.trim().split('.').pop()?.toLowerCase() ?? '';
+
 export const isAcceptedUpload = (
   file: UploadedFileType,
   accepted: AcceptedUploadTypes,
 ): boolean => {
-  const extension = file.fileName.trim().split('.').pop()?.toLowerCase() ?? '';
-  if (!accepted.extensions.includes(extension)) return false;
+  if (!accepted.extensions.includes(uploadExtension(file.fileName))) return false;
 
   // The parameters after a `;` are the charset and the boundary, never the type.
   const mimeType = file.mimeType.toLowerCase().split(';')[0].trim();

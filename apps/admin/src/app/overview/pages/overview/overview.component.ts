@@ -9,7 +9,8 @@ import {
   StatCardComponent,
   StatusChipComponent,
 } from '../../../shared/components';
-import { saleTone } from '../../../shared/utils';
+import { disputedSalesLink, saleTone } from '../../../shared/utils';
+import type { NavTarget } from '../../../shared/interfaces';
 import {
   formatNumber,
   formatUah,
@@ -53,6 +54,25 @@ export class OverviewComponent {
   protected readonly formatUsdtWhole = formatUsdtWhole;
   protected readonly formatNumber = formatNumber;
   protected readonly saleTone = saleTone;
+
+  /**
+   * Where each figure's rows are.
+   *
+   * Built once rather than per render: a new object in a template expression is
+   * a new reference on every change detection, which `OnPush` will happily
+   * re-render forever.
+   */
+  protected readonly to = {
+    users: { commands: ['/users'] },
+    sales: { commands: ['/sales'] },
+    deposits: { commands: ['/deposits'] },
+    terminals: { commands: ['/terminals'] },
+    alerts: { commands: ['/alerts'] },
+    // A `RowLink` is a `NavTarget` with a chip on it, so the shared builder
+    // fits here unchanged — and the dispute chip and this card then agree on
+    // what "disputed" selects.
+    disputes: disputedSalesLink(),
+  } as const satisfies Readonly<Record<string, NavTarget>>;
 
   /**
    * The status breakdown as an ordered list, skipping statuses with no orders.

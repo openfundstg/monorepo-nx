@@ -1,16 +1,24 @@
 import {
   AdminAuditAction,
   AdminAuditTargetType,
+  AdminDepositKind,
+  AdminDocumentKind,
   AlertStatus,
   AlertType,
   ERROR,
   OrderStatus,
+  SaleBlockReason,
   SaleCardOrderState,
+  SaleMethod,
+  SaleStatementRejection,
+  SaleStatementStatus,
   SupportTopicStatus,
   FiatDepositWatchMode,
   TerminalHistoryAlertType,
   TmaDepositStatus,
   TmaFiatDepositStatus,
+  TmaFiatReceiptRejection,
+  TmaFiatReceiptStatus,
   TmaSaleStatus,
   TrustLevel,
 } from '@transacto/contracts';
@@ -66,13 +74,47 @@ describe('translation keys built by concatenation', () => {
   });
 
   /**
-   * `'SALE_CARD_ORDER.' + state`, built by concatenation in the card-orders
+   * `'SALE_CARD_ORDER.' + state`, built by concatenation in the sales book's
    * column definition. It is the column an operator scans to find the rows that
    * need a person, so a member with no copy renders its own key in exactly the
    * cell that has to be legible.
    */
   it('covers every card-sale order state', () => {
     expectEveryMember('SALE_CARD_ORDER', Object.values(SaleCardOrderState));
+  });
+
+  /**
+   * `'SALE_METHOD.' + method`, and the same for the deposits book's rail and
+   * the archive's kind.
+   *
+   * Three discriminator columns, all built by concatenation, and each one is
+   * the cell that says which of two things an operator is looking at — a jar
+   * sale or a card sale, USDT or hryvnia, a statement or a receipt. A member
+   * with no copy renders its own key in exactly the cell that has to be
+   * legible.
+   */
+  it('covers every sale method, deposit rail and document kind', () => {
+    expectEveryMember('SALE_METHOD', Object.values(SaleMethod));
+    expectEveryMember('DEPOSIT_KIND', Object.values(AdminDepositKind));
+    expectEveryMember('DOCUMENT_KIND', Object.values(AdminDocumentKind));
+  });
+
+  /**
+   * The two verdicts behind one status column, and the two ways of failing.
+   *
+   * The prefix itself is chosen per row — see `documentStatusPrefix` — so
+   * neither family is reachable by grep from the column that renders it.
+   */
+  it('covers every document verdict and refusal', () => {
+    expectEveryMember('STATEMENT_STATUS', Object.values(SaleStatementStatus));
+    expectEveryMember('RECEIPT_STATUS', Object.values(TmaFiatReceiptStatus));
+    expectEveryMember('STATEMENT_REJECTION', Object.values(SaleStatementRejection));
+    expectEveryMember('RECEIPT_REJECTION', Object.values(TmaFiatReceiptRejection));
+  });
+
+  /** `'SALE_BLOCK_REASON.' + reason` — the chip on a blocked sale's own page. */
+  it('covers every reason a sale is blocked', () => {
+    expectEveryMember('SALE_BLOCK_REASON', Object.values(SaleBlockReason));
   });
 
   it('covers every alert type and status', () => {

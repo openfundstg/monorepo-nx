@@ -456,6 +456,20 @@ export const ERROR = {
       message: 'The refund cannot be larger than the stake frozen for this order',
     },
     ALERT_NOT_FOUND: { code: 2310, message: 'Alert not found' },
+    /**
+     * No document with that id, or an id that is not one at all.
+     *
+     * Distinct from a document whose *bytes* are gone, which is also a 404 but
+     * means something else: that one existed, was settled on, and had its file
+     * removed by the retention sweep. The panel says which, because "we never
+     * had this" and "we no longer keep this" are different answers to give
+     * somebody asking about their own money.
+     */
+    DOCUMENT_NOT_FOUND: { code: 2311, message: 'Document not found' },
+    /** The document exists; its bytes were archived under retention and are gone. */
+    DOCUMENT_FILE_GONE: { code: 2312, message: 'This document is past its retention' },
+    /** No sale or deposit with that id. */
+    RECORD_NOT_FOUND: { code: 2313, message: 'Record not found' },
   },
 
   /** 2400 — fiat top-ups settled by paying a Transacto payout */

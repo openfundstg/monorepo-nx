@@ -4,7 +4,7 @@ import { AdminGateway } from 'src/modules/admin/gateways/admin.gateway'
 import { TraderWsEvent } from 'src/shared/interfaces'
 import type { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
 import type { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import type { TmaDepositDbService } from 'src/modules/repositories/tma-deposit-db/services'
+import type { AdminDepositsService } from 'src/modules/admin/services/admin-deposits.service'
 import type { TerminalDbService } from 'src/modules/repositories/terminal-db/services'
 
 /**
@@ -26,7 +26,12 @@ describe('AdminBroadcastService', () => {
         gateway as unknown as AdminGateway,
         {} as TmaUserDbService,
         {} as TmaSaleDbService,
-        {} as TmaDepositDbService,
+        // Both rails' rows come from here now, rather than from each
+        // collection's own `-db` service. Nothing in this file exercises the
+        // deposit handlers, so an empty stand-in is honest — but it has to be
+        // the *right* stand-in, or the next person reading this file learns a
+        // dependency that no longer exists.
+        {} as AdminDepositsService,
         terminalDb as unknown as TerminalDbService
       )
     }

@@ -5,11 +5,24 @@ description: Step-by-step runbook for adding a list to the admin panel — the c
 
 # Runbook: add a list to the admin panel
 
-Twelve lists already exist and they are **one implementation**. Adding the thirteenth is
-assembling named pieces, never writing a new actions/reducer/selectors trio. Architecture and
-reasoning: `apps/admin/CLAUDE.md`. This is the order of operations.
+The lists that exist are **one implementation**. Adding another is assembling named pieces,
+never writing a new actions/reducer/selectors trio. Architecture and reasoning:
+`apps/admin/CLAUDE.md`. This is the order of operations.
 
 Work outward: contract → backend → store → screen → dictionary.
+
+**First, check it is a new list at all.** Four entries became two because the split was ours
+rather than the product's: sales on a jar and sales to a card are one book, and so are USDT and
+hryvnia top-ups. If the thing you are adding answers the same question about the same person as
+an existing list, it is a **chip on that list** — a member of its filter enum, a `FilterChip` in
+its columns file, and a case in the backend's `sliceFilter`. See "One book, cut by chips" in
+`apps/admin/CLAUDE.md`.
+
+**And whatever you add, link it.** Every id a row shows is an id somebody will want to follow.
+Add the link to `shared/utils/links.util.ts` — one home, so a route that moves is a compile
+error rather than a dead link — and render it with `ColumnType.ROUTER_LINK` or, for several,
+`ColumnType.REFS`. A link carries `search`/`filter` as query parameters and the destination
+applies them through `bindListQuery`; a link that merely opens a list is a link to a haystack.
 
 ---
 
@@ -120,6 +133,12 @@ const collectionEffects = createCollectionEffects(fiatDepositsCollection, () => 
 - Columns in `constants/{feature}-columns.const.ts`: each names its `ColumnType` and a `value`
   returning the **raw** figure, never a formatted string. `ColumnType` is the single switch that
   keeps kopecks, cents and whole USDT from rendering as one another.
+- **Bind `[rowId]="rowId"` on the table**, from the collection's own `idOf`. Without it rows
+  track by position, and a list whose identity is guessed from a column pairs two rows that
+  merely read alike.
+- **Never re-derive a precondition the backend already answers.** A row says which actions it
+  accepts (`allowedActions`), or contracts export the predicate (`isFiatDepositHeld`). A copy in
+  a column file drifts the moment either side changes — it has, twice.
 - A status column is `CHIP` + a `tone` from `shared/utils/tone.util.ts` + a `translatePrefix`.
   Add the tone map there and nowhere else; it is `Record<Enum, ChipTone>` with no fallback on
   purpose, so a new status fails to compile until somebody decides what it means.
@@ -138,7 +157,8 @@ const collectionEffects = createCollectionEffects(fiatDepositsCollection, () => 
 `src/assets/i18n/uk.json` is the only dictionary. Add:
 
 - the `nav.*` label and the feature's own `{feature}.*` block (title, subtitle,
-  `search_placeholder`, `empty`, every column header, every action label and its confirmation);
+  `search_placeholder`, `empty`, every column header, every chip, every action label and its
+  confirmation), plus any `links.*` tooltip a new cross-link needs;
 - a `{ENUM}_STATUS` section if the list renders a new status enum;
 - the `AUDIT.*` and `AUDIT_TARGET.*` members for any new audit action;
 - an `errors.<code>` line for every new `ERROR` code the screen can surface.

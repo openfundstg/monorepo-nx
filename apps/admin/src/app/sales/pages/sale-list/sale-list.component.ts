@@ -9,15 +9,17 @@ import {
 import { filter } from 'rxjs';
 import {
   CollectionTableComponent,
+  FilterChipsComponent,
   PageHeaderComponent,
   ReasonDialogComponent,
   RefundDialogComponent,
   SearchFieldComponent,
   type RowActionEvent,
 } from '../../../shared/components';
-import { formatUah, formatUsdt } from '../../../shared/utils';
+import { bindListQuery, formatUah, formatUsdt } from '../../../shared/utils';
 import {
   SALE_COLUMNS,
+  SALE_FILTERS,
   SALE_ROW_ACTIONS,
 } from '../../constants/sales-columns.const';
 import { saleActions, salesCollection } from '../../store/sales.collection';
@@ -82,7 +84,12 @@ const ACTION_COPY: Readonly<
 @Component({
   selector: 'app-sale-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [PageHeaderComponent, SearchFieldComponent, CollectionTableComponent],
+  imports: [
+    PageHeaderComponent,
+    SearchFieldComponent,
+    FilterChipsComponent,
+    CollectionTableComponent,
+  ],
   templateUrl: './sale-list.component.html',
   styleUrl: './sale-list.component.scss',
 })
@@ -91,15 +98,26 @@ export class SaleListComponent {
   private readonly dialog = inject(MatDialog);
 
   readonly columns = SALE_COLUMNS;
+  readonly filters = SALE_FILTERS;
   readonly rowActions = SALE_ROW_ACTIONS;
   readonly state = this.store.selectSignal(salesCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = salesCollection.idOf;
 
   constructor() {
-    this.store.dispatch(salesCollection.actions.entered());
+    // Opens the list and applies whatever a link asked for — see
+    // `bindListQuery`. It is what makes "the disputes on this terminal" a link
+    // rather than an instruction.
+    bindListQuery(salesCollection);
   }
 
   onSearch(search: string): void {
     this.store.dispatch(salesCollection.actions.searchChanged({ search }));
+  }
+
+  /** `slice`, not `filter`: the name is taken by rxjs at the top of this file. */
+  onFilter(slice: string | null): void {
+    this.store.dispatch(salesCollection.actions.filterChanged({ filter: slice }));
   }
 
   onPage(event: { page: number; limit: number }): void {

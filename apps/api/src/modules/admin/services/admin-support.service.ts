@@ -14,8 +14,8 @@ import type { SupportBotUser, SupportTopic } from 'src/modules/repositories/supp
 import { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
 import { ADMIN_SORTABLE } from 'src/modules/admin/constants'
 import { clampLimit } from 'src/modules/admin/dto'
+import { containsRegex } from 'src/shared/utils'
 import {
-  escapeRegex,
   toAdminSupportTopic,
   toAdminSupportUser,
   toPageQuery,
@@ -84,7 +84,7 @@ export class AdminSupportService {
 
     return {
       $or: [
-        { displayName: new RegExp(escapeRegex(search), 'i') },
+        { displayName: containsRegex(search) },
         ...(Number.isFinite(asNumber)
           ? [{ telegramId: asNumber }, { messageThreadId: asNumber }]
           : [])
@@ -95,7 +95,7 @@ export class AdminSupportService {
   private userFilter(search: string | undefined): QueryFilter<SupportBotUser> {
     if (!search) return {}
 
-    const pattern = new RegExp(escapeRegex(search), 'i')
+    const pattern = containsRegex(search)
     const asNumber = Number(search)
 
     return {

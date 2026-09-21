@@ -23,10 +23,10 @@ import { TerminalActivationService, TerminalDeactivationService } from 'src/modu
 import type { AdminPrincipal } from 'src/shared/interfaces'
 import { ADMIN_SORTABLE } from 'src/modules/admin/constants'
 import { clampLimit } from 'src/modules/admin/dto'
+import { containsRegex } from 'src/shared/utils'
 import { AdminGateway } from 'src/modules/admin/gateways/admin.gateway'
 import { AdminAuditService } from 'src/modules/admin/services/admin-audit.service'
 import {
-  escapeRegex,
   toAdminOrder,
   toAdminTerminal,
   toAdminTerminalHistory,
@@ -209,7 +209,7 @@ export class AdminTerminalsService {
   private searchFilter(search: string | undefined): QueryFilter<Terminal> {
     if (!search) return {}
 
-    const pattern = new RegExp(escapeRegex(search), 'i')
+    const pattern = containsRegex(search)
     const asNumber = Number(search)
 
     return {
@@ -234,7 +234,7 @@ export class AdminTerminalsService {
 
     return {
       $or: [
-        { orderStringId: new RegExp(escapeRegex(search), 'i') },
+        { orderStringId: containsRegex(search) },
         ...(Number.isFinite(asNumber)
           ? [{ orderId: asNumber }, { cardId: asNumber }, { traderId: asNumber }]
           : [])

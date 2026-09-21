@@ -1,10 +1,15 @@
 import {
+  AdminDepositKind,
+  AdminDocumentKind,
   AlertStatus,
   FiatDepositWatchMode,
+  OrderStatus,
   SaleCardOrderState,
+  SaleStatementStatus,
   SupportTopicStatus,
   TmaDepositStatus,
   TmaFiatDepositStatus,
+  TmaFiatReceiptStatus,
   TmaSaleStatus,
 } from '@transacto/contracts';
 import { ChipTone } from '../enums/chip-tone.enum';
@@ -135,3 +140,132 @@ export const flagTone = (value: boolean): ChipTone =>
  * members are operational rather than good or bad.
  */
 export const unknownTone = (): ChipTone => ChipTone.NEUTRAL;
+
+/**
+ * A Transacto order's tones.
+ *
+ * Moved here from the orders list's own column file the moment a second screen
+ * needed them — a sale's page shows the orders routed at its terminal, and two
+ * maps would be two answers to "is an appeal bad?".
+ */
+const ORDER_TONES: Readonly<Record<OrderStatus, ChipTone>> = {
+  [OrderStatus.PENDING]: ChipTone.WARNING,
+  [OrderStatus.EXECUTED]: ChipTone.POSITIVE,
+  [OrderStatus.CANCELLED]: ChipTone.NEUTRAL,
+  // Held by Transacto rather than by us, and both need somebody to look: a
+  // paused order routes nobody, and an appeal is money in dispute.
+  [OrderStatus.PAUSED]: ChipTone.WARNING,
+  [OrderStatus.APPEAL]: ChipTone.DANGER,
+};
+
+export const orderTone = (status: OrderStatus): ChipTone => ORDER_TONES[status];
+
+/**
+ * A statement's verdict.
+ *
+ * `ACCEPTED` is positive in the sense that the document was *read*, not that
+ * its answer was good news: an accepted statement can be the one that proved a
+ * seller denied money they had received. The row's own order state says which,
+ * and this chip deliberately does not try to.
+ */
+const STATEMENT_TONES: Readonly<Record<SaleStatementStatus, ChipTone>> = {
+  [SaleStatementStatus.UPLOADED]: ChipTone.NEUTRAL,
+  [SaleStatementStatus.PARSING]: ChipTone.NEUTRAL,
+  [SaleStatementStatus.ACCEPTED]: ChipTone.POSITIVE,
+  [SaleStatementStatus.REJECTED]: ChipTone.DANGER,
+};
+
+/**
+ * A receipt's verdict.
+ *
+ * `REJECTED` is danger rather than a warning: somebody uploaded a document to
+ * prove they had paid and it did not prove it, which is either a person owed
+ * an explanation or a forgery. Both want a person.
+ */
+const RECEIPT_TONES: Readonly<Record<TmaFiatReceiptStatus, ChipTone>> = {
+  [TmaFiatReceiptStatus.PARSING]: ChipTone.NEUTRAL,
+  [TmaFiatReceiptStatus.ACCEPTED]: ChipTone.POSITIVE,
+  [TmaFiatReceiptStatus.REJECTED]: ChipTone.DANGER,
+};
+
+/**
+ * How one rail or one document kind draws its own status enum.
+ *
+ * **The tone and the translation prefix travel together**, and that is the
+ * whole reason this type exists. Both answer the same question — *which enum is
+ * this row's status?* — and they were two independent ternaries, which is two
+ * places to answer it and one place to forget. A row toned from one enum and
+ * captioned from the other renders a chip whose colour and words disagree.
+ */
+interface StatusPresentation {
+  /**
+   * Widened to `string` only here.
+   *
+   * Each map below is still declared `Record<Enum, ChipTone>` at its own
+   * definition, so a member added to that enum still fails to compile. What is
+   * lost at this boundary is only the compiler's ability to check *which* enum
+   * a mixed column's row carries — which is exactly what `kind` is for.
+   */
+  readonly tones: Readonly<Record<string, ChipTone>>;
+  readonly prefix: string;
+}
+
+/**
+ * A document kind, which additionally has a refusal to explain.
+ *
+ * A separate type rather than an optional field on {@link StatusPresentation},
+ * because an optional prefix is one that can be `undefined` at the point a key
+ * is built — and the key is then the literal string `undefined.MISMATCHED`,
+ * rendered to an operator as the reason somebody's money was refused. The
+ * deposits book has no refusals, so it uses the narrower type and the question
+ * never arises.
+ *
+ * Here with the other two for the same reason they are together: a row toned
+ * from one enum, captioned from another and explained from a third is a chip
+ * whose colour, words and reason can each be wrong independently.
+ */
+interface DocumentPresentation extends StatusPresentation {
+  readonly rejectionPrefix: string;
+}
+
+/**
+ * The two kinds of document, and the two ways of judging one.
+ *
+ * A `Record` with no fallback, like every other map in this file: a third kind
+ * of evidence must fail to compile here until somebody decides how it is drawn
+ * and where its copy lives.
+ */
+const DOCUMENT_PRESENTATION: Readonly<Record<AdminDocumentKind, DocumentPresentation>> = {
+  [AdminDocumentKind.SALE_STATEMENT]: {
+    tones: STATEMENT_TONES,
+    prefix: 'STATEMENT_STATUS',
+    rejectionPrefix: 'STATEMENT_REJECTION',
+  },
+  [AdminDocumentKind.FIAT_RECEIPT]: {
+    tones: RECEIPT_TONES,
+    prefix: 'RECEIPT_STATUS',
+    rejectionPrefix: 'RECEIPT_REJECTION',
+  },
+};
+
+/** The two rails money comes in on, and the two status enums behind them. */
+const DEPOSIT_PRESENTATION: Readonly<Record<AdminDepositKind, StatusPresentation>> = {
+  [AdminDepositKind.CRYPTO]: { tones: DEPOSIT_TONES, prefix: 'DEPOSIT_STATUS' },
+  [AdminDepositKind.FIAT]: { tones: FIAT_DEPOSIT_TONES, prefix: 'FIAT_DEPOSIT_STATUS' },
+};
+
+export const documentTone = (kind: AdminDocumentKind, status: string): ChipTone =>
+  DOCUMENT_PRESENTATION[kind].tones[status];
+
+export const documentStatusPrefix = (kind: AdminDocumentKind): string =>
+  DOCUMENT_PRESENTATION[kind].prefix;
+
+/** The refusal's own copy — `STATEMENT_REJECTION.*` or `RECEIPT_REJECTION.*`. */
+export const documentRejectionKey = (kind: AdminDocumentKind, rejection: string): string =>
+  `${DOCUMENT_PRESENTATION[kind].rejectionPrefix}.${rejection}`;
+
+export const depositRowTone = (kind: AdminDepositKind, status: string): ChipTone =>
+  DEPOSIT_PRESENTATION[kind].tones[status];
+
+export const depositStatusPrefix = (kind: AdminDepositKind): string =>
+  DEPOSIT_PRESENTATION[kind].prefix;

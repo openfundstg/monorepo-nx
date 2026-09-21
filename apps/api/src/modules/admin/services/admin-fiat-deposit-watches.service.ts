@@ -41,10 +41,10 @@ export class AdminFiatDepositWatchesService {
       toPageQuery(paging, ADMIN_SORTABLE.FIAT_DEPOSIT_WATCHES)
     )
 
-    const names = await this.usersService.namesFor(page.items.map((watch) => watch.telegramId))
+    const name = await this.usersService.namerFor(page.items.map((watch) => watch.telegramId))
 
     return toPaginatedRes(page, paging, (watch) =>
-      toAdminFiatDepositWatch(watch, names.get(watch.telegramId) ?? String(watch.telegramId))
+      toAdminFiatDepositWatch(watch, name(watch.telegramId))
     )
   }
 

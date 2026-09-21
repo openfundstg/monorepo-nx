@@ -1,7 +1,17 @@
-<div class="card stat">
-  <span class="stat__label">{{ label() | translate }}</span>
-  <span class="stat__value">{{ value() }}</span>
-  @if (hint(); as hintKey) {
-    <span class="stat__hint">{{ hintKey | translate: hintParams() }}</span>
-  }
-</div>
+@if (link(); as target) {
+  <a class="card stat stat--link" [routerLink]="target.commands" [queryParams]="target.queryParams">
+    <span class="stat__label">{{ label() | translate }}</span>
+    <span class="stat__value">{{ value() }}</span>
+    @if (hint(); as hintKey) {
+      <span class="stat__hint">{{ hintKey | translate: hintParams() }}</span>
+    }
+  </a>
+} @else {
+  <div class="card stat">
+    <span class="stat__label">{{ label() | translate }}</span>
+    <span class="stat__value">{{ value() }}</span>
+    @if (hint(); as hintKey) {
+      <span class="stat__hint">{{ hintKey | translate: hintParams() }}</span>
+    }
+  </div>
+}

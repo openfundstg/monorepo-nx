@@ -5,3 +5,5 @@ export * from './status-chip/status-chip.component';
 export * from './collection-table/collection-table.component';
 export * from './confirm-dialog';
 export * from './search-field/search-field.component';
+export * from './filter-chips/filter-chips.component';
+export * from './document-row/document-row.component';

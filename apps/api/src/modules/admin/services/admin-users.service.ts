@@ -30,11 +30,11 @@ import { TmaSaleStatus } from '@transacto/contracts'
 import type { AdminPrincipal } from 'src/shared/interfaces'
 import { ADMIN_PAGE, ADMIN_SORTABLE } from 'src/modules/admin/constants'
 import { clampLimit } from 'src/modules/admin/dto'
+import { containsRegex } from 'src/shared/utils'
 import { AdminGateway } from 'src/modules/admin/gateways/admin.gateway'
 import { AdminAuditService } from 'src/modules/admin/services/admin-audit.service'
 import {
   displayName,
-  escapeRegex,
   toAdminDeposit,
   toAdminReferralEarning,
   toAdminSale,
@@ -160,16 +160,12 @@ export class AdminUsersService {
       toPageQuery(paging, ADMIN_SORTABLE.REFERRALS)
     )
 
-    const names = await this.namesFor(
+    const name = await this.namerFor(
       page.items.flatMap((row) => [row.referrerTelegramId, row.referredTelegramId])
     )
 
     return toPaginatedRes(page, paging, (row) =>
-      toAdminReferralEarning(
-        row,
-        names.get(row.referrerTelegramId) ?? String(row.referrerTelegramId),
-        names.get(row.referredTelegramId) ?? String(row.referredTelegramId)
-      )
+      toAdminReferralEarning(row, name(row.referrerTelegramId), name(row.referredTelegramId))
     )
   }
 
@@ -291,16 +287,45 @@ export class AdminUsersService {
   }
 
   /**
-   * Display names for a batch of Telegram ids, in one query.
+   * One user as a list row, for the pages that embed them.
    *
-   * Used by every list that shows somebody's name next to a row from another
-   * collection.
+   * The same shape the users list carries — and produced by the same mapper —
+   * so a sale's page and the users list cannot disagree about somebody's
+   * balance or their trust level. `null` where the id names no Mini App
+   * account, which a support row legitimately can: somebody may write to the
+   * bot without ever opening the app.
    */
-  async namesFor(telegramIds: readonly number[]): Promise<Map<number, string>> {
+  async userRow(telegramId: number): Promise<AdminTmaUserListItem | null> {
+    const [user, openOrders] = await Promise.all([
+      this.userDbService.findByTelegramId(telegramId),
+      this.saleDbService.countOpenByTelegramIds([telegramId])
+    ])
+
+    return user === null ? null : toAdminUser(user, openOrders[telegramId] ?? 0)
+  }
+
+  /**
+   * What to call each of a batch of people, resolved in one query.
+   *
+   * **A function, not the map**, and the difference is the fallback. Every list
+   * that names somebody beside a row from another collection has to answer the
+   * same question — what if there is no user row? — and the answer is always
+   * "their id". Written at each call site it was `names.get(x) ?? String(x)`
+   * eight times, which is eight chances for the ninth to render `undefined`
+   * next to somebody's money.
+   *
+   * There legitimately is no row sometimes: a support thread belongs to
+   * whoever wrote to the bot, and writing to the bot does not create a Mini App
+   * account.
+   */
+  async namerFor(telegramIds: readonly number[]): Promise<(telegramId: number) => string> {
     const unique = [...new Set(telegramIds)]
     const users = await this.userDbService.findManyByTelegramIds(unique)
+    const names = new Map(
+      users.map((user) => [user.telegramId, displayName(user, user.telegramId)])
+    )
 
-    return new Map(users.map((user) => [user.telegramId, displayName(user, user.telegramId)]))
+    return (telegramId) => names.get(telegramId) ?? String(telegramId)
   }
 
   /**
@@ -312,7 +337,7 @@ export class AdminUsersService {
   private searchFilter(search: string | undefined): QueryFilter<StoredTmaUser> {
     if (!search) return {}
 
-    const pattern = new RegExp(escapeRegex(search), 'i')
+    const pattern = containsRegex(search)
     const asNumber = Number(search)
 
     return {

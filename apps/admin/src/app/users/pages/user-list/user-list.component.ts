@@ -43,6 +43,8 @@ export class UserListComponent {
   readonly columns = USER_COLUMNS;
   readonly rowActions = USER_ROW_ACTIONS;
   readonly state = this.store.selectSignal(usersCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = usersCollection.idOf;
 
   constructor() {
     this.store.dispatch(usersCollection.actions.entered());

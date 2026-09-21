@@ -25,3 +25,19 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/*
+ * A card that leads somewhere says so by lifting, not by turning blue.
+ * Colouring the figure would make the number itself read as a status.
+ */
+.stat--link {
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 120ms ease;
+}
+
+.stat--link:hover {
+  border-color: var(--accent);
+}

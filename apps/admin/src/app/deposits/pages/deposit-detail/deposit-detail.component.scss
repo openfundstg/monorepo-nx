@@ -1,0 +1,15 @@
+/* Only what is this page's own — see the note on the sale's stylesheet. */
+.header {
+  margin-bottom: var(--gap-md);
+}
+
+/**
+ * The recipient card, and the one place in this panel that shows one.
+ *
+ * Larger than body text because the errand is reading it character by character
+ * against the same payout in Transacto's own panel.
+ */
+.credential__value {
+  font-size: 18px;
+  margin: 0 0 var(--gap-xs);
+}

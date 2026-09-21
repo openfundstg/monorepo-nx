@@ -162,3 +162,64 @@ export enum AdminAuditAction {
   FIAT_DEPOSIT_COMPLETED = 'FIAT_DEPOSIT_COMPLETED',
   FIAT_DEPOSIT_RELEASED = 'FIAT_DEPOSIT_RELEASED',
 }
+
+/**
+ * Which slice of the sales book a screen is asking for.
+ *
+ * One parameter rather than a `method` and a `disputed` flag, because the three
+ * are what an operator actually picks between and most combinations of two
+ * independent flags mean nothing. {@link DISPUTED} is not a method at all — it
+ * is the queue of card orders waiting on a person, which is the errand the
+ * panel used to keep on a screen of its own.
+ *
+ * **There is no `ALL` member, deliberately.** The whole book is the absence of
+ * this parameter, which is the same thing the other two filtered lists mean by
+ * absence — and two ways to say "no filter" is how one of them ends up
+ * unhandled.
+ */
+export enum AdminSaleFilter {
+  /** Into the seller's bank jar, watched by the scraper. */
+  JAR = 'JAR',
+  /** Straight to the seller's card, confirmed by them. */
+  CARD = 'CARD',
+  /** Card sales whose order was denied or proven unpaid. */
+  DISPUTED = 'DISPUTED',
+}
+
+/**
+ * Which of the two ways money comes in a row describes.
+ *
+ * The panel lists both in one book because an operator answering "has this
+ * person topped up" does not care which rail it came over — and the ceiling on
+ * a new account is lifted by one settled deposit *by either method*, so a
+ * screen that shows only one of them cannot explain the rule.
+ */
+export enum AdminDepositKind {
+  /** USDT sent to an address, verified on chain. */
+  CRYPTO = 'CRYPTO',
+  /** Hryvnia paid to a Transacto payout's card, proven by a receipt. */
+  FIAT = 'FIAT',
+}
+
+/**
+ * What a document in the archive is.
+ *
+ * The two are not the same evidence and must never read as one: a statement is
+ * somebody's transaction history, uploaded to disprove one payment, and it is
+ * judged here; a receipt is proof of one transfer, judged by its bank's
+ * signature and then by Transacto's own recognition.
+ */
+export enum AdminDocumentKind {
+  /** A bank statement answering a disputed card order. */
+  SALE_STATEMENT = 'SALE_STATEMENT',
+  /** A payment receipt sent against a fiat top-up. */
+  FIAT_RECEIPT = 'FIAT_RECEIPT',
+}
+
+/** How the panel asks for a document's bytes. */
+export enum AdminDocumentDisposition {
+  /** Rendered in a browser tab, for a glance at what a document says. */
+  INLINE = 'inline',
+  /** Saved, for filing against an appeal. */
+  ATTACHMENT = 'attachment',
+}

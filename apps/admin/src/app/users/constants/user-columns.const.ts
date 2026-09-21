@@ -1,7 +1,16 @@
 import type { AdminTmaUserListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction } from '../../shared/interfaces';
-import { flagTone } from '../../shared/utils';
+import {
+  flagTone,
+  userAuditLink,
+  userDepositsLink,
+  userDocumentsLink,
+  userLink,
+  userReferralsLink,
+  userSalesLink,
+  userSupportLink,
+} from '../../shared/utils';
 
 /**
  * The users list, described.
@@ -14,8 +23,9 @@ export const USER_COLUMNS: readonly ColumnDef<AdminTmaUserListItem>[] = [
   {
     key: 'telegramId',
     header: 'users.telegram_id',
-    type: ColumnType.MONO,
+    type: ColumnType.ROUTER_LINK,
     value: (user) => user.telegramId,
+    link: (user) => userLink(user.telegramId),
     sortable: true,
     width: '120px',
   },
@@ -65,8 +75,34 @@ export const USER_COLUMNS: readonly ColumnDef<AdminTmaUserListItem>[] = [
   {
     key: 'openOrders',
     header: 'users.open_orders',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (user) => user.openOrders,
+    // Only a link when there is something to look at: a zero that navigates to
+    // an empty list is a link that wasted somebody's click.
+    link: (user) => (user.openOrders === 0 ? null : userSalesLink(user.telegramId)),
+  },
+  {
+    /**
+     * Everything this person is connected to.
+     *
+     * The users list is where most investigations start, and every one of them
+     * used to continue by copying a Telegram id into another screen's search
+     * box. Six links is more than any other row carries, and that is right: a
+     * person is what all of it hangs off.
+     */
+    key: 'links',
+    header: 'common.related',
+    type: ColumnType.REFS,
+    value: () => null,
+    refs: (user) => [
+      userSalesLink(user.telegramId),
+      userDepositsLink(user.telegramId),
+      userDocumentsLink(user.telegramId),
+      userReferralsLink(user.telegramId),
+      userSupportLink(user.telegramId),
+      userAuditLink(user.telegramId),
+    ],
+    width: '240px',
   },
   {
     key: 'isActive',

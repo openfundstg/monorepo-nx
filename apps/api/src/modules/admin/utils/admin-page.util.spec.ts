@@ -1,6 +1,6 @@
 import { AdminSortDirection } from '@transacto/contracts'
 import { ADMIN_PAGE } from 'src/modules/admin/constants'
-import { escapeRegex, startOfToday, toPageQuery, toPaginatedRes } from 'src/modules/admin/utils'
+import { startOfToday, toPageQuery, toPaginatedRes } from 'src/modules/admin/utils'
 
 describe('toPageQuery', () => {
   const SORTABLE = ['createdAt', 'balance'] as const
@@ -31,29 +31,6 @@ describe('toPageQuery', () => {
 
   it('falls back rather than rejecting, so a stale bookmark still works', () => {
     expect(toPageQuery({ sort: 'a-field-we-removed' }, SORTABLE).sort).toEqual({ createdAt: -1 })
-  })
-})
-
-describe('escapeRegex', () => {
-  /**
-   * The search term becomes a `$regex`, and these lists are unscoped — a
-   * catastrophic pattern is a request that never returns, on every collection
-   * in the system.
-   */
-  it('neutralises every metacharacter', () => {
-    expect(escapeRegex('(((((((((.*)*)*)*')).not.toMatch(/[^\\]\(/)
-    expect(new RegExp(escapeRegex('a.b')).test('axb')).toBe(false)
-    expect(new RegExp(escapeRegex('a.b')).test('a.b')).toBe(true)
-  })
-
-  it('leaves an ordinary term matching itself', () => {
-    expect(new RegExp(escapeRegex('Z38SL69F')).test('order Z38SL69F here')).toBe(true)
-  })
-
-  it('keeps a jar URL usable as a search term', () => {
-    const url = 'https://send.monobank.ua/jar/abc?sendId=x'
-
-    expect(new RegExp(escapeRegex(url)).test(url)).toBe(true)
   })
 })
 

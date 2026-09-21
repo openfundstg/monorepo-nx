@@ -1,6 +1,7 @@
 import type { AdminTraderListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction } from '../../shared/interfaces';
+import { alertsLink, ordersLink, terminalLink } from '../../shared/utils';
 
 /**
  * There is no API-token column and there must never be one.
@@ -22,8 +23,9 @@ export const TRADER_COLUMNS: readonly ColumnDef<AdminTraderListItem>[] = [
   {
     key: 'terminalsTotal',
     header: 'traders.terminals',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (trader) => trader.terminalsTotal,
+    link: (trader) => (trader.terminalsTotal === 0 ? null : terminalLink(trader.traderId)),
   },
   {
     key: 'terminalsEnabled',
@@ -32,10 +34,22 @@ export const TRADER_COLUMNS: readonly ColumnDef<AdminTraderListItem>[] = [
     value: (trader) => trader.terminalsEnabled,
   },
   {
+    // The count and the way to read them. A trader with pending alerts is the
+    // one row on this screen that needs somebody, so it is the one that must
+    // not end in a number an operator has to go and look up.
     key: 'pendingAlerts',
     header: 'traders.pending_alerts',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (trader) => trader.pendingAlerts,
+    link: (trader) => (trader.pendingAlerts === 0 ? null : alertsLink(trader.traderId)),
+  },
+  {
+    key: 'links',
+    header: 'common.related',
+    type: ColumnType.REFS,
+    value: () => null,
+    refs: (trader) => [terminalLink(trader.traderId), ordersLink(trader.traderId)],
+    width: '160px',
   },
   {
     key: 'isActive',

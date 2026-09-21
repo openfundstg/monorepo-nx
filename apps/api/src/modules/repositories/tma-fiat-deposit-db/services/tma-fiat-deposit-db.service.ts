@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, QueryFilter, Types } from 'mongoose'
-import { TmaFiatReceiptRejection, TmaFiatReceiptStatus } from '@transacto/contracts'
+import { BankProvider, TmaFiatReceiptRejection, TmaFiatReceiptStatus } from '@transacto/contracts'
 import {
   HELD_FIAT_DEPOSIT_STATUSES,
   LIVE_FIAT_DEPOSIT_STATUSES,
@@ -169,7 +169,12 @@ export class TmaFiatDepositDbService {
   /** Appends an uploaded receipt in PARSING and returns its new `_id`. */
   async pushReceipt(
     id: string,
-    receipt: { uploadedAt: Date; upstreamJobId: number | null; recipientChecked?: boolean }
+    receipt: {
+      uploadedAt: Date
+      upstreamJobId: number | null
+      recipientChecked?: boolean
+      bank?: BankProvider | null
+    }
   ): Promise<Types.ObjectId> {
     const receiptId = new Types.ObjectId()
 
@@ -184,6 +189,10 @@ export class TmaFiatDepositDbService {
             amountUah: null,
             checkUrl: null,
             recipientChecked: true,
+            bank: null,
+            storedName: null,
+            sizeBytes: null,
+            purgedAt: null,
             ...receipt
           }
         }
@@ -191,6 +200,80 @@ export class TmaFiatDepositDbService {
     )
 
     return receiptId
+  }
+
+  /**
+   * Notes where a receipt's bytes were archived.
+   *
+   * A second write rather than a field on {@link pushReceipt}, because the id
+   * the file is named for is the one that write mints — the row has to exist
+   * before the file can be named after it. A receipt whose archiving failed
+   * keeps `storedName: null` and is a receipt with no copy, which is a
+   * recoverable state and says so.
+   */
+  async markReceiptArchived(
+    id: string,
+    receiptId: Types.ObjectId,
+    file: { storedName: string; sizeBytes: number }
+  ): Promise<void> {
+    await this.fiatDepositModel.updateOne(
+      { _id: new Types.ObjectId(id), 'receipts._id': receiptId },
+      {
+        $set: {
+          'receipts.$.storedName': file.storedName,
+          'receipts.$.sizeBytes': file.sizeBytes
+        }
+      }
+    )
+  }
+
+  /**
+   * Receipts whose bytes are older than the retention and still on disk.
+   *
+   * Returns the handles the sweep needs and nothing else — the deposit, the
+   * receipt and the file's name. The row itself is never deleted: what the
+   * receipt was judged to say is the record, and only the document goes.
+   */
+  async findReceiptsToPurge(
+    uploadedBefore: Date,
+    limit: number
+  ): Promise<{ depositId: string; receiptId: Types.ObjectId; storedName: string }[]> {
+    const rows = await this.fiatDepositModel
+      .aggregate<{ depositId: Types.ObjectId; receiptId: Types.ObjectId; storedName: string }>([
+        { $match: { 'receipts.storedName': { $ne: null } } },
+        { $unwind: '$receipts' },
+        {
+          $match: {
+            'receipts.storedName': { $ne: null },
+            'receipts.purgedAt': null,
+            'receipts.uploadedAt': { $lt: uploadedBefore }
+          }
+        },
+        {
+          $project: {
+            _id: 0,
+            depositId: '$_id',
+            receiptId: '$receipts._id',
+            storedName: '$receipts.storedName'
+          }
+        },
+        { $limit: limit }
+      ])
+      .exec()
+
+    return rows.map((row) => ({ ...row, depositId: row.depositId.toString() }))
+  }
+
+  /** Records that a receipt's file is gone, leaving everything it said behind. */
+  async markReceiptPurged(
+    id: string,
+    receiptId: Types.ObjectId,
+    purgedAt: Date
+  ): Promise<void> {
+    await this.fiatDepositModel.updateOne(
+      { _id: new Types.ObjectId(id), 'receipts._id': receiptId },
+      { $set: { 'receipts.$.purgedAt': purgedAt } }
+    )
   }
 
   /**

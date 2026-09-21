@@ -10,12 +10,12 @@
 }
 
 @if (detail(); as data) {
-  <div class="identity card">
+  <div class="detail-identity card">
     <div>
       <h1 class="page-title">{{ displayName() }}</h1>
       <p class="page-subtitle mono">{{ data.user.telegramId }}</p>
     </div>
-    <div class="identity__flags">
+    <div class="detail-identity__flags">
       <app-status-chip [value]="data.user.trustLevel" translatePrefix="TRUST_LEVEL" />
       <app-status-chip
         [value]="data.user.isActive ? 'common.yes' : 'common.no'"
@@ -24,7 +24,7 @@
     </div>
   </div>
 
-  <section class="grid">
+  <section class="detail-grid">
     <div class="card figure">
       <span class="figure__label">{{ 'users.balance' | translate }}</span>
       <span class="figure__value">{{ data.user.balance | usdt }}</span>
@@ -43,7 +43,7 @@
     </div>
   </section>
 
-  <section class="grid">
+  <section class="detail-grid">
     <div class="card figure">
       <span class="figure__label">{{ 'users.sales_total' | translate }}</span>
       <span class="figure__value">{{ data.stats.salesTotal }}</span>
@@ -72,10 +72,10 @@
     </div>
   </section>
 
-  <section class="card list">
+  <section class="card detail-section">
     <h2>{{ 'users.recent_sales' | translate }}</h2>
     @for (order of data.recentSales; track order.id) {
-      <div class="row">
+      <div class="detail-row">
         <span class="mono">{{ order.publicId }}</span>
         <span>{{ order.fiatAmount | uah }}</span>
         <span class="muted">{{ order.receivedAmount | uah }}</span>
@@ -91,10 +91,10 @@
     }
   </section>
 
-  <section class="card list">
+  <section class="card detail-section">
     <h2>{{ 'users.recent_deposits' | translate }}</h2>
     @for (deposit of data.recentDeposits; track deposit.id) {
-      <div class="row">
+      <div class="detail-row">
         <span>{{ deposit.cryptoAmount | usdtWhole }}</span>
         <span class="muted">{{ deposit.fiatEquivalent | uah }}</span>
         <span class="mono">{{ deposit.txId ?? '—' }}</span>

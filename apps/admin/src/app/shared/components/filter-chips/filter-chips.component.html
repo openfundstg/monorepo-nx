@@ -1,0 +1,12 @@
+<div class="chips" role="group">
+  @for (chip of chips(); track chip.value) {
+    <button
+      type="button"
+      class="chip-button"
+      [class.chip-button--active]="active() === chip.value"
+      (click)="select.emit(chip.value)"
+    >
+      {{ chip.label | translate }}
+    </button>
+  }
+</div>

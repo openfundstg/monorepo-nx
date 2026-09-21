@@ -93,9 +93,9 @@ src/app/
 ├── shell/         the frame — nav, topbar, live indicator
 ├── auth/          login page, auth store, session restore
 ├── shared/        components · pipes · utils · enums · interfaces · store
-└── <feature>/     overview · users · sales · deposits · referrals ·
-    ├── constants/   terminals · orders · traders · alerts · safe-box ·
-    ├── pages/       support · audit
+└── <feature>/     overview · users · sales · deposits · documents ·
+    ├── constants/   fiat-deposit-watches · referrals · terminals · orders ·
+    ├── pages/       traders · alerts · safe-box · support · audit
     ├── services/  <name>.api.service.ts (HTTP only) · <name>.service.ts (logic)
     ├── store/     <name>.collection.ts — the slice, its actions and its effects
     └── routes.ts  lazy, with provideState + provideEffects
@@ -107,13 +107,22 @@ Guards and interceptors are functional. Routes are lazy, one `routes.ts` per fea
 ### Where state lives, and where it does not
 
 **In NgRx** — anything shared, live-patched or worth keeping across navigation:
-the twelve lists. All of them are one implementation, `createCollection` +
-`createCollectionEffects` in `shared/store`. A list is a name, a default sort and
-an `idOf`; it is never a fresh actions/reducer/selectors trio.
+every list. All of them are one implementation, `createCollection` +
+`createCollectionEffects` in `shared/store`. A list is a name, a default sort, an
+optional default chip and an `idOf`; it is never a fresh
+actions/reducer/selectors trio.
 
-**Not in NgRx** — the overview and the user detail page. One reader each, no live
-stream, thrown away on close. They use `rxResource` in a plain service. Four files
-to hold a value with one reader is ceremony, not architecture.
+**`idOf` is `kind:id`, not `id`, on the two merged books.** The deposits list
+spans `tma_deposits` and `tma_fiat_deposits` and the archive spans sale
+statements and fiat receipts; each collection mints its own ObjectIds and
+nothing stops one from matching another. An identity of `id` alone would let one
+rail's live push overwrite the other's row — rarely, unreproducibly, and about
+somebody's money.
+
+**Not in NgRx** — the overview and the three detail pages (a user, a sale, a
+deposit). One reader each, no live stream, thrown away on close. They use
+`rxResource` in a plain service. Four files to hold a value with one reader is
+ceremony, not architecture.
 
 ### The terminal history is not the generic table
 
@@ -131,10 +140,70 @@ shape silently downgraded every matched order to the generic badge.
 It renders keys and ships no dictionary, so `HISTORY.*` and `ALERTS.*_DESC` live in this app's
 own `uk.json` — copied from the extension rather than reworded, and pinned by `i18n.spec.ts`.
 
+### One book, cut by chips — not a screen per collection
+
+Four sidebar entries became two, and the split that went was ours rather than
+the product's. A user tops up with USDT or with hryvnia and thinks of neither as
+a separate feature — and the rule that matters most about them treats the two as
+one, since a new account's ₴2 000 ceiling lifts on **one settled deposit by
+either method**. A screen per rail cannot explain why somebody's ceiling lifted.
+
+The same for sales on a jar and sales to a card, and for the dispute queue,
+which was a screen of its own: an operator arriving from Transacto's panel with
+an order number could find the dispute and nothing around it — not the seller,
+not the stake, not the terminal. It is now `AdminSaleFilter.DISPUTED`, and the
+sales search box takes a card order's number alongside a sale's public code.
+
+So: **where two lists answer one question about one person, they are one list
+with a `filter`.** The chip lives in `CollectionState.filter`, travels as
+`AdminPageReq.filter`, and is validated on the backend against that list's own
+enum — `AdminSalesPageQueryDto` and friends, never a bare string.
+
+Two consequences in the generic table. A mixed list carries **two status enums in
+one column**, so `translatePrefix` may be a function of the row
+(`depositStatusPrefix`, `documentStatusPrefix`); flattening them into a third
+enum would be a status written down in three places and agreeing in two. And the
+money must be **one unit per column on every row** — the deposits feed converts
+whole USDT to cents in its own aggregation pipeline, because a row carrying
+whichever unit its source used is a hundredfold error no type catches.
+
+### Rows link to each other; they do not print ids to copy
+
+`shared/utils/links.util.ts` is the one home for every link one screen makes to
+another, and `ColumnType.ROUTER_LINK` / `ColumnType.REFS` are how a column
+carries one. Before them an operator followed an id by selecting it, opening
+another screen and pasting it into a search box — which is why nobody did, and
+why a question spanning two entities took four navigations.
+
+Every link carries `search` or `filter` as a **query parameter**, and every list
+applies them through `bindListQuery`. A link that merely opened a list would be
+a link to a haystack with a note about which needle. Absent parameters change
+nothing, so a list keeps its state when an operator navigates away and back.
+
+### Documents are shown, and their bytes are ours to serve
+
+`/documents` lists every file this product holds — statements and receipts
+together, each row naming the sale or the top-up it is about. The bytes come
+from `GET /api/admin/documents/:kind/:id/file`, **inline by default** so a glance
+is a glance, with `?disposition=attachment` for filing one against an appeal.
+
+A row whose retention has passed keeps its record and loses its buttons:
+`fileAvailable` is `false`, and the screen says the file is gone rather than
+offering a download that 404s. "We never kept this" and "we no longer keep this"
+are different answers to give somebody asking about their own money.
+
 ### The generic table
 
 Every list renders through `shared/components/collection-table`, driven by
-`ColumnDef[]`. A column names its key, its header, its `ColumnType` and a `value`
+`ColumnDef[]`. **Pass it `[rowId]`** — the collection's own `idOf`, which the
+`CollectionApi` exposes for exactly this. It used to track rows by the *first
+column's value*, on a comment claiming that column was always an id; it was an
+id on three lists out of thirteen, and the rest lead with `createdAt`, a
+terminal name or a person's display name. Two rows sharing one tracked as one
+row, and a live push then updated whichever of them the differ happened to pair
+it with.
+
+`ColumnDef[]` continues: A column names its key, its header, its `ColumnType` and a `value`
 function returning the **raw** figure — never a formatted string. `ColumnType` is
 what decides formatting, and it is the single `switch` that keeps UAH kopecks,
 USDT cents and whole USDT from being rendered as one another. That confusion is a

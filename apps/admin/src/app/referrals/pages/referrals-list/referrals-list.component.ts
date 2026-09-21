@@ -22,6 +22,8 @@ export class ReferralsListComponent {
 
   readonly columns = REFERRAL_COLUMNS;
   readonly state = this.store.selectSignal(referralsCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = referralsCollection.idOf;
 
   constructor() {
     this.store.dispatch(referralsCollection.actions.entered());

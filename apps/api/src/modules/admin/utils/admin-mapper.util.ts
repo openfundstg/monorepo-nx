@@ -1,13 +1,18 @@
 import {
+  SaleCardOrderState,
   SaleMethod,
+  SaleReceiverNameSource,
   SaleRemainderPolicy,
   TerminalSource,
   TmaFiatReceiptStatus,
   type AdminAlertListItem,
   type AdminAuditLogItem,
-  type AdminCardOrderListItem,
-  type AdminCardOrderStatement,
   type AdminDepositListItem,
+  type AdminDepositRowItem,
+  type AdminDocumentListItem,
+  type AdminSaleCardOrder,
+  type AdminSaleCardOrderSummary,
+  type AdminSaleStatement,
   type AdminFiatDepositListItem,
   type AdminFiatDepositWatchListItem,
   type AdminOrderListItem,
@@ -24,12 +29,20 @@ import {
   type AdminTraderListItem,
   type BankProvider
 } from '@transacto/contracts'
+import { DISPUTED_CARD_ORDER_STATES } from 'src/modules/admin/constants'
 import { getTrustLevel } from 'src/shared/constants'
 import type { TmaFiatDepositRecord } from 'src/modules/repositories/tma-fiat-deposit-db/interfaces'
 import { getBankProvider, saleRefundSplit } from 'src/shared/utils'
 import { allowedSaleActions } from './sale-actions.util'
 import type { StoredTmaUser } from 'src/modules/repositories/tma-user-db/services'
-import type { TmaSale, TmaSaleCardOrder } from 'src/modules/repositories/tma-sale-db/schemas'
+import type {
+  TmaSaleCardOrder,
+  TmaSaleStatement
+} from 'src/modules/repositories/tma-sale-db/schemas'
+import type {
+  AdminDepositFeedRow,
+  AdminDocumentFeedRow
+} from 'src/modules/repositories/admin-feed-db/interfaces'
 import type { Types } from 'mongoose'
 
 /**
@@ -108,6 +121,11 @@ export const toAdminSale = (
     cardId: number | null
     traderId: number | null
     receiverName: string | null
+    receiverNameSource?: SaleReceiverNameSource
+    // The orders a card sale has taken. Absent on a jar sale, and absent on
+    // every sale written before card sales existed — a lean read applies no
+    // default, so neither can be assumed to be an empty array.
+    cardOrders?: TmaSaleCardOrder[]
     // Read by the refund split alongside `receivedAmount` — hryvnia can reach a
     // jar without a settled order to attribute it to.
     openingJarBalance?: number | null
@@ -136,7 +154,17 @@ export const toAdminSale = (
   transactoTerminalId: order.transactoTerminalId,
   cardId: order.cardId,
   traderId: order.traderId,
+  saleMethod: order.saleMethod ?? SaleMethod.JAR,
   receiverName: order.receiverName,
+  // A sale written before the field existed carries what it actually had: a
+  // name the seller typed and nothing that vouched for it.
+  receiverNameSource: order.receiverNameSource ?? SaleReceiverNameSource.DECLARED,
+  cardOrder: toAdminCardOrderSummary(openCardOrder(order.cardOrders)),
+  cardOrdersTotal: (order.cardOrders ?? []).length,
+  statementCount: (order.cardOrders ?? []).reduce(
+    (total, cardOrder) => total + (cardOrder.statements ?? []).length,
+    0
+  ),
   jarClosedAt: iso(order.jarClosedAt),
   completedAt: iso(order.completedAt),
   createdAt: isoRequired(order.createdAt),
@@ -548,46 +576,149 @@ export const toAdminFiatDepositWatch = (
   createdAt: watch.createdAt.toISOString()
 })
 
+// --- Card orders, statements and the archive -------------------------------
+
 /**
- * One disputed card payment, as the panel lists it.
+ * The order a sale is currently answering for, or `null`.
  *
- * Here rather than in the service, with the other fifteen: a mapper is what a
- * stored document looks like to an operator, and keeping them together is what
- * stops two screens disagreeing about how the same figure renders.
- *
- * **No card number in any form, not even four digits.** Closing an appeal does
- * not need one, and this row is rendered in a browser.
+ * A disputed one first, then one still waiting on the seller, and the oldest of
+ * either if a credential's one-at-a-time cap ever slips upstream. Nothing when
+ * every order is settled — a card sale with three confirmed orders is not
+ * waiting on anybody, and showing its last one would read as though it were.
  */
-export const toAdminCardOrder = (
-  sale: TmaSale & { _id: Types.ObjectId },
-  cardOrder: TmaSaleCardOrder
-): AdminCardOrderListItem => ({
-  orderId: cardOrder.orderId,
-  saleId: sale._id.toString(),
-  publicId: sale.publicId,
-  telegramId: sale.telegramId,
-  state: cardOrder.state,
-  amount: cardOrder.amount,
-  arrivedAt: cardOrder.arrivedAt.toISOString(),
-  confirmDeadlineAt: cardOrder.confirmDeadlineAt.toISOString(),
-  answeredAt: cardOrder.answeredAt?.toISOString() ?? null,
-  receiverName: sale.receiverName,
-  receiverNameSource: sale.receiverNameSource,
-  bankType: sale.bankType as BankProvider,
-  // Counts and verdicts, never the documents: a row carrying them would put the
-  // period, the holder and the account tail of somebody's bank statement into a
-  // table nobody reads them from. What an operator opens is the file itself.
-  statements: (cardOrder.statements ?? []).map(
-    (statement): AdminCardOrderStatement => ({
-      id: statement._id.toString(),
-      bank: statement.bank,
-      status: statement.status,
-      rejection: statement.rejection,
-      uploadedAt: statement.uploadedAt.toISOString(),
-      sizeBytes: statement.sizeBytes,
-      periodFrom: statement.periodFrom?.toISOString() ?? null,
-      periodTo: statement.periodTo?.toISOString() ?? null,
-      ownerName: statement.ownerName
-    })
+const openCardOrder = (cardOrders: TmaSaleCardOrder[] | undefined): TmaSaleCardOrder | null => {
+  const orders = cardOrders ?? []
+
+  const disputed = orders.filter((cardOrder) =>
+    (DISPUTED_CARD_ORDER_STATES as readonly SaleCardOrderState[]).includes(cardOrder.state)
   )
+  if (disputed.length > 0) return disputed[0]
+
+  return (
+    orders.find(
+      (cardOrder) => cardOrder.state === SaleCardOrderState.AWAITING_CONFIRMATION
+    ) ?? null
+  )
+}
+
+const toAdminCardOrderSummary = (
+  cardOrder: TmaSaleCardOrder | null
+): AdminSaleCardOrderSummary | null =>
+  cardOrder === null
+    ? null
+    : {
+        orderId: cardOrder.orderId,
+        state: cardOrder.state,
+        amount: cardOrder.amount,
+        declaredAmount: cardOrder.declaredAmount ?? null,
+        arrivedAt: isoRequired(cardOrder.arrivedAt),
+        confirmDeadlineAt: isoRequired(cardOrder.confirmDeadlineAt),
+        answeredAt: iso(cardOrder.answeredAt),
+        statementCount: (cardOrder.statements ?? []).length
+      }
+
+/** One card order with the documents sent about it — the sale's own page. */
+export const toAdminSaleCardOrder = (cardOrder: TmaSaleCardOrder): AdminSaleCardOrder => ({
+  ...(toAdminCardOrderSummary(cardOrder) as AdminSaleCardOrderSummary),
+  statements: (cardOrder.statements ?? []).map(toAdminSaleStatement)
+})
+
+/**
+ * One statement, as the panel lists it under its sale.
+ *
+ * **No account tail**, though the row has one. Four digits is not a payment
+ * credential at rest, which is why it is stored; it is also not something an
+ * operator settling a dispute needs, which is why it does not travel. The
+ * archive's own rows make the same choice.
+ */
+export const toAdminSaleStatement = (statement: TmaSaleStatement): AdminSaleStatement => ({
+  id: statement._id.toString(),
+  bank: statement.bank,
+  status: statement.status,
+  rejection: statement.rejection,
+  uploadedAt: isoRequired(statement.uploadedAt),
+  sizeBytes: statement.sizeBytes,
+  purgedAt: iso(statement.purgedAt),
+  // Truthiness, for the reason `toAdminDocument` gives: a statement written
+  // before `purgedAt` existed carries no such field at all.
+  fileAvailable: !statement.purgedAt,
+  periodFrom: iso(statement.periodFrom),
+  periodTo: iso(statement.periodTo),
+  ownerName: statement.ownerName
+})
+
+/**
+ * One archived document, whatever it is evidence of.
+ *
+ * **`storedName` is read and dropped.** It is the handle the download route
+ * uses; it is a path, and a path is not an operator's business. Everything else
+ * the projection produced travels, because the point of one archive is that a
+ * row says which kind it is and what it is about.
+ */
+export const toAdminDocument = (
+  row: AdminDocumentFeedRow,
+  username: string
+): AdminDocumentListItem => ({
+  id: row._id.toString(),
+  kind: row.kind,
+  telegramId: row.telegramId,
+  username,
+  bank: row.bank,
+  status: row.status,
+  rejection: row.rejection,
+  amountUah: row.amountUah,
+  sizeBytes: row.sizeBytes,
+  uploadedAt: isoRequired(row.uploadedAt),
+  purgedAt: iso(row.purgedAt),
+  // Both halves of the claim: a record with no file was never archived, and one
+  // past its retention deliberately no longer has one. Either way there is
+  // nothing to serve, and the panel must not offer a button that 404s.
+  //
+  // **Truthiness, not `!== null`.** A subdocument written before a field
+  // existed comes back with that field *absent*, and `undefined !== null` is
+  // `true` — so the strict form claims a file for every receipt older than the
+  // archive itself. The feed's projection reads those through `$ifNull` and so
+  // should never produce one; this is the belt, and it costs nothing.
+  fileAvailable: Boolean(row.storedName) && !row.purgedAt,
+  externalUrl: row.externalUrl,
+  saleId: row.saleId?.toString() ?? null,
+  salePublicId: row.salePublicId,
+  cardOrderId: row.cardOrderId,
+  fiatDepositId: row.fiatDepositId?.toString() ?? null,
+  payoutId: row.payoutId,
+  periodFrom: iso(row.periodFrom),
+  periodTo: iso(row.periodTo),
+  ownerName: row.ownerName,
+  recipientChecked: row.recipientChecked
+})
+
+// --- The deposits book -----------------------------------------------------
+
+/**
+ * One deposit, whichever rail it came over.
+ *
+ * The units were fixed in the pipeline, not here — see
+ * `AdminDepositFeedDbService`. This maps dates and ids and nothing else, which
+ * is the point: arithmetic in two places is arithmetic that disagrees.
+ */
+export const toAdminDepositRow = (
+  row: AdminDepositFeedRow,
+  username: string
+): AdminDepositRowItem => ({
+  id: row._id.toString(),
+  kind: row.kind,
+  telegramId: row.telegramId,
+  username,
+  cryptoCents: row.cryptoCents,
+  fiatAmount: row.fiatAmount,
+  exchangeRate: row.exchangeRate,
+  status: row.status,
+  coveredUah: row.coveredUah,
+  documentCount: row.documentCount,
+  acceptedDocumentCount: row.acceptedDocumentCount,
+  payoutId: row.payoutId,
+  txId: row.txId,
+  deadlineAt: isoRequired(row.deadlineAt),
+  completedAt: iso(row.completedAt),
+  createdAt: isoRequired(row.createdAt)
 })

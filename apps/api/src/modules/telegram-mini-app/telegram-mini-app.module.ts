@@ -20,6 +20,8 @@ import { SaleCardWatchService } from 'src/modules/telegram-mini-app/services/sal
 import { SaleStatementService } from 'src/modules/telegram-mini-app/services/sale-statement.service'
 import { SaleStatementStorageService } from 'src/modules/telegram-mini-app/services/sale-statement-storage.service'
 import { SaleStatementRetentionService } from 'src/modules/telegram-mini-app/services/sale-statement-retention.service'
+import { FiatReceiptStorageService } from 'src/modules/telegram-mini-app/services/fiat-receipt-storage.service'
+import { FiatReceiptRetentionService } from 'src/modules/telegram-mini-app/services/fiat-receipt-retention.service'
 
 // Repository modules — schemas and DB services live here, never in this module
 import { TmaUserDbModule } from 'src/modules/repositories/tma-user-db/tma-user-db.module'
@@ -185,6 +187,8 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     SaleStatementStorageService,
     // …and the one sweep here whose purpose is to destroy data.
     SaleStatementRetentionService,
+    FiatReceiptStorageService,
+    FiatReceiptRetentionService,
     // Retiring a terminal — shared by every way an order ends: completed,
     // blocked, or cancelled.
     SaleTerminalService,
@@ -235,10 +239,11 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     // orders. One-way: the Mini App still learns of the bot only through a
     // neutral domain event.
     SaleCardOrderService,
-    // Exported for the admin panel, which serves an operator the statement a
-    // dispute was settled on. Reading the store is the panel's only business
-    // with it — nothing there writes one.
+    // Exported for the admin panel, which serves an operator the documents a
+    // dispute or a top-up was settled on. Reading the stores is the panel's
+    // only business with them — nothing there writes one.
     SaleStatementStorageService,
+    FiatReceiptStorageService,
     // The fiat top-up's settlement path, exported for the admin panel — which
     // performs the same interventions on an operator's say-so.
     FiatDepositSettlementService,

@@ -31,6 +31,8 @@ export class TraderListComponent {
   readonly columns = TRADER_COLUMNS;
   readonly rowActions = TRADER_ROW_ACTIONS;
   readonly state = this.store.selectSignal(tradersCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = tradersCollection.idOf;
 
   constructor() {
     this.store.dispatch(tradersCollection.actions.entered());

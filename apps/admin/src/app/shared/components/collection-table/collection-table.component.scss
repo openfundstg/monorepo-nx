@@ -100,3 +100,37 @@ td.numeric {
   width: 18px;
   height: 18px;
 }
+
+/*
+ * A link out of a row.
+ *
+ * Underlined on hover rather than always: a table where every id is blue and
+ * underlined reads as a page of links with some numbers in it, which is the
+ * opposite of scannable. The colour alone says it is followable.
+ */
+.ref {
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.ref:hover {
+  text-decoration: underline;
+}
+
+.ref__icon {
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
+}
+
+/* Several of them in one cell — wraps rather than widening the column. */
+.refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  align-items: center;
+}

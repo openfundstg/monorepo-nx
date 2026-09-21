@@ -10,7 +10,7 @@ import { OverviewApiService } from './overview.api.service';
  * gives loading and error without either being tracked by hand.
  *
  * It is refetched on demand rather than pushed. The backend deliberately does
- * not recompute eleven aggregations on every write — see the note on
+ * not recompute a dozen aggregations on every write — see the note on
  * `AdminOverviewService` — so a "refresh" button is the honest interface.
  */
 @Injectable({ providedIn: 'root' })

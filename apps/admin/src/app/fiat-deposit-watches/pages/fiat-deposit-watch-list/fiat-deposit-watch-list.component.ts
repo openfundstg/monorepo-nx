@@ -28,6 +28,8 @@ export class FiatDepositWatchListComponent {
 
   readonly columns = FIAT_DEPOSIT_WATCH_COLUMNS;
   readonly state = this.store.selectSignal(fiatDepositWatchesCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = fiatDepositWatchesCollection.idOf;
 
   constructor() {
     this.store.dispatch(fiatDepositWatchesCollection.actions.entered());

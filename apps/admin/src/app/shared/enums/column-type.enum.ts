@@ -27,4 +27,22 @@ export enum ColumnType {
   MONO = 'MONO',
   /** An external link; the cell value is the href and the label. */
   LINK = 'LINK',
+  /**
+   * A link into this panel: the cell value is the label, `link` the route.
+   *
+   * Every id an operator reads is also an id they want to follow, and before
+   * this they followed it by selecting the text, going to another screen and
+   * pasting it into a search box. A column that knows where its own value lives
+   * is the difference.
+   */
+  ROUTER_LINK = 'ROUTER_LINK',
+  /**
+   * Several links in one cell — what else this row is connected to.
+   *
+   * Rendered as small chips rather than as more columns, because the set is not
+   * fixed per list: a card sale has a dispute and a statement where a jar sale
+   * has a terminal and a history, and a column per possibility would be a table
+   * of empty cells.
+   */
+  REFS = 'REFS',
 }

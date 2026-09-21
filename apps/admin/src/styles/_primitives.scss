@@ -89,3 +89,127 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/*
+ * The detail pages' shared layout.
+ *
+ * Three screens draw the same thing — a user's, a sale's and a deposit's — and
+ * each had its own copy of these rules, which is how "identical" pages come to
+ * differ by four pixels and one border. They live here rather than in a
+ * component because they *are* the shape of a detail page, the same way `.card`
+ * is the shape of a panel.
+ *
+ * Names are prefixed. `.row` and `.grid` are words any component might reach
+ * for, and a global rule under either would reach into screens that never asked
+ * for it.
+ */
+
+/** The title block: who or what this page is, and how it stands. */
+.detail-identity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-md);
+}
+
+.detail-identity__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+}
+
+/** A row of figures that reflows rather than scrolling sideways. */
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--gap-md);
+  margin-bottom: var(--gap-md);
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-xs);
+}
+
+.figure__label {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.figure__value {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/** A timestamp is not a figure, and does not want figure-sized type. */
+.figure__value--text {
+  font-size: 15px;
+}
+
+.figure__hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.detail-section {
+  margin-bottom: var(--gap-md);
+}
+
+.detail-section > h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 var(--gap-sm);
+  color: var(--text-secondary);
+}
+
+/** One line of a list inside a section — an order, a document, a sale. */
+.detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: var(--gap-sm) 0;
+  border-top: 1px solid var(--border);
+}
+
+/** Something filed under the line above it — a statement under its order. */
+.detail-row--nested {
+  padding-left: var(--gap-lg);
+  border-top: none;
+  color: var(--text-secondary);
+}
+
+.detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-md);
+  margin-top: var(--gap-sm);
+}
+
+/*
+ * A link out of a row or a page.
+ *
+ * Underlined on hover rather than always: a screen where every id is blue and
+ * underlined reads as a page of links with some numbers in it, which is the
+ * opposite of scannable. The colour alone says it is followable.
+ */
+.ref {
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  white-space: nowrap;
+}
+
+.ref:hover {
+  text-decoration: underline;
+}
+
+.ref__icon {
+  font-size: 15px;
+  width: 15px;
+  height: 15px;
+}

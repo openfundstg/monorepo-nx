@@ -6,7 +6,7 @@ import { TmaDepositDbService } from 'src/modules/repositories/tma-deposit-db/ser
 import { TerminalDbService } from 'src/modules/repositories/terminal-db/services'
 import { OrderDbService } from 'src/modules/repositories/order-db/services'
 import { AdminAlertsService } from 'src/modules/admin/services/admin-alerts.service'
-import { startOfToday } from 'src/modules/admin/utils'
+import { disputedCardSaleFilter, startOfToday } from 'src/modules/admin/utils'
 
 /**
  * Statuses that still hold a sale slot, and so count as "open".
@@ -55,6 +55,7 @@ export class AdminOverviewService {
       openOrders,
       ordersByStatus,
       completedToday,
+      disputed,
       volumeToday,
       depositsPending,
       depositsToday,
@@ -68,6 +69,12 @@ export class AdminOverviewService {
       this.saleDbService.count({ status: { $in: OPEN_SALE_STATUSES } }),
       this.saleDbService.countByStatus(),
       this.saleDbService.count({ status: TmaSaleStatus.COMPLETED, completedAt: { $gte: since } }),
+      // One row per *sale*, and the **same filter the dispute chip applies** —
+      // a card sale's credential allows one open order at a time, so counting
+      // sales is counting disputes. Shared rather than restated, because a
+      // dashboard figure that disagrees with the list it links to is worse than
+      // no figure at all.
+      this.saleDbService.count(disputedCardSaleFilter()),
       this.confirmedTmaVolumeSince(since),
       this.depositDbService.count({ status: TmaDepositStatus.PENDING }),
       this.depositDbService.verifiedSince(since),
@@ -82,7 +89,8 @@ export class AdminOverviewService {
         open: openOrders,
         completedToday,
         volumeToday,
-        byStatus: ordersByStatus
+        byStatus: ordersByStatus,
+        disputed
       },
       deposits: {
         pending: depositsPending,

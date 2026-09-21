@@ -86,6 +86,8 @@ export class TerminalListComponent {
   readonly columns = TERMINAL_COLUMNS;
   readonly rowActions = TERMINAL_ROW_ACTIONS;
   readonly state = this.store.selectSignal(terminalsCollection.selectors.selectState);
+  /** Row identity, from the collection itself — never guessed from a column. */
+  readonly rowId = terminalsCollection.idOf;
 
   constructor() {
     this.store.dispatch(terminalsCollection.actions.entered());

@@ -50,7 +50,7 @@
                 <app-status-chip
                   [value]="'' + column.value(row)"
                   [tone]="chipTone(column, row)"
-                  [translatePrefix]="column.translatePrefix ?? null"
+                  [translatePrefix]="prefixFor(column, row)"
                 />
               }
               @case (ColumnType.BOOL) {
@@ -72,6 +72,39 @@
                 } @else {
                   <span class="muted">—</span>
                 }
+              }
+              @case (ColumnType.ROUTER_LINK) {
+                @if (linkFor(column, row); as link) {
+                  <a
+                    class="mono ref"
+                    [routerLink]="link.commands"
+                    [queryParams]="link.queryParams"
+                    [matTooltip]="(link.tooltip ?? '') | translate"
+                  >
+                    {{ cell(column, row) }}
+                  </a>
+                } @else {
+                  <span class="mono">{{ cell(column, row) }}</span>
+                }
+              }
+              @case (ColumnType.REFS) {
+                <span class="refs">
+                  @for (ref of refsFor(column, row); track ref.commands.join('/')) {
+                    <a
+                      class="ref"
+                      [routerLink]="ref.commands"
+                      [queryParams]="ref.queryParams"
+                      [matTooltip]="(ref.tooltip ?? '') | translate"
+                    >
+                      @if (ref.icon) {
+                        <mat-icon class="ref__icon">{{ ref.icon }}</mat-icon>
+                      }
+                      {{ ref.translate ? (('' + ref.label) | translate) : ref.label }}
+                    </a>
+                  } @empty {
+                    <span class="muted">—</span>
+                  }
+                </span>
               }
               @default {
                 {{ cell(column, row) }}

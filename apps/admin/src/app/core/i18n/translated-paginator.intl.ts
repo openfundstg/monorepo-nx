@@ -9,7 +9,7 @@ import { TranslateService } from '@ngx-translate/core';
  * of an otherwise Ukrainian screen — Material ships English defaults and has no
  * hook into `ngx-translate`. `MatPaginatorIntl` is the supported way to replace
  * them, and it is a global provider because the paginator lives inside the
- * shared table component that all eleven lists render.
+ * shared table component that every list renders.
  */
 @Injectable()
 export class TranslatedPaginatorIntl extends MatPaginatorIntl {

@@ -1,7 +1,7 @@
 import type { AdminOrderListItem } from '@transacto/contracts';
-import { OrderStatus } from '@transacto/contracts';
-import { ChipTone, ColumnType } from '../../shared/enums';
+import { ColumnType } from '../../shared/enums';
 import type { ColumnDef } from '../../shared/interfaces';
+import { orderTone, terminalHistoryLink, traderLink } from '../../shared/utils';
 
 /**
  * Transacto orders — one row per payment routed to a terminal.
@@ -11,16 +11,6 @@ import type { ColumnDef } from '../../shared/interfaces';
  * locally, but Transacto still shows it open, and nothing closes that except a
  * retry or a human.
  */
-const ORDER_TONES: Readonly<Record<OrderStatus, ChipTone>> = {
-  [OrderStatus.PENDING]: ChipTone.WARNING,
-  [OrderStatus.EXECUTED]: ChipTone.POSITIVE,
-  [OrderStatus.CANCELLED]: ChipTone.NEUTRAL,
-  // Held by Transacto rather than by us, and both need somebody to look: a
-  // paused order routes nobody, and an appeal is money in dispute.
-  [OrderStatus.PAUSED]: ChipTone.WARNING,
-  [OrderStatus.APPEAL]: ChipTone.DANGER,
-};
-
 export const ORDER_COLUMNS: readonly ColumnDef<AdminOrderListItem>[] = [
   {
     key: 'createdAt',
@@ -39,14 +29,19 @@ export const ORDER_COLUMNS: readonly ColumnDef<AdminOrderListItem>[] = [
   {
     key: 'traderId',
     header: 'common.trader',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (order) => order.traderId,
+    link: (order) => traderLink(order.traderId),
   },
   {
+    // The card, and the scraping history that says what the jar was doing when
+    // this order was routed at it — which is the next question about every
+    // order that did not settle.
     key: 'cardId',
     header: 'common.card_id',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (order) => order.cardId,
+    link: (order) => terminalHistoryLink(order.cardId),
   },
   {
     key: 'amount',
@@ -66,7 +61,7 @@ export const ORDER_COLUMNS: readonly ColumnDef<AdminOrderListItem>[] = [
     header: 'common.status',
     type: ColumnType.CHIP,
     value: (order) => order.status,
-    tone: (order) => ORDER_TONES[order.status],
+    tone: (order) => orderTone(order.status),
     translatePrefix: 'ORDER_STATUS',
     sortable: true,
   },

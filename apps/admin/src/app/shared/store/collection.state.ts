@@ -4,9 +4,9 @@ import { AdminSortDirection, type ApiError } from '@transacto/contracts';
  * The state behind one paginated list.
  *
  * Every list in the panel has exactly this shape, which is what makes one
- * reducer, one set of effects and one table component enough for all eleven of
- * them. A per-resource store would be the same forty lines eleven times, and
- * the eleventh copy is where the paging arithmetic goes wrong.
+ * reducer, one set of effects and one table component enough for all of them. A
+ * per-resource store would be the same forty lines a dozen times, and the last
+ * copy is where the paging arithmetic goes wrong.
  */
 export interface CollectionState<T> {
   readonly items: readonly T[];
@@ -16,6 +16,15 @@ export interface CollectionState<T> {
   readonly page: number;
   readonly limit: number;
   readonly search: string;
+  /**
+   * The one named slice this list is showing, or `null` for all of it.
+   *
+   * A single string rather than a filter object, because every list that has
+   * more than one slice has exactly one axis of them and an operator picks one
+   * chip — see `AdminPageReq.filter`. A list with no slices leaves this `null`
+   * forever and never sends it.
+   */
+  readonly filter: string | null;
   readonly sort: string | null;
   readonly direction: AdminSortDirection;
   readonly loading: boolean;
@@ -41,12 +50,14 @@ export const DEFAULT_PAGE_LIMIT = 25;
 export const initialCollectionState = <T>(
   sort: string | null,
   direction: AdminSortDirection = AdminSortDirection.DESC,
+  filter: string | null = null,
 ): CollectionState<T> => ({
   items: [],
   total: 0,
   page: 1,
   limit: DEFAULT_PAGE_LIMIT,
   search: '',
+  filter,
   sort,
   direction,
   loading: false,

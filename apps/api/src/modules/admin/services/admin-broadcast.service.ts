@@ -1,10 +1,13 @@
-import { AdminWsEventNames, AlertStatus, WsEventNames } from '@transacto/contracts'
+import {
+  AdminDepositKind,
+  AdminWsEventNames,
+  AlertStatus,
+  WsEventNames
+} from '@transacto/contracts'
 import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import { TmaDepositDbService } from 'src/modules/repositories/tma-deposit-db/services'
-import { TmaFiatDepositDbService } from 'src/modules/repositories/tma-fiat-deposit-db/services'
 import { TerminalDbService } from 'src/modules/repositories/terminal-db/services'
 import { TMA_DOMAIN_EVENT } from 'src/shared/interfaces'
 import type {
@@ -16,11 +19,10 @@ import type {
 } from 'src/shared/interfaces'
 import { describeError } from 'src/shared/utils'
 import { AdminGateway } from 'src/modules/admin/gateways/admin.gateway'
+import { AdminDepositsService } from 'src/modules/admin/services/admin-deposits.service'
 import {
   displayName,
   toAdminAlert,
-  toAdminDeposit,
-  toAdminFiatDeposit,
   toAdminSale,
   toAdminTerminal,
   toAdminUser
@@ -75,8 +77,9 @@ export class AdminBroadcastService {
     private readonly gateway: AdminGateway,
     private readonly userDbService: TmaUserDbService,
     private readonly saleDbService: TmaSaleDbService,
-    private readonly depositDbService: TmaDepositDbService,
-    private readonly fiatDepositDbService: TmaFiatDepositDbService,
+    // Both rails' rows come from the one service the list reads through, so a
+    // pushed deposit and a fetched one are the same object built the same way.
+    private readonly depositsService: AdminDepositsService,
     private readonly terminalDbService: TerminalDbService
   ) {}
 
@@ -101,15 +104,13 @@ export class AdminBroadcastService {
   @OnEvent(TMA_DOMAIN_EVENT.DEPOSIT_STATUS_CHANGED)
   async handleDepositChanged(event: TmaDepositChangedEvent): Promise<void> {
     await this.guard('tma deposit', async () => {
-      const [deposit, user] = await Promise.all([
-        this.depositDbService.findById(event.depositId),
-        this.userDbService.findByTelegramId(event.telegramId)
-      ])
-      if (!deposit) return
+      const deposit = await this.depositsService.row(
+        AdminDepositKind.CRYPTO,
+        event.depositId
+      )
+      if (deposit === null) return
 
-      this.gateway.emit(AdminWsEventNames.DEPOSIT_UPDATED, {
-        deposit: toAdminDeposit(deposit, displayName(user ?? undefined, event.telegramId))
-      })
+      this.gateway.emit(AdminWsEventNames.DEPOSIT_UPDATED, { deposit })
     })
   }
 
@@ -117,25 +118,19 @@ export class AdminBroadcastService {
    * A fiat top-up moved — reserved, covered a little further, completed, or
    * stopped for an operator.
    *
-   * The row is re-read rather than assembled from the event: the event carries
-   * a status and a coverage figure, and the panel's row carries a dozen fields
-   * around them, of which the receipt counts change on exactly these pushes.
+   * **The row is re-read through the service the list reads through**, not
+   * assembled here. The event carries a status and a coverage figure; the
+   * panel's row carries a dozen fields around them, the units are fixed in the
+   * feed's own pipeline, and a second assembly of the same deposit is how a
+   * live list and the same list after a refresh come to disagree.
    */
   @OnEvent(TMA_DOMAIN_EVENT.FIAT_DEPOSIT_STATUS_CHANGED)
   async handleFiatDepositChanged(event: TmaFiatDepositChangedEvent): Promise<void> {
     await this.guard('tma fiat deposit', async () => {
-      const [fiatDeposit, user] = await Promise.all([
-        this.fiatDepositDbService.findById(event.depositId),
-        this.userDbService.findByTelegramId(event.telegramId)
-      ])
-      if (!fiatDeposit) return
+      const deposit = await this.depositsService.row(AdminDepositKind.FIAT, event.depositId)
+      if (deposit === null) return
 
-      this.gateway.emit(AdminWsEventNames.FIAT_DEPOSIT_UPDATED, {
-        fiatDeposit: toAdminFiatDeposit(
-          fiatDeposit,
-          displayName(user ?? undefined, event.telegramId)
-        )
-      })
+      this.gateway.emit(AdminWsEventNames.FIAT_DEPOSIT_UPDATED, { deposit })
     })
   }
 

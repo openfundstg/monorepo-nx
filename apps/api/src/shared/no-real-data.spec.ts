@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { DECLARED_VALUES } from 'src/shared/testing/declared-not-personal.const'
 
@@ -78,6 +78,12 @@ const repositoryFiles = (): readonly string[] =>
 
 const scan = (file: string): readonly Finding[] => {
   if (SELF.has(file)) return []
+
+  // Still tracked, already deleted from the working tree — an ordinary state
+  // between removing a file and staging the removal. Nothing can be scanned and
+  // nothing needs to be: what is on disk is what this check is about, and
+  // failing here would fail the build for a file that no longer exists.
+  if (!existsSync(join(WORKSPACE, file))) return []
 
   const lines = readFileSync(join(WORKSPACE, file), 'utf8').split('\n')
 

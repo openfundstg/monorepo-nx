@@ -1,0 +1,111 @@
+<div class="header">
+  <a mat-button [routerLink]="['/deposits']">
+    <mat-icon>arrow_back</mat-icon>
+    {{ 'deposits.title' | translate }}
+  </a>
+</div>
+
+@if (loading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+@if (detail(); as data) {
+  <div class="detail-identity card">
+    <div>
+      <h1 class="page-title">{{ data.deposit.cryptoCents | usdt }}</h1>
+      <p class="page-subtitle">{{ data.deposit.createdAt | dateTime }}</p>
+    </div>
+    <div class="detail-identity__flags">
+      <app-status-chip [value]="data.deposit.kind" translatePrefix="DEPOSIT_KIND" />
+      <app-status-chip
+        [value]="data.deposit.status"
+        [tone]="depositRowTone(data.deposit.kind, data.deposit.status)"
+        [translatePrefix]="depositStatusPrefix(data.deposit.kind)"
+      />
+    </div>
+  </div>
+
+  <section class="detail-grid">
+    <div class="card figure">
+      <span class="figure__label">{{ 'deposits.fiat' | translate }}</span>
+      <span class="figure__value">{{ data.deposit.fiatAmount | uah }}</span>
+      <span class="figure__hint"
+        >{{ 'sales.rate' | translate }}: {{ data.deposit.exchangeRate | uah }}</span
+      >
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'deposits.covered' | translate }}</span>
+      <span class="figure__value">{{ data.deposit.coveredUah | uah }}</span>
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'deposits.deadline' | translate }}</span>
+      <span class="figure__value figure__value--text">{{
+        data.deposit.deadlineAt | dateTime
+      }}</span>
+      @if (data.holdUntilAt) {
+        <span class="figure__hint">
+          {{ 'deposits.hold_until' | translate }}: {{ data.holdUntilAt | dateTime }}
+        </span>
+      }
+    </div>
+    <div class="card figure">
+      <span class="figure__label">{{ 'deposits.completed' | translate }}</span>
+      <span class="figure__value figure__value--text">{{
+        data.deposit.completedAt | dateTime
+      }}</span>
+    </div>
+  </section>
+
+  <section class="card detail-section">
+    <h2>{{ 'common.related' | translate }}</h2>
+    <div class="detail-links">
+      @if (data.user; as user) {
+        <a class="ref" [routerLink]="['/users', user.telegramId]">
+          <mat-icon>person</mat-icon>
+          {{ user.username || user.firstName }}
+        </a>
+      }
+      @if (data.deposit.payoutId; as payoutId) {
+        <a class="ref" [routerLink]="['/orders']" [queryParams]="{ search: payoutId }">
+          <mat-icon>receipt_long</mat-icon>
+          {{ 'deposits.payout' | translate }} {{ payoutId }}
+        </a>
+      }
+      <a class="ref" [routerLink]="['/audit']" [queryParams]="{ search: data.deposit.id }">
+        <mat-icon>history</mat-icon>
+        {{ 'links.audit' | translate }}
+      </a>
+    </div>
+  </section>
+
+  <!--
+    Only on the hryvnia rail, and only here.
+    The whole number, because the errand it exists for is matching this row
+    against the same payout in Transacto's own panel, and a mask matches
+    nothing.
+  -->
+  @if (data.recipientCard; as card) {
+    <section class="card detail-section">
+      <h2>{{ 'deposits.recipient_card' | translate }}</h2>
+      <p class="mono credential__value">{{ card }}</p>
+      <p class="muted">{{ 'deposits.recipient_card_hint' | translate }}</p>
+    </section>
+  }
+
+  @if (data.deposit.txId; as txId) {
+    <section class="card detail-section">
+      <h2>{{ 'deposits.tx_id' | translate }}</h2>
+      <p class="mono credential__value">{{ txId }}</p>
+    </section>
+  }
+
+  <!-- Every file sent about this, rendered by the one component that knows how. -->
+  <section class="card detail-section">
+    <h2>{{ 'documents.title' | translate }}</h2>
+    @for (document of data.documents; track document.id) {
+      <app-document-row [document]="document" />
+    } @empty {
+      <p class="muted">{{ 'documents.empty' | translate }}</p>
+    }
+  </section>
+}

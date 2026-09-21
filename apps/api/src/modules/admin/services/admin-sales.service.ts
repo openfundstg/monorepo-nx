@@ -2,15 +2,18 @@ import {
   AdminAuditAction,
   AdminAuditTargetType,
   AdminSaleAction,
+  AdminSaleFilter,
   AdminWsEventNames,
   ERROR,
   SaleBlockReason,
   SaleEventType,
+  SaleMethod,
   TmaSaleStatus,
-  type AdminPageReq,
   type AdminPaginatedRes,
   type AdminSaleActionReq,
-  type AdminSaleListItem
+  type AdminSaleDetailRes,
+  type AdminSaleListItem,
+  type AdminSalesPageReq
 } from '@transacto/contracts'
 import {
   BadRequestException,
@@ -19,8 +22,10 @@ import {
   Logger,
   NotFoundException
 } from '@nestjs/common'
-import type { QueryFilter } from 'mongoose'
+import { Types, type QueryFilter } from 'mongoose'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
+import { TerminalDbService } from 'src/modules/repositories/terminal-db/services'
+import { OrderDbService } from 'src/modules/repositories/order-db/services'
 import type { StoredSale, TmaSale } from 'src/modules/repositories/tma-sale-db/schemas'
 
 /**
@@ -35,19 +40,43 @@ import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-c
 import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-facade.service'
 import { SaleReviewService } from 'src/modules/telegram-mini-app/services/sale-review.service'
 import type { AdminPrincipal } from 'src/shared/interfaces'
-import { saleRefundSplit } from 'src/shared/utils'
-import { ADMIN_SORTABLE } from 'src/modules/admin/constants'
+import { containsRegex, saleRefundSplit } from 'src/shared/utils'
+import { ADMIN_PAGE, ADMIN_SORTABLE } from 'src/modules/admin/constants'
 import { clampLimit } from 'src/modules/admin/dto'
 import { AdminGateway } from 'src/modules/admin/gateways/admin.gateway'
 import { AdminAuditService } from 'src/modules/admin/services/admin-audit.service'
+import { AdminDocumentsService } from 'src/modules/admin/services/admin-documents.service'
 import { AdminUsersService } from 'src/modules/admin/services/admin-users.service'
 import {
-  escapeRegex,
+  disputedCardSaleFilter,
   isSaleActionAllowed,
+  toAdminOrder,
   toAdminSale,
+  toAdminSaleCardOrder,
+  toAdminTerminal,
   toPageQuery,
   toPaginatedRes
 } from 'src/modules/admin/utils'
+
+/**
+ * What each chip selects.
+ *
+ * A `Record` rather than a `switch` with a default, for the same reason
+ * `ACTION_AUDIT` below is one: a member added to {@link AdminSaleFilter} must
+ * fail to compile here until somebody decides what it selects. A default branch
+ * would answer a new chip with the whole book, which reads as a filter that
+ * does nothing — indistinguishable from one that matched everything.
+ */
+const SLICE_FILTERS: Readonly<Record<AdminSaleFilter, () => QueryFilter<TmaSale>>> = {
+  // A sale written before the two methods existed is a jar sale: that is what
+  // every sale was. A lean read applies no default, so the absence has to be
+  // matched explicitly rather than left to one.
+  [AdminSaleFilter.JAR]: () => ({
+    $or: [{ saleMethod: SaleMethod.JAR }, { saleMethod: { $exists: false } }]
+  }),
+  [AdminSaleFilter.CARD]: () => ({ saleMethod: SaleMethod.CARD }),
+  [AdminSaleFilter.DISPUTED]: disputedCardSaleFilter
+}
 
 /**
  * Which audit action each intervention writes.
@@ -85,6 +114,12 @@ export class AdminSalesService {
 
   constructor(
     private readonly saleDbService: TmaSaleDbService,
+    // Read-only, both of them: a sale's page shows the terminal it is bound to
+    // and the orders routed at it, and changing either is the terminals
+    // service's business rather than this one's.
+    private readonly terminalDbService: TerminalDbService,
+    private readonly orderDbService: OrderDbService,
+    private readonly documents: AdminDocumentsService,
     private readonly cancelService: SaleCancelService,
     private readonly blockService: SaleBlockService,
     private readonly saleFacade: SaleFacadeService,
@@ -97,20 +132,67 @@ export class AdminSalesService {
     private readonly gateway: AdminGateway
   ) {}
 
-  async list(request: AdminPageReq): Promise<AdminPaginatedRes<AdminSaleListItem>> {
+  async list(request: AdminSalesPageReq): Promise<AdminPaginatedRes<AdminSaleListItem>> {
     const limit = clampLimit(request.limit)
     const paging = { ...request, limit }
 
     const page = await this.saleDbService.findPage(
-      this.searchFilter(request.search),
+      this.filterFor(request),
       toPageQuery(paging, ADMIN_SORTABLE.SALES)
     )
 
-    const names = await this.usersService.namesFor(page.items.map((order) => order.telegramId))
+    const name = await this.usersService.namerFor(page.items.map((order) => order.telegramId))
 
-    return toPaginatedRes(page, paging, (order) =>
-      toAdminSale(order, names.get(order.telegramId) ?? String(order.telegramId))
-    )
+    return toPaginatedRes(page, paging, (order) => toAdminSale(order, name(order.telegramId)))
+  }
+
+  /**
+   * One sale and everything attached to it.
+   *
+   * **Assembled rather than linked to**, which is the whole reason this exists.
+   * Working a complaint used to mean copying the seller's id into the users
+   * list, the card id into the terminals list, the order number into a third
+   * screen and the sale's code into a fourth — four navigations to answer one
+   * question, each of them a chance to paste the wrong number.
+   *
+   * Everything here is read fresh from the service that owns it, so this page
+   * cannot contradict the lists it links to.
+   */
+  async detail(id: string): Promise<AdminSaleDetailRes> {
+    if (!Types.ObjectId.isValid(id)) throw new NotFoundException(ERROR.SALE.NOT_FOUND)
+
+    const sale = await this.saleDbService.findById(id)
+    if (sale === null) throw new NotFoundException(ERROR.SALE.NOT_FOUND)
+
+    const [name, user, terminal, orders, documents] = await Promise.all([
+      this.usersService.namerFor([sale.telegramId]),
+      this.usersService.userRow(sale.telegramId),
+      // By `cardId` rather than by the sale's `transactoTerminalId`: the card is
+      // what a terminal is filed under here and what its history is keyed by,
+      // and a sale bound before the upstream id came back has the first and not
+      // the second.
+      sale.cardId === null
+        ? Promise.resolve(null)
+        : this.terminalDbService.findOne({ cardId: sale.cardId }),
+      // `findPage`, not `findRecentByCard`: the paged read is the one that
+      // carries `_id`, and the mapper needs it to address a row.
+      sale.cardId === null
+        ? Promise.resolve({ items: [], total: 0 })
+        : this.orderDbService.findPage(
+            { cardId: sale.cardId },
+            { skip: 0, limit: ADMIN_PAGE.DETAIL_PREVIEW, sort: { createdAt: -1 } }
+          ),
+      this.documents.forSale(sale._id)
+    ])
+
+    return {
+      sale: toAdminSale(sale, name(sale.telegramId)),
+      user,
+      cardOrders: (sale.cardOrders ?? []).map(toAdminSaleCardOrder),
+      transactoOrders: orders.items.map(toAdminOrder),
+      terminal: terminal === null ? null : toAdminTerminal(terminal),
+      documents
+    }
   }
 
   /**
@@ -259,12 +341,47 @@ export class AdminSalesService {
   private async publish(
     order: TmaSale & { _id: { toString(): string } }
   ): Promise<AdminSaleListItem> {
-    const names = await this.usersService.namesFor([order.telegramId])
-    const item = toAdminSale(order, names.get(order.telegramId) ?? String(order.telegramId))
+    const name = await this.usersService.namerFor([order.telegramId])
+    const item = toAdminSale(order, name(order.telegramId))
 
     this.gateway.emit(AdminWsEventNames.SALE_UPDATED, { order: item })
 
     return item
+  }
+
+  /**
+   * The slice and the search, combined without either eating the other.
+   *
+   * `$and` rather than a spread: both halves may use `$or`, and a spread would
+   * leave whichever came second — which on the dispute queue would quietly
+   * widen a filtered list back to the whole book.
+   */
+  private filterFor(request: AdminSalesPageReq): QueryFilter<TmaSale> {
+    const clauses = [this.sliceFilter(request.filter), this.searchFilter(request.search)].filter(
+      (clause) => Object.keys(clause).length > 0
+    )
+
+    if (clauses.length === 0) return {}
+    if (clauses.length === 1) return clauses[0]
+
+    return { $and: clauses }
+  }
+
+  /**
+   * Which slice of the book the chips asked for.
+   *
+   * **The dispute queue is a filter here rather than a screen of its own**, and
+   * that is the whole reason this parameter exists. It was a screen of its own,
+   * which meant an operator arriving from Transacto's panel with an order
+   * number could reach the dispute and not the sale around it — the seller, the
+   * terminal, the stake, the other orders. One list, one search box, one row
+   * that carries its own card order.
+   *
+   * Absent is the whole book — there is no `ALL` member, for the reason
+   * {@link AdminSaleFilter} gives.
+   */
+  private sliceFilter(filter: AdminSaleFilter | undefined): QueryFilter<TmaSale> {
+    return filter === undefined ? {} : SLICE_FILTERS[filter]()
   }
 
   /**
@@ -273,20 +390,33 @@ export class AdminSalesService {
    * `publicId` is the code a user quotes to support, so it is the field this
    * box exists for; the drop link is here because a support ticket about a
    * suspicious jar arrives as a URL and nothing else.
+   *
+   * **`cardOrders.orderId` is here because it is the one thing an operator
+   * arrives from Transacto's panel holding.** That lookup used to live on a
+   * separate screen; folding it in is what lets one search box answer both
+   * "find me this sale" and "find me this dispute".
    */
   private searchFilter(search: string | undefined): QueryFilter<TmaSale> {
     if (!search) return {}
 
-    const pattern = new RegExp(escapeRegex(search), 'i')
+    const pattern = containsRegex(search)
     const asNumber = Number(search)
+    // `Number('')` is 0 and `Number('abc')` is NaN — neither is an order, and
+    // an emptied box must not match order zero.
+    const numeric = Number.isSafeInteger(asNumber) && asNumber > 0
 
     return {
       $or: [
         { publicId: pattern },
         { dropLink: pattern },
         { receiverName: pattern },
-        ...(Number.isFinite(asNumber)
-          ? [{ telegramId: asNumber }, { cardId: asNumber }, { transactoTerminalId: asNumber }]
+        ...(numeric
+          ? [
+              { telegramId: asNumber },
+              { cardId: asNumber },
+              { transactoTerminalId: asNumber },
+              { 'cardOrders.orderId': asNumber }
+            ]
           : [])
       ]
     }

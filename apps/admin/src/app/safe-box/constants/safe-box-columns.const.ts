@@ -1,7 +1,7 @@
 import type { AdminSafeBoxListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef } from '../../shared/interfaces';
-import { unknownTone } from '../../shared/utils';
+import { alertsLink, ordersLink, terminalLink, traderLink, unknownTone } from '../../shared/utils';
 
 /**
  * Money a trader has set aside pending a decision.
@@ -23,14 +23,16 @@ export const SAFE_BOX_COLUMNS: readonly ColumnDef<AdminSafeBoxListItem>[] = [
   {
     key: 'traderId',
     header: 'common.trader',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.traderId,
+    link: (row) => traderLink(row.traderId),
   },
   {
     key: 'terminalId',
     header: 'common.terminal',
-    type: ColumnType.NUMBER,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.terminalId,
+    link: (row) => terminalLink(row.terminalId),
   },
   {
     key: 'amount',
@@ -55,15 +57,30 @@ export const SAFE_BOX_COLUMNS: readonly ColumnDef<AdminSafeBoxListItem>[] = [
     sortable: true,
   },
   {
+    // The order this money was eventually attributed to, where one was found.
+    // That attribution is the whole question a safe-box row asks, so it is the
+    // one field here that must lead somewhere.
     key: 'linkedOrderId',
     header: 'safe_box.linked_order',
-    type: ColumnType.MONO,
+    type: ColumnType.ROUTER_LINK,
     value: (row) => row.linkedOrderId,
+    link: (row) => (row.linkedOrderId === null ? null : ordersLink(row.linkedOrderId)),
   },
   {
     key: 'comment',
     header: 'safe_box.comment',
     type: ColumnType.TEXT,
     value: (row) => row.comment,
+  },
+  {
+    // The alert that raised it. A safe-box row and an `UNRECOGNIZED_DEPOSIT`
+    // are the same event seen twice, and following one to the other used to be
+    // three navigations and a remembered terminal id.
+    key: 'links',
+    header: 'common.related',
+    type: ColumnType.REFS,
+    value: () => null,
+    refs: (row) => [alertsLink(row.terminalId), terminalLink(row.terminalId)],
+    width: '150px',
   },
 ];

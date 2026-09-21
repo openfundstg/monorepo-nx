@@ -12,12 +12,15 @@ import {
   TmaFiatDepositStatus,
   TmaFiatReceiptRejection,
   TmaFiatReceiptStatus,
+  uploadExtension,
+  type BankProvider,
   type TmaFiatDeposit
 } from '@transacto/contracts'
 import { Types } from 'mongoose'
 import { TmaFiatDepositDbService } from 'src/modules/repositories/tma-fiat-deposit-db/services'
 import { TransactoPanelPayoutsApiService } from 'src/modules/transacto/services/transacto-panel-payouts.api.service'
 import { FiatDepositSettlementService } from 'src/modules/telegram-mini-app/services/fiat-deposit-settlement.service'
+import { FiatReceiptStorageService } from 'src/modules/telegram-mini-app/services/fiat-receipt-storage.service'
 import {
   assertOwnedFiatDeposit,
   toFiatDepositContract
@@ -79,6 +82,32 @@ const REJECTION_BY_OUTCOME: Record<
 }
 
 /**
+ * Which bank vouched for a receipt, as far as the verdict says.
+ *
+ * `null` where no bank was ever reached — a code that could not be read, a
+ * verifier that was not configured, one that was unreachable. A receipt that
+ * names no bank in the archive is a receipt nobody proved, which is the fact
+ * worth being able to see.
+ */
+const bankOf = (verified: ReceiptVerification | null): BankProvider | null => {
+  if (verified === null) return null
+
+  if (
+    verified.outcome === ReceiptVerificationOutcome.VERIFIED ||
+    verified.outcome === ReceiptVerificationOutcome.VERIFIED_EXCEPT_RECIPIENT
+  )
+    return verified.receipt.bank
+
+  if (
+    verified.outcome === ReceiptVerificationOutcome.NOT_REGISTERED ||
+    verified.outcome === ReceiptVerificationOutcome.MISMATCHED
+  )
+    return verified.bank
+
+  return null
+}
+
+/**
  * Uploading a payment receipt against a fiat top-up.
  *
  * Three calls upstream, in a fixed order: the file goes up for recognition,
@@ -110,7 +139,8 @@ export class FiatDepositReceiptService {
     private readonly fiatDepositDb: TmaFiatDepositDbService,
     private readonly panelPayouts: TransactoPanelPayoutsApiService,
     private readonly settlement: FiatDepositSettlementService,
-    private readonly verification: ReceiptVerificationFacadeService
+    private readonly verification: ReceiptVerificationFacadeService,
+    private readonly storage: FiatReceiptStorageService
   ) {}
 
   /**
@@ -189,8 +219,16 @@ export class FiatDepositReceiptService {
       uploadedAt: new Date(),
       upstreamJobId: null,
       recipientChecked:
-        verified?.outcome !== ReceiptVerificationOutcome.VERIFIED_EXCEPT_RECIPIENT
+        verified?.outcome !== ReceiptVerificationOutcome.VERIFIED_EXCEPT_RECIPIENT,
+      bank: bankOf(verified)
     })
+
+    // **Archived before anything is decided about it, and archived even when
+    // the verdict is a refusal.** A receipt Transacto took has a copy in their
+    // panel; a receipt refused anywhere on this path used to have a copy
+    // nowhere at all — and that is precisely the one an operator is asked
+    // about a month later.
+    await this.archive(record, receiptId, file)
 
     if (
       verified !== null &&
@@ -220,6 +258,42 @@ export class FiatDepositReceiptService {
       return this.reject(record, receiptId, TmaFiatReceiptRejection.PARSE_FAILED)
 
     return this.settle(record, receiptId, uploaded)
+  }
+
+  /**
+   * Keeps the file exactly as it arrived, and never fails the upload over it.
+   *
+   * **As it arrived**, envelope and all: a receipt saved out of a banking app
+   * is a signed container, and the signature is over those precise bytes.
+   * Unwrapping before storing would destroy the only thing that makes it
+   * evidence.
+   *
+   * A failure here is logged and swallowed. The archive is for an operator
+   * reading a dispute later; refusing somebody's top-up because a disk was full
+   * would be this product breaking over its own bookkeeping.
+   */
+  private async archive(
+    record: TmaFiatDepositRecord,
+    receiptId: Types.ObjectId,
+    file: PanelReceiptFile
+  ): Promise<void> {
+    try {
+      const storedName = await this.storage.save(
+        receiptId.toString(),
+        file,
+        uploadExtension(file.fileName)
+      )
+
+      await this.fiatDepositDb.markReceiptArchived(record._id.toString(), receiptId, {
+        storedName,
+        sizeBytes: file.buffer.byteLength
+      })
+    } catch (error: unknown) {
+      this.logger.error(
+        `${this.context(record)} receipt ${receiptId.toString()} could not be archived: ` +
+          describeError(error)
+      )
+    }
   }
 
   /**

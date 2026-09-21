@@ -59,10 +59,16 @@ the `CLAUDE.md` of the project you are touching — each is mandatory, not advis
     turnover and the trust ladder have nothing to do with it, and `TRUST_LEVELS` rations only
     parallel sales. The filter on the offer is a courtesy; the refusal in
     `FiatDepositFacadeService.reserve` is the rule.
-  - The admin panel additionally uses Angular Material and NgRx; its twelve lists share one
+  - The admin panel additionally uses Angular Material and NgRx; its lists share one
     generic collection slice and one generic table, and **every write it makes delegates to the
     service that already owns that operation** rather than reimplementing a settlement path.
     Adding a list → skill `admin-feature`.
+  - **A screen per stored collection is not the panel's shape.** Sales on a jar and sales to a
+    card are one book cut by a chip; so are USDT and hryvnia top-ups; so is the dispute queue,
+    which used to be a screen and could be reached from a Transacto order number but led
+    nowhere near the sale around it. Where two lists answer one question about one person,
+    they are one list with a filter — `AdminSaleFilter`, `AdminDepositKind`,
+    `AdminDocumentKind` — and the rows carry links to each other rather than ids to copy.
 - **Contracts** → [CONTRACTS.md](CONTRACTS.md). Anything crossing the wire lives in
   `libs/contracts` and nowhere else.
 
@@ -292,6 +298,18 @@ build` chain.
     `PROXY_REQUIRED=true` makes an empty pool a refusal instead of a direct request. The panel
     client also sends the browser's own `User-Agent`: the proxy fixes the address, and
     `axios/1.18.1` from a datacentre is the other half of the signal.
+
+- **Every file this product handles is archived, and the archive is the panel's own
+  screen.** Two of them — a statement sent to settle a disputed card order, and a payment
+  receipt sent to prove a fiat top-up — and both live on mounted volumes
+  (`statements_data`, `receipts_data`) under `DocumentStorage`, which names them by their own
+  database id and reads them by a checked pattern. Receipts were once forwarded and
+  forgotten; what that cost was that a top-up disputed a month later could only be examined
+  through a counterparty's UI, and a receipt Transacto *refused* had no copy anywhere — which
+  is precisely the receipt an operator is asked about. **The record outlives the document**:
+  the verdict, the sum recognised and the bank stay forever, and the bytes are swept at
+  `SALE_STATEMENT_RETENTION_DAYS` / `FIAT_RECEIPT_RETENTION_DAYS` because somebody's whole
+  transaction history has no business doing the same.
 
 - **A fiat receipt is proven before Transacto is told anything, and the two banks are
   proven in completely different ways.** The upload is evidence somebody holds a receipt;

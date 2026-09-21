@@ -15,6 +15,7 @@ import { TraderDbModule } from 'src/modules/repositories/trader-db'
 import { AlertsDbModule } from 'src/modules/repositories/alerts-db'
 import { SafeBoxDbModule } from 'src/modules/repositories/safe-box-db/safe-box-db.module'
 import { SupportDbModule } from 'src/modules/repositories/support-db'
+import { AdminFeedDbModule } from 'src/modules/repositories/admin-feed-db'
 
 // Domain modules whose settlement paths this one reuses rather than reimplements
 import { AlertsModule } from 'src/modules/alerts/alerts.module'
@@ -29,8 +30,7 @@ import {
   AdminAuthController,
   AdminDepositsController,
   AdminFiatDepositWatchesController,
-  AdminCardOrdersController,
-  AdminFiatDepositsController,
+  AdminDocumentsController,
   AdminOrdersController,
   AdminOverviewController,
   AdminReferralsController,
@@ -47,7 +47,7 @@ import {
   AdminBroadcastService,
   AdminDepositsService,
   AdminFiatDepositWatchesService,
-  AdminCardOrdersService,
+  AdminDocumentsService,
   AdminFiatDepositsService,
   AdminLoginService,
   AdminOverviewService,
@@ -104,6 +104,9 @@ import {
     AlertsModule,
     SafeBoxDbModule,
     SupportDbModule,
+    // The two reads that span collections: the deposits book and the archive.
+    // Read-only by construction — see the module's own note.
+    AdminFeedDbModule,
     // Enabling and disabling a terminal, with the upstream ordering each
     // direction requires.
     TerminalModule,
@@ -117,10 +120,9 @@ import {
     AdminReferralsController,
     AdminSalesController,
     AdminDepositsController,
-    AdminFiatDepositsController,
-    // Card-sale disputes, addressed by Transacto's order number — the only
+      // Card-sale disputes, addressed by Transacto's order number — the only
     // identifier an operator arrives from their panel holding.
-    AdminCardOrdersController,
+    AdminDocumentsController,
     AdminFiatDepositWatchesController,
     AdminTerminalsController,
     AdminOrdersController,
@@ -139,7 +141,7 @@ import {
     AdminSalesService,
     AdminDepositsService,
     AdminFiatDepositsService,
-    AdminCardOrdersService,
+    AdminDocumentsService,
     AdminFiatDepositWatchesService,
     AdminTerminalsService,
     AdminTradersService,

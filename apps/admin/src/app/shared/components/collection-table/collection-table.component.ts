@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatMenuModule } from '@angular/material/menu';
@@ -10,7 +11,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { AdminSortDirection, type ApiError } from '@transacto/contracts';
 import { ChipTone } from '../../enums/chip-tone.enum';
 import { ColumnType } from '../../enums/column-type.enum';
-import type { ColumnDef, RowAction } from '../../interfaces/column-def.interface';
+import type { ColumnDef, RowAction, RowLink } from '../../interfaces/column-def.interface';
 import {
   formatDateTime,
   formatNumber,
@@ -30,9 +31,15 @@ export interface RowActionEvent<T> {
  * Every list in the panel.
  *
  * Driven by `ColumnDef[]` rather than a template per screen, which is what
- * keeps eleven lists to one implementation of paging, sorting, the loading bar,
+ * keeps every list to one implementation of paging, sorting, the loading bar,
  * the empty state and the live-rows notice. A screen supplies its columns and
  * its actions; it does not supply a `<table>`.
+ *
+ * Two of the column types exist so a row can be *followed* rather than copied
+ * out of: `ROUTER_LINK` turns a cell's own value into a link, and `REFS` puts
+ * several small links in one cell — one cell and not four columns, because
+ * which links a row has depends on what kind of row it is, and a column per
+ * possibility is a table of empty cells.
  *
  * It is deliberately presentational: it holds no state, fetches nothing, and
  * reports what the operator did. The NgRx collection behind it owns the query,
@@ -43,6 +50,7 @@ export interface RowActionEvent<T> {
   selector: 'app-collection-table',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RouterLink,
     MatTableModule,
     MatPaginatorModule,
     MatProgressBarModule,
@@ -71,6 +79,19 @@ export class CollectionTableComponent<T> {
   readonly actions = input<readonly RowAction<T>[]>([]);
   /** Translation key shown when the list is genuinely empty. */
   readonly emptyMessage = input('common.empty');
+  /**
+   * How a row identifies itself — the collection's own `idOf`.
+   *
+   * **Required in practice**, and the reason it exists is a bug rather than a
+   * preference. This used to track by the *first column's value*, on a comment
+   * claiming that column was always an id. It was an id on three lists out of
+   * thirteen: the rest lead with `createdAt`, a terminal name or a person's
+   * display name, none of which is unique. Two rows sharing one — two receipts
+   * uploaded in the same millisecond, two jars named the same thing, two people
+   * called the same thing — track as one row, and a live push then updates
+   * whichever of them the differ happened to pair it with.
+   */
+  readonly rowId = input<((row: T) => string) | null>(null);
 
   readonly pageChange = output<{ page: number; limit: number }>();
   readonly sortChange = output<{ sort: string; direction: AdminSortDirection }>();
@@ -155,6 +176,30 @@ export class CollectionTableComponent<T> {
     }
   }
 
+  /**
+   * The prefix a chip builds its translation key from.
+   *
+   * A function where the enum depends on the row — the deposits book carries
+   * two status enums in one column, discriminated by the row's rail, and the
+   * archive does the same with two document verdicts. A fixed string would
+   * force a third enum flattening both, which is a status written down in three
+   * places and agreeing in two.
+   */
+  prefixFor(column: ColumnDef<T>, row: T): string | null {
+    const prefix = column.translatePrefix;
+    if (prefix === undefined) return null;
+
+    return typeof prefix === 'function' ? prefix(row) : prefix;
+  }
+
+  linkFor(column: ColumnDef<T>, row: T): RowLink | null {
+    return column.link ? column.link(row) : null;
+  }
+
+  refsFor(column: ColumnDef<T>, row: T): readonly RowLink[] {
+    return column.refs ? column.refs(row) : [];
+  }
+
   chipTone(column: ColumnDef<T>, row: T): ChipTone {
     return column.tone ? column.tone(row) : ChipTone.NEUTRAL;
   }
@@ -168,16 +213,18 @@ export class CollectionTableComponent<T> {
   }
 
   /**
-   * `_id`-free row identity.
+   * Row identity, from the collection that owns the rows.
    *
-   * Falls back to the index only for a list whose first column is not an id —
-   * which is none of them today, but `track` is mandatory and a silently
-   * mistracked table re-creates every row on every push.
+   * Falls back to the index when no `rowId` is supplied. That is a worse
+   * identity — every row re-renders on every push — but it is a *safe* one,
+   * where guessing from a column silently pairs two different rows. Losing
+   * render work is recoverable; showing one row's figures under another row's
+   * id is not.
    */
   trackRow = (index: number, row: T): string => {
-    const first = this.columns()[0];
+    const id = this.rowId();
 
-    return first ? `${String(first.value(row))}` : String(index);
+    return id ? id(row) : String(index);
   };
 }
 

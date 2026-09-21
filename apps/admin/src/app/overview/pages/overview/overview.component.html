@@ -16,6 +16,7 @@
       [value]="formatNumber(data.users.total)"
       hint="overview.users_hint"
       [hintParams]="{ active: data.users.active, today: data.users.newToday }"
+      [link]="to.users"
     />
     <app-stat-card
       label="overview.balance_spendable"
@@ -24,26 +25,37 @@
       [hintParams]="{ frozen: formatUsdt(data.balances.frozen) }"
     />
     <app-stat-card label="overview.balance_referral" [value]="formatUsdt(data.balances.referral)" />
-    <app-stat-card label="overview.alerts_pending" [value]="formatNumber(data.alerts.pending)" />
+    <app-stat-card
+      label="overview.alerts_pending"
+      [value]="formatNumber(data.alerts.pending)"
+      [link]="to.alerts"
+    />
   </section>
 
   <section class="grid">
-    <app-stat-card label="overview.orders_open" [value]="formatNumber(data.sales.open)" />
+    <app-stat-card
+      label="overview.orders_open"
+      [value]="formatNumber(data.sales.open)"
+      [link]="to.sales"
+    />
     <app-stat-card
       label="overview.orders_completed_today"
       [value]="formatNumber(data.sales.completedToday)"
       hint="overview.volume_today_hint"
       [hintParams]="{ volume: formatUah(data.sales.volumeToday) }"
+      [link]="to.sales"
     />
     <app-stat-card
       label="overview.deposits_pending"
       [value]="formatNumber(data.deposits.pending)"
+      [link]="to.deposits"
     />
     <app-stat-card
       label="overview.deposits_today"
       [value]="formatNumber(data.deposits.completedToday)"
       hint="overview.credited_today_hint"
       [hintParams]="{ credited: formatUsdtWhole(data.deposits.creditedToday) }"
+      [link]="to.deposits"
     />
   </section>
 
@@ -56,6 +68,18 @@
         enabled: data.terminals.enabled,
         accepting: data.terminals.acceptingOrders,
       }"
+      [link]="to.terminals"
+    />
+    <!--
+      The one queue only a person empties: nothing in this codebase closes an
+      appeal. It had a sidebar entry of its own, and folding that entry into the
+      sales book would have hidden the count unless it surfaced here.
+    -->
+    <app-stat-card
+      label="overview.disputes"
+      [value]="formatNumber(data.sales.disputed)"
+      hint="overview.disputes_hint"
+      [link]="to.disputes"
     />
   </section>
 

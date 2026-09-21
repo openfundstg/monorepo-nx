@@ -1,0 +1,72 @@
+<div class="detail-row">
+  <span>{{ document().bank ?? '—' }}</span>
+
+  <app-status-chip
+    [value]="document().status"
+    [tone]="tone()"
+    [translatePrefix]="statusPrefix()"
+  />
+
+  @if (rejectionKey(); as key) {
+    <span class="muted">{{ key | translate }}</span>
+  }
+
+  <!-- The counterparty's own figure on a receipt; a statement states no sum. -->
+  @if (document().amountUah !== null) {
+    <span>{{ document().amountUah | uah }}</span>
+  }
+
+  <!--
+    The one weaker claim this product makes about somebody's money: on a
+    PrivatBank transfer that stayed inside PrivatBank, neither side names the
+    recipient comparably and that check could not run at all.
+  -->
+  @if (document().recipientChecked === false) {
+    <span class="muted">{{ 'documents.recipient_unchecked' | translate }}</span>
+  }
+
+  @if (document().periodFrom; as from) {
+    <span class="muted">{{ from | dateTime }} — {{ document().periodTo | dateTime }}</span>
+  }
+
+  @if (document().ownerName; as owner) {
+    <span class="muted">{{ owner }}</span>
+  }
+
+  <span class="muted">{{ document().uploadedAt | dateTime }}</span>
+
+  @if (document().fileAvailable) {
+    <a
+      mat-button
+      [href]="viewUrl()"
+      target="_blank"
+      rel="noopener noreferrer"
+      [matTooltip]="'documents.open_hint' | translate"
+    >
+      <mat-icon>visibility</mat-icon>
+      {{ 'documents.open' | translate }}
+    </a>
+    <a mat-button [href]="downloadUrl()">
+      <mat-icon>download</mat-icon>
+      {{ 'documents.download' | translate }}
+    </a>
+  } @else {
+    <!--
+      The record outlives the document. Saying so is not the same as offering a
+      download that answers 404.
+    -->
+    <span class="muted">{{ 'documents.file_gone' | translate }}</span>
+  }
+
+  <!--
+    Transacto's own copy of an accepted receipt, beside ours rather than instead
+    of it: theirs is what their recognition judged, ours is what the payer
+    actually sent, and a dispute can turn on the two being the same file.
+  -->
+  @if (document().externalUrl; as external) {
+    <a class="ref" [href]="external" target="_blank" rel="noopener noreferrer">
+      <mat-icon class="ref__icon">open_in_new</mat-icon>
+      {{ 'documents.at_transacto' | translate }}
+    </a>
+  }
+</div>

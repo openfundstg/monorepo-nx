@@ -111,6 +111,14 @@ services:
     # The API's default is this same path. Changing one means changing both.
     volumes:
       - statements_data:/var/lib/transacto/statements
+      # Uploaded payment receipts, on the same terms as the statements above —
+      # written out rather than interpolated from `FIAT_RECEIPT_STORAGE_DIR`,
+      # for the reason spelled out there.
+      #
+      # A separate volume rather than a subdirectory of the first: the two have
+      # different retentions and hold different things, and one of them can be
+      # dropped without touching the other.
+      - receipts_data:/var/lib/transacto/receipts
 
   receipt-checker:
     # An OCR engine, kept out of the API's image.
@@ -257,3 +265,5 @@ volumes:
   # Uploaded bank statements — see the `api` service's own note, including why
   # its mount path is written out instead of interpolated.
   statements_data:
+  # Uploaded payment receipts — same note, shorter retention.
+  receipts_data:

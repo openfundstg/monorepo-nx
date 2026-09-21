@@ -1,4 +1,4 @@
-import { AdminSortDirection } from '@transacto/contracts'
+import { AdminSortDirection, SaleCardOrderState } from '@transacto/contracts'
 
 /** Paging bounds and defaults, applied to every admin list. */
 export const ADMIN_PAGE = {
@@ -35,14 +35,20 @@ export const ADMIN_SORTABLE = {
     'telegramId'
   ],
   SALES: ['createdAt', 'fiatAmount', 'receivedAmount', 'completedAt', 'status'],
-  DEPOSITS: ['createdAt', 'cryptoAmount', 'verifiedAt', 'status'],
-  FIAT_DEPOSITS: ['createdAt', 'amountUah', 'coveredUah', 'holdUntilAt', 'completedAt', 'status'],
+  /**
+   * The **projected** names, not either collection's own.
+   *
+   * The deposits book is two collections read as one, and the sort runs after
+   * the union — so what may be sorted on is what the pipeline produced. Listing
+   * `cryptoAmount` here would name a field that no longer exists by the time
+   * the sort sees it.
+   */
+  DEPOSITS: ['createdAt', 'cryptoCents', 'fiatAmount', 'completedAt', 'status'],
+  /** Projected names again, for the same reason. */
+  DOCUMENTS: ['uploadedAt', 'sizeBytes', 'status'],
   REFERRALS: ['createdAt', 'amount', 'fiatAmount'],
   TERMINALS: ['createdAt', 'updatedAt', 'lastBalance', 'lastBalanceAt', 'terminalName'],
   TERMINAL_HISTORY: ['timestamp', 'balance', 'delta'],
-  // The sale's own fields: one row here is one sale, because a card sale's
-  // credential allows one open order at a time.
-  CARD_ORDERS: ['createdAt', 'fiatAmount', 'publicId'],
   ORDERS: ['createdAt', 'amount', 'lastSyncAt', 'status'],
   TRADERS: ['createdAt', 'traderId'],
   ALERTS: ['createdAt', 'amount', 'status'],
@@ -72,3 +78,21 @@ export const ADMIN_REASON_MAX_LENGTH = 500
  * buy nothing but join/leave plumbing on every navigation.
  */
 export const ADMIN_ROOM = 'admin'
+
+/**
+ * The card-order states an operator has anything to do about.
+ *
+ * A denial, and a statement that contradicted nothing. Everything else is
+ * either still the seller's to answer or already settled, and neither is a
+ * queue.
+ *
+ * **One home, because three screens read it**: the dispute chip on the sales
+ * book selects rows by it, the mapper picks *which* order a row shows by it,
+ * and the overview counts it. Three copies were written before this was one,
+ * and the way that fails is quiet — a count that disagrees with the list it
+ * links to, which is the one thing a dashboard figure must never do.
+ */
+export const DISPUTED_CARD_ORDER_STATES = [
+  SaleCardOrderState.DISPUTED,
+  SaleCardOrderState.PROVEN_UNPAID
+] as const

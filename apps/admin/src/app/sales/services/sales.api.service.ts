@@ -3,6 +3,7 @@ import type {
   AdminPageReq,
   AdminPaginatedRes,
   AdminSaleActionReq,
+  AdminSaleDetailRes,
   AdminSaleListItem,
 } from '@transacto/contracts';
 import type { Observable } from 'rxjs';
@@ -15,6 +16,10 @@ export class SalesApiService {
 
   list(query: AdminPageReq): Observable<AdminPaginatedRes<AdminSaleListItem>> {
     return this.http.list<AdminSaleListItem>('sales', query);
+  }
+
+  detail(id: string): Observable<AdminSaleDetailRes> {
+    return this.http.get<AdminSaleDetailRes>(`sales/${id}`);
   }
 
   act(id: string, body: AdminSaleActionReq): Observable<AdminSaleListItem> {
