@@ -15,19 +15,63 @@ import type { ParsedStatement } from 'src/shared/interfaces'
  * credit at all, because the row had also been rounded back to its minute.
  *
  * Two minutes covers a missed sweep tick and clock skew between the two
- * machines with room to spare, and it cannot reach into a neighbouring order's
- * window — the windows are cut against each other, not against this figure.
+ * machines with room to spare.
+ *
+ * **It used to say here that it could not reach into a neighbouring order's
+ * window, and that was simply wrong.** The allowance is the whole boundary
+ * between two windows, so where orders arrive closer together than it is — and
+ * they do, a card sale's orders are routinely a minute apart — each window
+ * opened *before* the previous order's own money had landed, and the entire
+ * partition sat one order too early. See {@link boundaryBefore}, which is what
+ * now stops that.
  */
 const DISCOVERY_ALLOWANCE_MS = 2 * 60 * 1000
 
 /**
- * The earliest a credit for this order could have been sent.
+ * The earliest moment an order can have existed, which is the boundary between
+ * it and the order before it.
  *
- * Its own function because two windows need it: this order's start, and the
- * point the *previous* order's window has to stop at so the two do not overlap.
+ * **One expression for both edges, and that is what makes the partition hold.**
+ * This order's window opens here and the previous one's closes a millisecond
+ * earlier, so the two share a single definition rather than each computing its
+ * own idea of where they meet. Two definitions overlap the moment they
+ * disagree, and an overlap attributes one credit to two orders.
+ *
+ * Two lower bounds, and the later of them wins because both are true:
+ *
+ * - **`arrivedAt` less the discovery allowance.** The order existed upstream
+ *   before this process heard of it, so its money may have landed first.
+ * - **When the previous order was answered.** A card sale's credential carries
+ *   `max_open_orders: 1`, so the next order was not routed until this one had
+ *   been answered — and that is a timestamp this process wrote down, not an
+ *   allowance somebody guessed.
+ *
+ * Taking only the first is what went wrong. Three orders of one sale arrived 90
+ * and 60 seconds apart, so a two-minute allowance handed each order the minute
+ * the *previous* payer had been paying in: the first order's credit was the only
+ * one attributed correctly, the second's window held nothing at all, and the
+ * third's held two credits and therefore matched neither. The statement showed
+ * all three payments plainly.
+ *
+ * The residue is sub-second and in the harmless direction: `answeredAt` is
+ * recorded just after the upstream call that closes the order, so Transacto may
+ * route the next payer a few hundred milliseconds before it. A payment cannot
+ * be made inside that sliver, and a credit landing early is capped at the
+ * order's own amount by {@link statementCorrection}.
+ *
+ * `answeredAt` is `null` on an order nobody answered — cancelled, expired. A
+ * next order can only exist once this one was closed some other way, so there
+ * is no timestamp to bound with and the allowance stands alone.
  */
-const windowOpensAt = (order: TmaSaleCardOrder): Date =>
-  new Date(order.arrivedAt.getTime() - DISCOVERY_ALLOWANCE_MS)
+const boundaryBefore = (
+  previous: TmaSaleCardOrder | undefined,
+  order: TmaSaleCardOrder
+): Date => {
+  const discovered = order.arrivedAt.getTime() - DISCOVERY_ALLOWANCE_MS
+  const answered = previous?.answeredAt?.getTime()
+
+  return new Date(answered === undefined ? discovered : Math.max(discovered, answered))
+}
 
 /**
  * The stretch of time a credit for this order could have landed in.
@@ -40,22 +84,27 @@ const windowOpensAt = (order: TmaSaleCardOrder): Date =>
  *
  * Cutting at the next order is sound because a card sale's credential carries
  * `max_open_orders: 1`: order two was not routed until order one had been
- * answered, so money arriving once order two exists is order two's. The cut is
- * made where that next window *opens* rather than where the order was recorded,
- * so the two partition the time between them with no gap and no overlap.
+ * answered, so money arriving once order two exists is order two's.
+ *
+ * **Both edges come from {@link boundaryBefore}**, which is why this needs the
+ * order before as well as the one after. This window opens at its own boundary
+ * and closes a millisecond before the next one's, so consecutive windows
+ * partition the time between them with no gap and no overlap — by sharing one
+ * definition of where they meet rather than by two calls happening to agree.
  */
 export const attributionWindow = (
+  previous: TmaSaleCardOrder | undefined,
   order: TmaSaleCardOrder,
   next: TmaSaleCardOrder | undefined,
   graceMs: number
 ): { from: Date; to: Date } => {
-  const from = windowOpensAt(order)
+  const from = boundaryBefore(previous, order)
   const lateAllowance = new Date(order.confirmDeadlineAt.getTime() + graceMs)
-  const nextOpens = next === undefined ? null : windowOpensAt(next)
+  const nextBoundary = next === undefined ? null : boundaryBefore(order, next)
 
   const to =
-    nextOpens !== null && nextOpens < lateAllowance
-      ? new Date(nextOpens.getTime() - 1)
+    nextBoundary !== null && nextBoundary < lateAllowance
+      ? new Date(nextBoundary.getTime() - 1)
       : lateAllowance
 
   // A window cut back past its own start carries nothing, which is the honest
@@ -162,7 +211,12 @@ export const statementCorrection = (
     const declared = order.declaredAmount
     if (typeof declared !== 'number') return total
 
-    const { from, to } = attributionWindow(order, ordered[index + 1], graceMs)
+    const { from, to } = attributionWindow(
+      ordered[index - 1],
+      order,
+      ordered[index + 1],
+      graceMs
+    )
 
     // Outside what this document can speak for. Not an unsettled claim: the
     // statement simply does not reach it, and a later one may.
@@ -215,5 +269,7 @@ export const windowForOrder = (
   )
   const index = ordered.findIndex((order) => order.orderId === orderId)
 
-  return index < 0 ? null : attributionWindow(ordered[index], ordered[index + 1], graceMs)
+  return index < 0
+    ? null
+    : attributionWindow(ordered[index - 1], ordered[index], ordered[index + 1], graceMs)
 }

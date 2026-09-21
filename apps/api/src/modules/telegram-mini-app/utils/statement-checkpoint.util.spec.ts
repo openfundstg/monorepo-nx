@@ -1,5 +1,9 @@
 import { SaleCardOrderState } from '@transacto/contracts'
-import { coverageRequiredTo, statementCorrection } from './statement-checkpoint.util'
+import {
+  coverageRequiredTo,
+  statementCorrection,
+  windowForOrder
+} from './statement-checkpoint.util'
 
 const HOUR = 60 * 60 * 1000
 const GRACE = 3 * HOUR
@@ -242,6 +246,159 @@ describe('statementCorrection', () => {
     )
 
     expect(result).toEqual({ correctionKopecks: 0, unsettled: [] })
+  })
+
+  /**
+   * **Orders arrive closer together than the discovery allowance is wide, and
+   * the allowance used to be the whole boundary between two windows.**
+   *
+   * So each window opened two minutes before its order was recorded — which, at
+   * 90 and 60 seconds apart, is *before the previous payer had finished
+   * paying*. The whole partition sat one order too early: the first order's
+   * credit was attributed correctly, the second's window held nothing, and the
+   * third's held two credits and so matched neither.
+   *
+   * The spacing and the bank's minute-resolution clock below are the production
+   * case of 2026-09-20, with every figure invented. The statement showed all
+   * three payments plainly, and under the old bounds this returned two unsettled
+   * claims — telling an operator that a seller had been paid nothing for money
+   * printed on the document in front of them.
+   */
+  it('gives each of three orders a minute apart its own credit', () => {
+    const orders = [
+      order({
+        orderId: 1,
+        declaredAmount: 29_600,
+        amount: 30_000,
+        arrivedAt: new Date('2026-09-17T10:00:30Z'),
+        answeredAt: new Date('2026-09-17T10:01:27Z'),
+        confirmDeadlineAt: new Date('2026-09-17T10:05:30Z')
+      }),
+      order({
+        orderId: 2,
+        declaredAmount: 29_600,
+        amount: 30_000,
+        arrivedAt: new Date('2026-09-17T10:02:00Z'),
+        answeredAt: new Date('2026-09-17T10:02:42Z'),
+        confirmDeadlineAt: new Date('2026-09-17T10:07:00Z')
+      }),
+      order({
+        orderId: 3,
+        declaredAmount: 29_600,
+        amount: 30_000,
+        arrivedAt: new Date('2026-09-17T10:03:00Z'),
+        answeredAt: new Date('2026-09-17T10:03:55Z'),
+        confirmDeadlineAt: new Date('2026-09-17T10:08:00Z')
+      })
+    ]
+
+    // PrivatBank prints `HH:MM` and nothing finer, so every credit is on a
+    // whole minute — which is what made the old bounds miss by so little.
+    const result = statementCorrection(
+      orders,
+      statement([
+        { at: '2026-09-17T10:00:00Z', amountKopecks: 30_000 },
+        { at: '2026-09-17T10:02:00Z', amountKopecks: 30_000 },
+        { at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }
+      ]),
+      GRACE
+    )
+
+    // ₴4 owed on each of the three, and nothing for a person to look at.
+    expect(result).toEqual({ correctionKopecks: 1_200, unsettled: [] })
+  })
+})
+
+/**
+ * Where one order's window ends and the next one's begins.
+ *
+ * **The two edges must come from one definition.** A gap loses a credit that
+ * belongs to somebody; an overlap attributes one credit to two orders, and the
+ * dispute check searches a window for an order's own amount — two orders of a
+ * sale are routinely the same size, so an overlap reports a payment as arrived
+ * that never did. That is the dangerous direction.
+ */
+describe('windowForOrder — the boundary between two orders', () => {
+  const ORDERS = [
+    order({
+      orderId: 1,
+      arrivedAt: new Date('2026-09-17T10:00:30Z'),
+      answeredAt: new Date('2026-09-17T10:01:27Z'),
+      confirmDeadlineAt: new Date('2026-09-17T10:05:30Z')
+    }),
+    order({
+      orderId: 2,
+      arrivedAt: new Date('2026-09-17T10:02:00Z'),
+      answeredAt: new Date('2026-09-17T10:02:42Z'),
+      confirmDeadlineAt: new Date('2026-09-17T10:07:00Z')
+    }),
+    order({
+      orderId: 3,
+      arrivedAt: new Date('2026-09-17T10:03:00Z'),
+      answeredAt: new Date('2026-09-17T10:03:55Z'),
+      confirmDeadlineAt: new Date('2026-09-17T10:08:00Z')
+    })
+  ]
+
+  const windowOf = (orderId: number) => windowForOrder(ORDERS, orderId, GRACE)
+
+  it('leaves no gap and no overlap between consecutive windows', () => {
+    const [first, second, third] = [windowOf(1), windowOf(2), windowOf(3)]
+
+    expect(second?.from.getTime()).toBe((first?.to.getTime() ?? 0) + 1)
+    expect(third?.from.getTime()).toBe((second?.to.getTime() ?? 0) + 1)
+  })
+
+  /**
+   * `max_open_orders: 1`, so order two cannot have been routed until order one
+   * was answered — and `answeredAt` is a moment this process wrote down rather
+   * than an allowance somebody guessed at.
+   */
+  it('opens a window no earlier than the previous order was answered', () => {
+    expect(windowOf(2)?.from.toISOString()).toBe('2026-09-17T10:01:27.000Z')
+  })
+
+  /**
+   * And no earlier than the discovery allowance, which is the *other* lower
+   * bound and wins whenever the orders are far enough apart. Taking
+   * `answeredAt` alone here would open this window two hours early and hand it
+   * every late credit belonging to the order before.
+   */
+  it('still holds to the discovery allowance for orders far apart', () => {
+    const distant = [
+      order({ orderId: 1, answeredAt: new Date('2026-09-17T10:04:00Z') }),
+      order({
+        orderId: 2,
+        arrivedAt: new Date('2026-09-17T12:00:00Z'),
+        confirmDeadlineAt: new Date('2026-09-17T12:06:00Z')
+      })
+    ]
+
+    expect(windowForOrder(distant, 2, GRACE)?.from.toISOString()).toBe('2026-09-17T11:58:00.000Z')
+  })
+
+  /**
+   * An order nobody answered — cancelled, expired — has no timestamp to bound
+   * the next one with, so the allowance stands alone rather than the boundary
+   * collapsing to the epoch.
+   */
+  it('falls back to the allowance when the previous order was never answered', () => {
+    const unanswered = [
+      order({ orderId: 1, answeredAt: null, arrivedAt: new Date('2026-09-17T10:00:30Z') }),
+      order({
+        orderId: 2,
+        arrivedAt: new Date('2026-09-17T10:02:00Z'),
+        confirmDeadlineAt: new Date('2026-09-17T10:07:00Z')
+      })
+    ]
+
+    expect(windowForOrder(unanswered, 2, GRACE)?.from.toISOString()).toBe(
+      '2026-09-17T10:00:00.000Z'
+    )
+  })
+
+  it('has no window for an order the sale does not carry', () => {
+    expect(windowForOrder(ORDERS, 999, GRACE)).toBeNull()
   })
 })
 
