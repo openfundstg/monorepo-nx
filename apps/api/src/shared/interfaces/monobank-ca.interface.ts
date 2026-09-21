@@ -157,6 +157,26 @@ export interface MonobankSignerIdentity {
  * A single pair meant every genuine receipt from that morning on was refused,
  * and logged as a probable forgery.
  *
+ * **And a list because it is not a rotation.** The two Diia entries below are
+ * two certificates monobank holds *at the same time*, and which one signs a
+ * given document is not ours to predict. Read out of the containers
+ * themselves on 2026-09-21:
+ *
+ * | `O=` | valid | observed on |
+ * | --- | --- | --- |
+ * | `АКЦІОНЕРНЕ ТОВАРИСТВО "УНІВЕРСАЛ БАНК"` | 2026-02-27 → 2028-02-27 | a statement signed 18 Sep |
+ * | `АКЦІОНЕРНЕ ТОВАРИСТВО УНІВЕРСАЛ БАНК` | 2025-12-19 → 2027-12-19 | a receipt signed 21 Sep |
+ *
+ * The difference is **two bytes** — the `"` around the trading name — and
+ * everything else about the two certificates agrees: same issuer, same officer,
+ * same tax number. So the missing entry did not fail a day's receipts and stop;
+ * it failed roughly every other one, at random, for as long as both certificates
+ * are current. One genuine ₴684 top-up was refused as `UNVERIFIED`, went to
+ * review, and was settled by hand in the panel seven minutes later.
+ *
+ * The lesson for the next entry: **do not assume the newest certificate replaced
+ * the previous one.** Add the pair and leave the others, exactly as here.
+ *
  * **Pairs, never two independent lists.** Accepting any of these organisations
  * under any of these issuers would be a wider claim than the evidence: what has
  * been observed is *this* bank under *that* provider. And the issuer half can
@@ -165,6 +185,12 @@ export interface MonobankSignerIdentity {
  * qualified certificate, and only a provider's own vetting connects a
  * certificate to the legal entity it names.
  *
+ * The same reasoning forbids tidying the two spellings into one by stripping
+ * quotation marks before comparing. A normaliser accepts everything it was
+ * never shown, and `АКЦІОНЕРНЕ "ТОВАРИСТВО" УНІВЕРСАЛ БАНК` is a certificate
+ * somebody can buy. What is accepted is what has been observed, spelled the way
+ * the certificate spells it.
+ *
  * When monobank rotates again this list is what to extend, and the error line in
  * `MonobankSignatureAdapterService` prints exactly the pair to add.
  */
@@ -172,6 +198,10 @@ export const MONOBANK_SIGNERS: readonly MonobankSignerIdentity[] = [
   { organization: 'АТ «УНІВЕРСАЛ БАНК»', issuer: 'КНЕДП monobank | Universal Bank' },
   {
     organization: 'АКЦІОНЕРНЕ ТОВАРИСТВО "УНІВЕРСАЛ БАНК"',
+    issuer: '"Дія". Кваліфікований надавач електронних довірчих послуг'
+  },
+  {
+    organization: 'АКЦІОНЕРНЕ ТОВАРИСТВО УНІВЕРСАЛ БАНК',
     issuer: '"Дія". Кваліфікований надавач електронних довірчих послуг'
   }
 ]

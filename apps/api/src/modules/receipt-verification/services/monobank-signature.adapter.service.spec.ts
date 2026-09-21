@@ -69,11 +69,11 @@ const signature = (organization: string, issuer: string, valid = true) => ({
 })
 
 /**
- * The two certificates monobank has been observed signing under.
+ * The certificates monobank has been observed signing under.
  *
- * Taken from the list rather than written out, so a third one added there is
- * covered here by construction — and so these tests cannot pass against a pair
- * the product does not actually accept.
+ * Taken from the list rather than written out, so one added there is covered
+ * here by construction — and so these tests cannot pass against a pair the
+ * product does not actually accept.
  */
 const [OWN_KNEDP, VIA_DIIA] = MONOBANK_SIGNERS
 
@@ -189,13 +189,34 @@ describe('MonobankSignatureAdapterService — a signature that is not the bank�
    * Diia-issued certificate naming the bank by its full legal title, and a
    * single hard-coded pair refused every genuine receipt from that hour on —
    * logging each one as a probable forgery.
+   *
+   * Every entry, not the newest, and not one written out here. Monobank holds
+   * more than one certificate at a time — two Diia ones differing by the quotes
+   * around the trading name were both current on 21 Sep 2026 — so a list that
+   * only its last member is exercised against is a list whose older pairs can
+   * be broken without a test noticing.
    */
-  it('accepts the certificate the bank moved to', async () => {
-    const verify = jest.fn(async () =>
-      answer({}, [signature(VIA_DIIA.organization, VIA_DIIA.issuer)])
-    )
+  it.each(MONOBANK_SIGNERS)('accepts a receipt signed as $organization', async (signer) => {
+    const verify = jest.fn(async () => answer({}, [signature(signer.organization, signer.issuer)]))
 
     expect((await build(verify).vouchFor(submission())).result).toBe(ReceiptLookupResult.FOUND)
+  })
+
+  /**
+   * **The spelling is compared, never normalised.**
+   *
+   * Two accepted organisations differ only by the quotation marks around the
+   * trading name, which is a standing invitation to strip punctuation before
+   * comparing and accept both with one entry. That would accept every spelling
+   * nobody has ever seen — including one a forger picks — so the quotes have to
+   * be in the position an observed certificate puts them.
+   */
+  it('refuses an organisation that differs from an accepted one only in punctuation', async () => {
+    const verify = jest.fn(async () =>
+      answer({}, [signature('АКЦІОНЕРНЕ "ТОВАРИСТВО" УНІВЕРСАЛ БАНК', VIA_DIIA.issuer)])
+    )
+
+    expect((await build(verify).vouchFor(submission())).result).toBe(ReceiptLookupResult.UNKNOWN)
   })
 
   /**
