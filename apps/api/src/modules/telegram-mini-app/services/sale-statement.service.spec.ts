@@ -74,9 +74,12 @@ describe('SaleStatementService', () => {
   let service: SaleStatementService
 
   /** The order the upload is addressed to, in whatever state the test needs. */
-  const withOrder = (overrides: Record<string, unknown> = {}) => {
+  const withOrder = (
+    overrides: Record<string, unknown> = {},
+    saleOverrides: Record<string, unknown> = {}
+  ) => {
     const order = cardOrder(overrides)
-    const stored = sale({ cardOrders: [order] })
+    const stored = sale({ cardOrders: [order], ...saleOverrides })
 
     cardOrders.resolve.mockResolvedValue({ sale: stored, cardOrder: order })
     db.pushStatement.mockResolvedValue(stored)
@@ -200,6 +203,55 @@ describe('SaleStatementService', () => {
         expect.anything(),
         expect.objectContaining({ status: SaleStatementStatus.ACCEPTED, rejection: null })
       )
+    })
+  })
+
+  /**
+   * **The name the seller typed decides nothing.**
+   *
+   * The bank's own word replaces it and the verdict is untouched — nothing is
+   * refused, held or flagged over a name. It cannot be: the comparison is exact,
+   * so an honest seller who abbreviated their own name disagrees with the bank
+   * exactly as loudly as somebody naming a different person, and no string
+   * handling separates the two. A check that cannot be trusted must not gate a
+   * document.
+   */
+  describe('when the seller named the account differently from the bank', () => {
+    const named = (declared: string) =>
+      withOrder({ state: SaleCardOrderState.DISPUTED }, { receiverName: declared })
+
+    it.each([
+      ['an abbreviation of the same name', 'Петренко Р. І.'],
+      ['a different person entirely', 'Ковальчук Ольга Степанівна']
+    ])('settles the order anyway — %s', async (_, declared) => {
+      named(declared)
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(cardOrders.confirmFromStatement).toHaveBeenCalled()
+      expect(db.markStatementParsed).toHaveBeenCalledWith(
+        SALE_ID,
+        expect.anything(),
+        expect.objectContaining({ status: SaleStatementStatus.ACCEPTED, rejection: null })
+      )
+    })
+
+    it('adopts the bank’s name over the one that was typed', async () => {
+      named('Ковальчук Ольга Степанівна')
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(db.rewriteReceiverName).toHaveBeenCalledWith(SALE_ID, 'Петренко Роман Іванович')
+    })
+
+    /** A name that could not be stored is cosmetic beside a verdict already applied. */
+    it('settles the order even when the name could not be written', async () => {
+      named('Ковальчук Ольга Степанівна')
+      db.rewriteReceiverName.mockRejectedValue(new Error('mongo is down'))
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(cardOrders.confirmFromStatement).toHaveBeenCalled()
     })
   })
 

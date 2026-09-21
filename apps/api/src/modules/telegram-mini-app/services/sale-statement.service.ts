@@ -289,10 +289,19 @@ export class SaleStatementService {
   /**
    * Replaces the recipient's name with the one the bank states.
    *
-   * **A disagreement here is not a field update.** If the account belongs to
-   * somebody other than the seller named, money has already gone to a card
-   * whose holder they described wrongly — and on a variant where nothing else
-   * ever checks the destination, that is the only moment it is ever noticed.
+   * **The name the seller typed decides nothing, and a disagreement here is
+   * noted rather than acted on.** The bank's own word replaces it and the
+   * statement's verdict is untouched: nothing is refused, held or flagged over
+   * a name. That is deliberate, because the comparison cannot tell the case
+   * worth knowing about from the commonest honest one — a seller who wrote
+   * `Петренко Р. І.` for an account the bank calls `Петренко Роман Іванович`
+   * disagrees with it exactly as loudly as somebody naming a different person,
+   * and no amount of string handling separates the two. A check that cannot be
+   * trusted must not be a gate.
+   *
+   * It is still worth a line. On this variant nothing else ever looks at who
+   * the destination belongs to, so this is the only place the fact is ever
+   * stated at all — and an operator reading a sale afterwards has it.
    *
    * **Nothing is sent upstream, and that is Transacto's limit rather than an
    * omission.** The name a payer sees lives on the credential, and their
@@ -309,9 +318,13 @@ export class SaleStatementService {
     const declared = (sale.receiverName ?? '').trim()
 
     if (declared !== '' && declared.toLowerCase() !== ownerName.toLowerCase()) {
-      this.logger.error(
-        `Sale ${sale.publicId}: the statement's account holder is not who the seller named. ` +
-          `The payout card belongs to somebody they described differently — for an operator.`
+      // A record, not a finding. `warn` rather than `error` because nothing is
+      // waiting on it: the bank's name is adopted below and the document's
+      // verdict stands either way. It used to say "for an operator", which read
+      // as a statement being held for one — and it was read that way.
+      this.logger.warn(
+        `Sale ${sale.publicId}: the seller named the payout account differently from the bank. ` +
+          `Taking the bank's name; the statement is unaffected.`
       )
     }
 
