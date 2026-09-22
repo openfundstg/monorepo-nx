@@ -13,7 +13,14 @@ import { OrderDbService } from 'src/modules/repositories/order-db'
 import { SaleProgressService } from 'src/modules/telegram-mini-app/services/sale-progress.service'
 import { SaleTerminalService } from 'src/modules/telegram-mini-app/services/sale-terminal.service'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
-import { saleDeliveredFiat, saleRefundSplit } from 'src/shared/utils'
+import {
+  saleDeliveredFiat,
+  saleRefundSplit,
+  saleTailStanding,
+  tailHoldsTheSale,
+  transactoOrderFloorKopecks
+} from 'src/shared/utils'
+import { MINUTE_MS, SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
 
@@ -63,8 +70,8 @@ export class SaleCancelService {
    * not whether it may be asked for. `CLOSING` is not open here, so an order
    * already winding down offers no second button.
    */
-  canCancel(order: { status: TmaSaleStatus }): boolean {
-    return this.isOpen(order.status)
+  canCancel(order: StoredSale): boolean {
+    return this.isOpen(order.status) && !this.heldByATransfer(order)
   }
 
   /**
@@ -85,6 +92,15 @@ export class SaleCancelService {
 
     if (!this.isOpen(order.status)) throw new ConflictException(ERROR.SALE.NOT_CANCELLABLE)
 
+    // **The one refusal in this method**, and the only stop this product
+    // declines outright. An operator is at this moment sending hryvnia to the
+    // seller's own card; a sale that ended in between would take a real
+    // transfer into a finished order, and a card has no scraper to notice it
+    // arriving. It lifts by itself once the wait runs out, and what the seller
+    // gets then is the better exit — finishing the sale with the gap back as
+    // USDT, through `SaleTailService.release`.
+    if (this.heldByATransfer(order)) throw new ConflictException(ERROR.SALE.TAIL_IN_TRANSFER)
+
     // Outstanding payments do not refuse the stop any more — they decide which
     // of the two endings it gets. Checked before anything is written, so the
     // order is never left half-stopped.
@@ -94,6 +110,24 @@ export class SaleCancelService {
     if (outstanding.length > 0) return this.beginClosing(order, outstanding.length)
 
     return this.settle(order)
+  }
+
+  /**
+   * Whether somebody is transferring this sale's tail right now.
+   *
+   * The same function the snapshot hides the button with — see
+   * `SaleProgressService.canCancel` — so the screen and this cannot come to
+   * disagree about a sale that may not be stopped.
+   */
+  private heldByATransfer(order: StoredSale): boolean {
+    return tailHoldsTheSale(
+      saleTailStanding(
+        order,
+        transactoOrderFloorKopecks(),
+        SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS,
+        Date.now()
+      )
+    )
   }
 
   /**

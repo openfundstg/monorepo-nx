@@ -893,6 +893,11 @@ export interface SaleProgress {
  * for, so it can only arrive as one transfer somebody makes by hand — which is
  * a different kind of waiting from every other pause in this product, and the
  * only one with no clock a payer is running.
+ *
+ * It has three states and the seller sees all three: nobody has been asked yet
+ * (a statement of their own is still outstanding), an operator has been asked,
+ * and an operator has taken it on. Only the third is an order on its way, and
+ * only the third holds the sale open.
  */
 export interface SaleTailProgress {
   /** UAH kopecks still to collect. Always above zero. */
@@ -908,13 +913,32 @@ export interface SaleTailProgress {
    */
   announced: boolean;
   /**
+   * Whether an operator has answered that alert and is making the transfer.
+   *
+   * **The moment this sale gains a last order, and the moment it stops being
+   * the seller's to end.** Asking is not the same as somebody going to their
+   * banking app: until an operator says they have taken it on, nothing is on
+   * its way, the seller is owed no waiting, and stopping early costs nobody
+   * anything. Once one has, real hryvnia is about to be sent to a card, and a
+   * sale that closed in between would take it into a finished order.
+   *
+   * So this is what the screen draws the order from, what the confirmation
+   * button hangs off, and what `canCancel` goes false on — three things that
+   * have to agree, from one field.
+   */
+  claimed: boolean;
+  /**
    * When the seller may finish the sale without the transfer, epoch ms, or
    * `null` while nobody has been asked yet.
    *
-   * Measured from the moment the operator was told rather than from the moment
-   * the tail appeared, and the difference is not pedantry: a tail held for a
-   * statement can be hours old before anyone hears about it, and a clock
-   * started then would run out while the request was still unread.
+   * Measured from the **later** of the two moments above, and both edges of
+   * that are deliberate. From the announcement rather than from the tail
+   * appearing, because a tail held for a statement can be hours old before
+   * anyone hears about it and a clock started then would run out while the
+   * request was still unread. From the claim when there is one, because an
+   * operator who takes the transfer on three hours later is owed the same
+   * window as one who takes it on at once — and the seller must not be able to
+   * finish out from under a transfer already in flight.
    */
   releasableAt: number | null;
   /**

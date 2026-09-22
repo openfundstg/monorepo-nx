@@ -12,8 +12,9 @@ import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
 import { OrderDbService } from 'src/modules/repositories/order-db'
 import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
-import { awaitsStatementCheckpoint, parseMinOrderKopecks, refundsItsTail,
-  transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar, saleTailKopecks } from 'src/shared/utils'
+import { awaitsStatementCheckpoint, parseMinOrderKopecks,
+  transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar, saleTailStanding,
+  tailHoldsTheSale } from 'src/shared/utils'
 import { MINUTE_MS, SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 
 /** What every read path here works with: a lean order document plus its id. */
@@ -72,8 +73,16 @@ export class SaleProgressService {
    * Outstanding payments used to make this false. They no longer decide whether
    * a stop may be asked for, only how it happens: an order with payments in
    * play winds down rather than ending on the spot.
+   *
+   * **A tail an operator has taken on is the one exception**, and it is the
+   * only thing in this product that takes the button away. Somebody is at that
+   * moment sending hryvnia to a card nothing watches; see
+   * {@link tailHoldsTheSale}. `SaleCancelService` refuses the same case with
+   * `TAIL_IN_TRANSFER`, from the same function.
    */
-  private canCancel(order: StoredSale): boolean {
+  private canCancel(order: StoredSale, tail: SaleTailProgress | null): boolean {
+    if (tailHoldsTheSale(tail)) return false
+
     return (
       order.status === TmaSaleStatus.CREATED ||
       order.status === TmaSaleStatus.TERMINAL_READY ||
@@ -134,6 +143,11 @@ export class SaleProgressService {
         at: event.at
       }))
 
+    // Read once and used twice, below and in `canCancel`: the block the seller
+    // sees and whether the stop button exists under it are two halves of one
+    // fact, and computing them separately is how they come to disagree.
+    const tail = this.tail(order)
+
     return {
       saleId: order._id.toString(),
       publicId: order.publicId,
@@ -148,7 +162,7 @@ export class SaleProgressService {
       pendingAmount: await this.pendingAmount(order),
       events,
       blockReason: order.blockReason ?? null,
-      canCancel: this.canCancel(order),
+      canCancel: this.canCancel(order, tail),
       // Only ever true for an order that is over, or winding down — a
       // running order's jar is supposed to be open.
       awaitingJarClosure: this.awaitsJarClosure(order),
@@ -158,6 +172,7 @@ export class SaleProgressService {
       // Written by `completeIfOpen` in the same update that completes the
       // order, so the push announcing completion already carries it.
       refundedRemainderUsdt: order.refundedRemainderUsdt ?? 0,
+      tail,
       ...this.cardFields(order),
       updatedAt: Date.now()
     }
@@ -205,8 +220,7 @@ export class SaleProgressService {
       })),
       cardMinOrderKopecks: saleCardMinOrderKopecks(order.fiatAmount, floorKopecks),
       cardMaxOrders: saleCardMaxOrders(order.fiatAmount, floorKopecks),
-      statementRequired: awaitsStatementCheckpoint(order),
-      tail: this.tail(order, floorKopecks)
+      statementRequired: awaitsStatementCheckpoint(order)
     }
   }
 
@@ -218,32 +232,23 @@ export class SaleProgressService {
    * nothing says why. What is happening is that the gap is smaller than the
    * pipeline will route an order for.
    *
-   * `null` for every sale that is not in that position, which includes the one
-   * whose tail comes back as USDT — that closes itself, so there is nothing for
-   * a screen to explain and a block would flash for an instant and vanish.
+   * Read once per snapshot and used twice — here and by {@link canCancel} —
+   * because the block on the screen and the button beneath it are two halves of
+   * one fact. Sent for a jar sale too: its tail closes itself only where the
+   * policy refunds it, and a jar sale left waiting for a top-up is looking at
+   * the same stopped bar.
    *
-   * `releasableAt` is measured from `tailAnnouncedAt`, not from
-   * `tailReachedAt`, and the endpoint enforces the same boundary: a tail held
-   * for a statement of the seller's own can be hours old before anyone hears
-   * about it, and a clock started then would run out while the request was
-   * still unread.
+   * The rule itself is `saleTailStanding`, shared with the endpoint that would
+   * refuse the stop — see there for why both edges of the clock are what they
+   * are.
    */
-  private tail(order: StoredSale, floorKopecks: number): SaleTailProgress | null {
-    const amount = saleTailKopecks(order, floorKopecks)
-    if (amount === 0 || refundsItsTail(order)) return null
-
-    const announcedAt = order.tailAnnouncedAt
-    const releasableAt =
-      announcedAt == null
-        ? null
-        : announcedAt.getTime() + SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS
-
-    return {
-      amount,
-      announced: announcedAt != null,
-      releasableAt,
-      releasable: releasableAt !== null && releasableAt <= Date.now()
-    }
+  private tail(order: StoredSale): SaleTailProgress | null {
+    return saleTailStanding(
+      order,
+      transactoOrderFloorKopecks(),
+      SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS,
+      Date.now()
+    )
   }
 
   /**

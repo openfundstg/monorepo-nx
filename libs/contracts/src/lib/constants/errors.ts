@@ -218,13 +218,43 @@ export const ERROR = {
     /**
      * The seller asked to finish without the transfer before the wait was up.
      *
-     * The clock runs from the moment an operator was told, so this is also what
-     * answers a seller whose tail is still held for a statement of their own —
-     * nobody has been asked yet, so nothing has started running.
+     * The clock runs from the later of the moment an operator was told and the
+     * moment one took the transfer on, so this is also what answers a seller
+     * whose tail is still held for a statement of their own — nobody has been
+     * asked yet, so nothing has started running.
      */
     TAIL_NOT_RELEASABLE: {
       code: 1325,
       message: 'The wait for this sale’s tail has not run out yet',
+    },
+    /**
+     * The seller asked to stop a sale an operator is transferring the tail of.
+     *
+     * **The one thing in this product that refuses a stop outright**, and it is
+     * refused because somebody is at that moment sending hryvnia to this
+     * seller's own card. A sale that closed in between would take a real
+     * transfer into a finished order, and no scraper watches a card to notice.
+     *
+     * Bounded rather than indefinite: it lifts by itself once the wait runs
+     * out, and `TAIL_NOT_RELEASABLE` is its other half — at any moment exactly
+     * one of the two is what a seller can be told.
+     */
+    TAIL_IN_TRANSFER: {
+      code: 1326,
+      message: 'An operator is transferring this sale’s tail; it cannot be stopped yet',
+    },
+    /**
+     * The seller said the hand-made transfer arrived before anybody had taken
+     * it on.
+     *
+     * Nobody has been sent to their banking app yet, so there is nothing that
+     * could have landed. The procedure is that an operator claims the tail
+     * first; a transfer made without claiming it is the claim being skipped,
+     * not this check being wrong.
+     */
+    TAIL_NOT_CLAIMED: {
+      code: 1327,
+      message: 'No operator has taken this sale’s tail on yet',
     },
     /**
      * The market moved between the quote and the submit, far enough to change

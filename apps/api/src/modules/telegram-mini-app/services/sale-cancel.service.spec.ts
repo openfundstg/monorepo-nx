@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common'
-import { TmaSaleStatus } from '@transacto/contracts'
+import { ERROR, TmaSaleStatus } from '@transacto/contracts'
 import { SaleCancelService } from './sale-cancel.service'
 import type { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import type { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
@@ -8,6 +8,7 @@ import type { SaleTerminalService } from './sale-terminal.service'
 import type { SaleProgressService } from './sale-progress.service'
 import type { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import type { BalanceLedgerService } from './balance-ledger.service'
+import { SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 
 const TELEGRAM_ID = 885140
 const CARD_ID = 100
@@ -33,6 +34,29 @@ const storedOrder = (overrides: Record<string, unknown> = {}) => ({
 
 const order = (status: OrderStatus) => ({ status })
 
+const MINUTES_AGO = (minutes: number) => new Date(Date.now() - minutes * 60_000)
+
+/**
+ * The same sale with ₴60 left of ₴960 — under the ₴300 floor — and an operator
+ * transferring it, which is the one state that refuses a stop outright.
+ *
+ * The two moments are relative to now rather than fixed, because what is being
+ * measured is how long ago they were: a pinned date passes this suite on the
+ * day it is written and silently stops being a claim afterwards.
+ *
+ * `TRANSACTO_MIN_ORDER_KOPECKS` is pinned in the suite below so the figures
+ * say what they measure.
+ */
+const heldByATransfer = (overrides: Record<string, unknown> = {}) =>
+  storedOrder({
+    fiatAmount: 96_000,
+    receivedAmount: 90_000,
+    tailReachedAt: MINUTES_AGO(10),
+    tailAnnouncedAt: MINUTES_AGO(10),
+    tailClaimedAt: MINUTES_AGO(10),
+    ...overrides,
+  })
+
 describe('SaleCancelService', () => {
   let db: {
     findById: jest.Mock
@@ -51,7 +75,18 @@ describe('SaleCancelService', () => {
   let gateway: { emitSaleStatusChange: jest.Mock; emitBalanceUpdated: jest.Mock }
   let service: SaleCancelService
 
+  const originalMinOrder = process.env.TRANSACTO_MIN_ORDER_KOPECKS
+
+  afterEach(() => {
+    if (originalMinOrder === undefined) delete process.env.TRANSACTO_MIN_ORDER_KOPECKS
+    else process.env.TRANSACTO_MIN_ORDER_KOPECKS = originalMinOrder
+  })
+
   beforeEach(() => {
+    // ₴300, the shipped default — pinned so the tail figures above measure
+    // what they say they do.
+    process.env.TRANSACTO_MIN_ORDER_KOPECKS = '30000'
+
     db = {
       findById: jest.fn().mockResolvedValue(storedOrder()),
       cancelIfOpen: jest
@@ -300,6 +335,21 @@ describe('SaleCancelService', () => {
       expect(ledger.refund).not.toHaveBeenCalled()
     })
 
+    /**
+     * The one stop this product refuses outright — everywhere else an
+     * outstanding payment decides how a sale ends, never whether its owner may
+     * ask. Here an operator is sending hryvnia to a card nothing watches.
+     */
+    it('refuses while an operator is transferring the tail', async () => {
+      db.findById.mockResolvedValue(heldByATransfer())
+
+      await expect(service.cancel('order-1', TELEGRAM_ID)).rejects.toMatchObject({
+        response: ERROR.SALE.TAIL_IN_TRANSFER,
+      })
+      expect(ledger.refund).not.toHaveBeenCalled()
+      expect(db.markClosing).not.toHaveBeenCalled()
+    })
+
     it('will not stop somebody else order', async () => {
       db.findById.mockResolvedValue(storedOrder({ telegramId: 999 }))
 
@@ -315,7 +365,47 @@ describe('SaleCancelService', () => {
       TmaSaleStatus.TERMINAL_READY,
       TmaSaleStatus.AWAITING_FIAT,
     ])('is true for an open order: %s', (status) => {
-      expect(service.canCancel({ status })).toBe(true)
+      expect(service.canCancel(storedOrder({ status }) as never)).toBe(true)
+    })
+
+    /**
+     * The one thing that takes the button away. Somebody is at that moment
+     * sending hryvnia to a card nothing watches, and a sale that ended in
+     * between would take a real transfer into a finished order.
+     */
+    it('is false while an operator is transferring the tail', () => {
+      expect(service.canCancel(heldByATransfer() as never)).toBe(false)
+    })
+
+    /** Bounded, not indefinite: it lifts by itself once the wait runs out. */
+    it('is true again once the wait has run out', () => {
+      const old = MINUTES_AGO(SALE_TAIL_RELEASE_AFTER_MINUTES + 1)
+
+      expect(
+        service.canCancel(
+          heldByATransfer({ tailAnnouncedAt: old, tailClaimedAt: old }) as never,
+        ),
+      ).toBe(true)
+    })
+
+    /**
+     * The later of the two starts the wait: an operator who takes a tail on
+     * hours after it was announced is owed the same window, or the seller could
+     * finish out from under a transfer already in flight.
+     */
+    it('is false while only the announcement is old enough', () => {
+      expect(
+        service.canCancel(
+          heldByATransfer({
+            tailAnnouncedAt: MINUTES_AGO(SALE_TAIL_RELEASE_AFTER_MINUTES + 1),
+          }) as never,
+        ),
+      ).toBe(false)
+    })
+
+    /** Asking is not the same as somebody going to their banking app. */
+    it('is true while the alert is unanswered', () => {
+      expect(service.canCancel(heldByATransfer({ tailClaimedAt: null }) as never)).toBe(true)
     })
 
     /**
@@ -325,7 +415,7 @@ describe('SaleCancelService', () => {
     it('stays true while an order is unsettled', () => {
       orders.findUnsettledByCard.mockResolvedValue([order(OrderStatus.APPEAL)])
 
-      expect(service.canCancel({ status: TmaSaleStatus.AWAITING_FIAT })).toBe(true)
+      expect(service.canCancel(storedOrder() as never)).toBe(true)
     })
 
     /** An order already winding down offers no second button. */
@@ -335,7 +425,7 @@ describe('SaleCancelService', () => {
       TmaSaleStatus.CANCELLED,
       TmaSaleStatus.BLOCKED,
     ])('is false for %s', (status) => {
-      expect(service.canCancel({ status })).toBe(false)
+      expect(service.canCancel(storedOrder({ status }) as never)).toBe(false)
     })
   })
 

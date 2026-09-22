@@ -253,6 +253,75 @@ export class TmaSaleDbService {
   }
 
   /**
+   * Records which message asked the operators about this tail.
+   *
+   * **Ungated, and not by omission.** It is written after the send by whoever
+   * sent it, and a repeated alert is a *newer* message that the reply has to
+   * find — so last one wins, deliberately. The alternative would point replies
+   * at a message that has scrolled a day out of view.
+   *
+   * Returns whether it landed, because an alert whose id was not stored is an
+   * alert nobody can answer, and the caller has to say so.
+   */
+  async rememberTailAlert(id: string, messageId: number): Promise<boolean> {
+    const result = await this.saleModel.updateOne(
+      { _id: id },
+      { $set: { tailAlertMessageId: messageId } }
+    )
+
+    return result.matchedCount > 0
+  }
+
+  /**
+   * The sale one tail alert is about.
+   *
+   * The inbound half of {@link rememberTailAlert}: a reply carries the id of
+   * the message it answers and nothing else about what that message said.
+   * Served by the index on the field — this runs on every reply anybody writes
+   * in the group's General thread, most of which are about nothing.
+   */
+  async findByTailAlert(messageId: number): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel.findOne({ tailAlertMessageId: messageId }).lean()
+  }
+
+  /**
+   * Records that an operator has taken this sale's tail on, once.
+   *
+   * **The filter carries the whole rule**, as `markTailWaived`'s does, and it
+   * is the widest of the three gates for a reason: this one stops the seller
+   * finishing their own sale. So it may only be taken on a sale that is still
+   * open, has actually been asked about, and nobody has claimed already.
+   *
+   * The status list is the one that accepts new payers. A sale winding down or
+   * already ended must not be claimable: an operator told "accepted" would
+   * transfer hryvnia into a finished order, which is the exact accident the
+   * claim exists to prevent.
+   *
+   * `null` therefore means "not yours to take" — already claimed, never
+   * announced, or over — and the caller says which from the sale it read.
+   */
+  async markTailClaimed(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          tailClaimedAt: null,
+          tailAnnouncedAt: { $ne: null },
+          status: {
+            $in: [
+              TmaSaleStatus.CREATED,
+              TmaSaleStatus.TERMINAL_READY,
+              TmaSaleStatus.AWAITING_FIAT
+            ]
+          }
+        },
+        { $set: { tailClaimedAt: new Date() } },
+        { new: true }
+      )
+      .lean()
+  }
+
+  /**
    * Credits a tail the seller says has arrived, once.
    *
    * **Not `creditExecutedOrder`, because there is no order.** A tail is the
@@ -292,18 +361,31 @@ export class TmaSaleDbService {
    * clock is refused by the database rather than by a comparison made a moment
    * earlier.
    *
+   * **Both moments have to be old enough, which is `max(…) <= cutoff` written
+   * as two conditions rather than as an `$expr`.** An operator who takes a tail
+   * on two hours after it was announced starts the window again: the seller
+   * must not be able to finish out from under a transfer that is in flight, and
+   * a claim that has not yet had its own three hours is exactly that. Spelled
+   * as an `$or` because `tailClaimedAt: null` also matches the documents
+   * written before the field existed — a comparison would silently let them all
+   * through or hold them all back, depending on how null sorts.
+   *
    * {@link TmaSale.remainderPolicy} is deliberately left alone — see the field.
    */
   async markTailWaived(
     id: string,
-    announcedNoLaterThan: Date
+    waitStartedNoLaterThan: Date
   ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
     return this.saleModel
       .findOneAndUpdate(
         {
           _id: id,
           tailWaivedAt: null,
-          tailAnnouncedAt: { $ne: null, $lte: announcedNoLaterThan }
+          tailAnnouncedAt: { $ne: null, $lte: waitStartedNoLaterThan },
+          $or: [
+            { tailClaimedAt: null },
+            { tailClaimedAt: { $lte: waitStartedNoLaterThan } }
+          ]
         },
         { $set: { tailWaivedAt: new Date() } },
         { new: true }

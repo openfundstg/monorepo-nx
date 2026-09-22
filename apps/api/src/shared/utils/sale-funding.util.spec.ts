@@ -14,7 +14,9 @@ import {
   saleDeliveredFiat,
   saleDisposal,
   saleTailKopecks,
-  settleSale
+  saleTailStanding,
+  settleSale,
+  tailHoldsTheSale
 } from './sale-funding.util'
 
 /** ₴712 target, and Transacto's ₴300 floor on a single order. */
@@ -271,6 +273,150 @@ describe('saleTailKopecks', () => {
    */
   it('measures the gap against whichever record shows more', () => {
     expect(saleTailKopecks(order({ receivedAmount: 0, jarBalance: 90_000 }), MIN)).toBe(10_000)
+  })
+})
+
+/**
+ * The one reading of a tail that the screen, the snapshot and the endpoint all
+ * take — so a block can never be drawn where a stop would be refused, and a
+ * stop can never be refused by a rule the screen did not know about.
+ */
+describe('saleTailStanding', () => {
+  const MIN = 300 * 100
+  const WAIT = 180 * 60_000
+  const NOW = Date.parse('2026-09-21T13:00:00Z')
+
+  /** ₴100 short of ₴1 000, so ₴100 of tail against a ₴300 floor. */
+  const order = (over: Record<string, unknown> = {}) => ({
+    fiatAmount: 100_000,
+    receivedAmount: 90_000,
+    jarBalance: 90_000,
+    openingJarBalance: 0,
+    remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP,
+    tailAnnouncedAt: null,
+    tailClaimedAt: null,
+    ...over
+  })
+
+  it('is null where there is no gap', () => {
+    expect(saleTailStanding(order({ receivedAmount: 100_000, jarBalance: 100_000 }), MIN, WAIT, NOW))
+      .toBeNull()
+  })
+
+  /** That ending closes the sale by itself, so there is nothing to explain. */
+  it('is null where the gap comes back as USDT', () => {
+    expect(
+      saleTailStanding(
+        order({ remainderPolicy: SaleRemainderPolicy.REFUND_TO_BALANCE }),
+        MIN,
+        WAIT,
+        NOW
+      )
+    ).toBeNull()
+  })
+
+  it('reports the gap with nobody asked yet', () => {
+    expect(saleTailStanding(order(), MIN, WAIT, NOW)).toEqual({
+      amount: 10_000,
+      announced: false,
+      claimed: false,
+      releasableAt: null,
+      releasable: false
+    })
+  })
+
+  /** Asking starts the clock; it does not put a transfer on its way. */
+  it('starts the clock at the announcement', () => {
+    const announced = new Date('2026-09-21T11:00:00Z')
+
+    expect(saleTailStanding(order({ tailAnnouncedAt: announced }), MIN, WAIT, NOW)).toEqual({
+      amount: 10_000,
+      announced: true,
+      claimed: false,
+      releasableAt: Date.parse('2026-09-21T14:00:00Z'),
+      releasable: false
+    })
+  })
+
+  /**
+   * An operator who takes a tail on hours after it was announced is owed the
+   * same window — or the seller could finish out from under a transfer that is
+   * already in flight.
+   */
+  it('restarts it at the claim', () => {
+    const standing = saleTailStanding(
+      order({
+        tailAnnouncedAt: new Date('2026-09-21T09:00:00Z'),
+        tailClaimedAt: new Date('2026-09-21T12:30:00Z')
+      }),
+      MIN,
+      WAIT,
+      NOW
+    )
+
+    expect(standing).toMatchObject({
+      claimed: true,
+      releasableAt: Date.parse('2026-09-21T15:30:00Z'),
+      releasable: false
+    })
+  })
+
+  it('is releasable once the later of the two has run out', () => {
+    const standing = saleTailStanding(
+      order({
+        tailAnnouncedAt: new Date('2026-09-21T09:00:00Z'),
+        tailClaimedAt: new Date('2026-09-21T09:30:00Z')
+      }),
+      MIN,
+      WAIT,
+      NOW
+    )
+
+    expect(standing).toMatchObject({ releasable: true })
+  })
+})
+
+describe('tailHoldsTheSale', () => {
+  const MIN = 300 * 100
+  const WAIT = 180 * 60_000
+  const NOW = Date.parse('2026-09-21T13:00:00Z')
+
+  const order = (over: Record<string, unknown> = {}) => ({
+    fiatAmount: 100_000,
+    receivedAmount: 90_000,
+    jarBalance: 90_000,
+    openingJarBalance: 0,
+    remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP,
+    tailAnnouncedAt: new Date('2026-09-21T12:00:00Z'),
+    tailClaimedAt: new Date('2026-09-21T12:00:00Z'),
+    ...over
+  })
+
+  const held = (over: Record<string, unknown> = {}) =>
+    tailHoldsTheSale(saleTailStanding(order(over), MIN, WAIT, NOW))
+
+  /** Hryvnia is on its way to a card nothing watches. */
+  it('holds a sale an operator is transferring', () => {
+    expect(held()).toBe(true)
+  })
+
+  /** Asking is not the same as somebody going to their banking app. */
+  it('does not hold one nobody has answered', () => {
+    expect(held({ tailClaimedAt: null })).toBe(false)
+  })
+
+  /** Bounded, which is what makes it bearable. */
+  it('stops holding once the wait has run out', () => {
+    expect(
+      held({
+        tailAnnouncedAt: new Date('2026-09-21T09:00:00Z'),
+        tailClaimedAt: new Date('2026-09-21T09:00:00Z')
+      })
+    ).toBe(false)
+  })
+
+  it('holds nothing where there is no tail', () => {
+    expect(held({ receivedAmount: 100_000, jarBalance: 100_000 })).toBe(false)
   })
 })
 

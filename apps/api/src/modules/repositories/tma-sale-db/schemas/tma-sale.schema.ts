@@ -559,6 +559,48 @@ export class TmaSale {
   tailAnnouncedAt: Date | null
 
   /**
+   * The id of the message that asked the operators to transfer this tail.
+   *
+   * **The whole of how an answer finds its way back to a sale.** The alert goes
+   * to a group, not to a person, and the answer to it is a reply — which
+   * Telegram identifies by the id of the message being replied to and nothing
+   * else. Without this stored, a `+` under the alert is a plus sign in a chat.
+   *
+   * Written by whoever sent the message, which is the support module, because
+   * the id does not exist until Telegram has answered the send. `null` until
+   * then, on a sale whose alert failed to go out, and on every sale that never
+   * reached its tail.
+   *
+   * Indexed: the lookup runs on an inbound webhook, where a collection scan is
+   * a scan per message anybody writes in the group.
+   */
+  @Prop({ type: Number, default: null, index: true })
+  tailAlertMessageId: number | null
+
+  /**
+   * When an operator answered that alert and took the transfer on.
+   *
+   * **A second gate again, and the most consequential of the three.** Asking is
+   * not the same as somebody going to their banking app: until this is set
+   * nothing is on its way, the seller is owed no waiting, and stopping the sale
+   * early costs nobody anything. Once it is set, real hryvnia is about to reach
+   * a card no scraper watches, so the sale stops being the seller's to end —
+   * see `tailHoldsTheSale` — until the transfer is confirmed or the wait runs
+   * out.
+   *
+   * It also restarts the clock. `SALE_TAIL_RELEASE_AFTER_MINUTES` is measured
+   * from the later of this and {@link tailAnnouncedAt}, so an operator who
+   * takes a tail on hours after it was announced gets the same window as one
+   * who takes it on at once, rather than a seller who may finish out from under
+   * a transfer already in flight.
+   *
+   * One-way: an operator who changes their mind is a conversation in the group,
+   * not a field that goes back to `null`.
+   */
+  @Prop({ type: Date, default: null })
+  tailClaimedAt: Date | null
+
+  /**
    * When the seller gave up waiting for their tail to be transferred.
    *
    * **The policy is not rewritten, and that is the point.**
@@ -570,8 +612,8 @@ export class TmaSale {
    *
    * What reads it is `refundsItsTail`: a sale refunds its tail when it asked to
    * at creation **or** when its seller released the wait. One-way, and only
-   * settable once {@link tailAnnouncedAt} plus
-   * `SALE_TAIL_RELEASE_AFTER_MINUTES` has passed.
+   * settable once the later of {@link tailAnnouncedAt} and
+   * {@link tailClaimedAt}, plus `SALE_TAIL_RELEASE_AFTER_MINUTES`, has passed.
    */
   @Prop({ type: Date, default: null })
   tailWaivedAt: Date | null

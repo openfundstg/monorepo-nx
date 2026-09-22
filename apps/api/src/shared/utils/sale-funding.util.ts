@@ -4,6 +4,7 @@ import {
   TmaSaleStatus,
   usdtCentsForKopecks
 } from '@transacto/contracts'
+import type { SaleTailProgress } from '@transacto/contracts'
 
 /** The three figures the funding rule is decided on. */
 export interface SaleFunding {
@@ -196,6 +197,77 @@ export const isSaleInTail = (order: SaleTail, minOrderKopecks: number): boolean 
 export const refundsItsTail = (order: SaleTail): boolean =>
   (order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP) ===
     SaleRemainderPolicy.REFUND_TO_BALANCE || order.tailWaivedAt != null
+
+/** The two moments the wait for a hand-made transfer is measured from. */
+export interface SaleTailClock {
+  /** When an operator was asked to make the transfer. */
+  readonly tailAnnouncedAt?: Date | null
+  /** When one answered and took it on. */
+  readonly tailClaimedAt?: Date | null
+}
+
+/**
+ * The tail of this sale as everything that has to agree about it sees it, or
+ * `null` when there is no tail to see.
+ *
+ * **One reading, three consumers.** The seller's screen draws the block from
+ * it, the snapshot decides whether the stop button exists from it, and the
+ * endpoint that would refuse the stop asks the same function — so a screen can
+ * never offer what the endpoint refuses, and a stop can never be refused by a
+ * rule the screen did not know about. It answers `SaleTailProgress` itself
+ * rather than a shape of its own, because the third consumer is the wire and a
+ * translation layer would be the place the three drifted apart.
+ *
+ * `null` where there is no gap, and where the gap comes back as USDT: that
+ * ending closes the sale by itself, so there is nothing for a screen to explain
+ * and nothing for a transfer to hold open.
+ *
+ * `now` is passed rather than read so a caller settling a batch judges every
+ * sale in it against one instant.
+ */
+export const saleTailStanding = (
+  order: SaleTail & SaleTailClock,
+  minOrderKopecks: number,
+  waitMs: number,
+  now: number
+): SaleTailProgress | null => {
+  const amount = saleTailKopecks(order, minOrderKopecks)
+  if (amount === 0 || refundsItsTail(order)) return null
+
+  // The later of the two, because a claim taken hours after the announcement is
+  // owed its own window — see `SaleTailProgress.releasableAt`.
+  const started = Math.max(
+    order.tailAnnouncedAt?.getTime() ?? 0,
+    order.tailClaimedAt?.getTime() ?? 0
+  )
+  const releasableAt = started === 0 ? null : started + waitMs
+
+  return {
+    amount,
+    announced: order.tailAnnouncedAt != null,
+    claimed: order.tailClaimedAt != null,
+    releasableAt,
+    releasable: releasableAt !== null && releasableAt <= now
+  }
+}
+
+/**
+ * Whether a transfer somebody is making right now holds this sale open.
+ *
+ * **The one thing in this product that refuses a stop outright.** Everywhere
+ * else an outstanding payment decides *how* a sale ends — on the spot, or by
+ * winding down — and never whether its owner may ask. Here an operator is at
+ * that moment sending hryvnia to the seller's own card, and a card has no
+ * scraper: a sale that closed in between would take a real transfer into a
+ * finished order, with nothing to notice it and nobody to give it back to.
+ *
+ * Bounded, which is what makes it bearable: it lifts by itself the moment the
+ * wait runs out, and what the seller gets then is the better of the two exits —
+ * finishing the sale successfully with the gap back as USDT, rather than
+ * stopping it.
+ */
+export const tailHoldsTheSale = (tail: SaleTailProgress | null): boolean =>
+  tail !== null && tail.claimed && !tail.releasable
 
 /**
  * Whether what is left of this order can no longer arrive, and this order is
