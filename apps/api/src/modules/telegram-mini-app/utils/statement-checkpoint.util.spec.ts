@@ -43,7 +43,7 @@ describe('statementCorrection', () => {
       GRACE
     )
 
-    expect(result).toEqual({ correctionKopecks: 0, unsettled: [] })
+    expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
   })
 
   /** The seller told the truth: ₴995 claimed, ₴995 on the statement. */
@@ -69,6 +69,11 @@ describe('statementCorrection', () => {
     )
 
     expect(result.correctionKopecks).toBe(500)
+    // Both figures, kept apart: what the seller said and what the bank shows
+    // are different facts, and the row they are drawn on shows both.
+    expect(result.corrected).toEqual([
+      { orderId: 1, declaredKopecks: 99_500, provenKopecks: 100_000 }
+    ])
   })
 
   /**
@@ -161,6 +166,40 @@ describe('statementCorrection', () => {
     expect(result.unsettled).toEqual([{ orderId: 1, declaredKopecks: 29_900 }])
   })
 
+  /**
+   * **A second document over the same window must not credit it again.**
+   *
+   * A later dispute takes a wider statement with it, and that document
+   * recomputes every claim inside its period — including ones an earlier one
+   * already settled. Measured against the seller's original figure every time,
+   * the same ₴2 would go onto the target once per statement.
+   */
+  it('does not correct an order a statement already corrected', () => {
+    const result = statementCorrection(
+      [order({ declaredAmount: 29_800, provenAmount: 30_000 })],
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }]),
+      GRACE
+    )
+
+    expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
+  })
+
+  /** …and a stronger document adds only what it proves beyond the last one. */
+  it('adds only the difference when a later statement shows more', () => {
+    const result = statementCorrection(
+      [order({ declaredAmount: 29_800, provenAmount: 29_900 })],
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }]),
+      GRACE
+    )
+
+    expect(result.correctionKopecks).toBe(100)
+    // The seller's own figure on the entry, not our last arithmetic: the
+    // sentence is about what they told us.
+    expect(result.corrected).toEqual([
+      { orderId: 1, declaredKopecks: 29_800, provenKopecks: 30_000 }
+    ])
+  })
+
   /** Understating your own receipts costs only yourself; nothing is taken back. */
   it('never corrects downwards', () => {
     const result = statementCorrection(
@@ -201,7 +240,7 @@ describe('statementCorrection', () => {
       GRACE
     )
 
-    expect(result).toEqual({ correctionKopecks: 0, unsettled: [] })
+    expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
   })
 
   /**
@@ -213,6 +252,7 @@ describe('statementCorrection', () => {
 
     expect(result).toEqual({
       correctionKopecks: 0,
+      corrected: [],
       unsettled: [{ orderId: 1, declaredKopecks: 99_500 }]
     })
   })
@@ -245,7 +285,7 @@ describe('statementCorrection', () => {
       GRACE
     )
 
-    expect(result).toEqual({ correctionKopecks: 0, unsettled: [] })
+    expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
   })
 
   /**
@@ -305,7 +345,17 @@ describe('statementCorrection', () => {
     )
 
     // ₴4 owed on each of the three, and nothing for a person to look at.
-    expect(result).toEqual({ correctionKopecks: 1_200, unsettled: [] })
+    // Named one by one as well as summed: the sum moves the sale's total, and
+    // these are what the seller's three rows and three timeline entries say.
+    expect(result).toEqual({
+      correctionKopecks: 1_200,
+      corrected: [
+        { orderId: 1, declaredKopecks: 29_600, provenKopecks: 30_000 },
+        { orderId: 2, declaredKopecks: 29_600, provenKopecks: 30_000 },
+        { orderId: 3, declaredKopecks: 29_600, provenKopecks: 30_000 }
+      ],
+      unsettled: []
+    })
   })
 })
 

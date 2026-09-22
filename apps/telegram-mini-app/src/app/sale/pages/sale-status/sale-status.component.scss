@@ -703,6 +703,28 @@
   color: var(--c-warning);
 }
 
+/*
+  The same line once a bank statement has contradicted it.
+
+  Struck through and muted rather than removed: it is still what the seller
+  said, and the pair is the whole point — a row that simply swapped one figure
+  for the other would be a screen that changed its mind in silence. It loses the
+  warning colour because it is no longer the open question.
+*/
+.card-order-declared.superseded {
+  color: var(--text-faint);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+
+/* …and what the document showed instead, which is the figure that counts. */
+.card-order-proven {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
 .statement-required {
   display: flex;
   flex-direction: column;

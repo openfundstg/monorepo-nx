@@ -5,6 +5,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import {
   SaleCardOrderState,
+  SaleEventType,
   SaleMethod,
   SaleStatementRejection,
   SaleStatementStatus,
@@ -268,6 +269,76 @@ describe('SaleStatusComponent payment order', () => {
   /** The lookups mean "the one open order" and must not depend on which end. */
   it('leaves the stored order alone for everything else', () => {
     expect(component.cardOrders().map((order) => order.orderId)).toEqual([1, 2, 3]);
+  });
+});
+
+/**
+ * The entry that corrects an earlier one.
+ *
+ * A seller answered "₴298 arrived" days ago and their row has said ₴298 ever
+ * since; a statement then showed ₴300. Moving the total without saying so would
+ * leave them with a sale that adds up and a payment that does not — so both
+ * figures go on the entry, and the sentence names the document that did it.
+ */
+describe('SaleStatusComponent timeline', () => {
+  let component: SaleStatusComponent;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'sale-1' } } } },
+        { provide: SaleService, useValue: {} },
+        {
+          provide: WsService,
+          useValue: {
+            connected: signal(true),
+            saleProgress: () => null,
+            connectionEpoch: () => 0,
+            connect: vi.fn(),
+          },
+        },
+        {
+          provide: TmaService,
+          useValue: { hapticFeedback: vi.fn(), showBackButton: vi.fn(), hideBackButton: vi.fn() },
+        },
+        { provide: ClockService, useValue: { now: () => Date.now() } },
+        { provide: MetaPixelService, useValue: { trackConversion: vi.fn() } },
+      ],
+    });
+
+    component = TestBed.runInInjectionContext(() => new SaleStatusComponent());
+  });
+
+  it('carries both figures on a statement correction', () => {
+    component.progress.set({
+      events: [
+        {
+          type: SaleEventType.STATEMENT_CORRECTED,
+          amount: 30_000,
+          declaredAmount: 29_800,
+          orderId: 7,
+          at: 1_780_000_000_000,
+        },
+      ],
+    } as Partial<SaleProgress> as SaleProgress);
+
+    expect(component.timeline()[0]).toMatchObject({
+      key: 'SALE_EVENT.STATEMENT_CORRECTED',
+      params: { amount: '300,00', declared: '298,00' },
+    });
+  });
+
+  /** Every other entry carries it unread rather than sometimes. */
+  it('leaves it at zero where nothing was corrected', () => {
+    component.progress.set({
+      events: [{ type: SaleEventType.PAYMENT_MATCHED, amount: 30_000, at: 1 }],
+    } as Partial<SaleProgress> as SaleProgress);
+
+    expect(component.timeline()[0].params.declared).toBe('0,00');
   });
 });
 

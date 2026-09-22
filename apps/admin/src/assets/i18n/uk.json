@@ -152,6 +152,7 @@
     "filter_card": "На картку",
     "filter_disputed": "Спірні",
     "declared": "Продавець заявив",
+    "proven": "Виписка показала",
     "card_orders": "Ордера на картку",
     "no_card_orders": "Ордерів на картку ще не було.",
     "transacto_orders": "Ордера Transacto на цьому терміналі",
@@ -645,7 +646,8 @@
     "ORDER_DISPUTED": "Ордер оскаржено",
     "STATEMENT_SUBMITTED": "Надіслано виписку",
     "STATEMENT_REJECTED": "Виписку відхилено",
-    "STATEMENT_ACCEPTED": "Виписку прийнято"
+    "STATEMENT_ACCEPTED": "Виписку прийнято",
+    "STATEMENT_CORRECTED": "Виписка виправила суму"
   },
   "SALE_EVIDENCE": {
     "SELLER": "Слово продавця",

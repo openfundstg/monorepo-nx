@@ -13,3 +13,19 @@
 .card-order + .card-order {
   margin-top: var(--gap-sm);
 }
+
+/**
+ * A seller's claim a bank statement has since contradicted.
+ *
+ * Struck through rather than removed: it is still what they said, and the pair
+ * is what an operator working the dispute is reading. The figure beside it is
+ * the one the sale's total has already moved to, so it carries the emphasis.
+ */
+.superseded {
+  text-decoration: line-through;
+}
+
+.proven {
+  font-weight: 600;
+  color: var(--warning);
+}

@@ -110,8 +110,19 @@
               thing worth seeing.
             -->
             @if (cardOrder.declaredAmount !== null) {
-              <span class="muted"
+              <span class="muted" [class.superseded]="cardOrder.provenAmount !== null"
                 >{{ 'sales.declared' | translate }}: {{ cardOrder.declaredAmount | uah }}</span
+              >
+            }
+            <!--
+              …and what their own bank showed instead, where a statement
+              contradicted them. The sale's total has already moved to this
+              figure, so an operator reading only the claim above would be
+              reading a number nothing is counting any more.
+            -->
+            @if (cardOrder.provenAmount !== null) {
+              <span class="proven"
+                >{{ 'sales.proven' | translate }}: {{ cardOrder.provenAmount | uah }}</span
               >
             }
             <app-status-chip

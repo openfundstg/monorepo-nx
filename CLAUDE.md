@@ -380,6 +380,15 @@ build` chain.
   nothing — it proves nothing about a moment it does not cover, the same rule that makes
   `PERIOD_TOO_SHORT` a refusal.
 
+  **A statement that corrects a figure says so on the row it corrected.** A seller who
+  declared ₴298 and whose bank shows ₴300 has had ₴2 put back on their target, and until
+  that was visible their sale added up and their payment did not: `provenAmount` is kept
+  beside `declaredAmount` rather than replacing it, drawn struck through against the
+  proven figure, and `STATEMENT_CORRECTED` names both on the timeline. It is also what
+  makes the correction idempotent — a later, wider statement recomputes the same window,
+  and measuring against the original claim each time credited the same hryvnia once per
+  document.
+
 - **Every file this product handles is archived, and the archive is the panel's own
   screen.** Two of them — a statement sent to settle a disputed card order, and a payment
   receipt sent to prove a fiat top-up — and both live on mounted volumes

@@ -975,20 +975,64 @@ export class TmaSaleDbService {
    * earlier period cannot produce a correction for orders it does not reach, so
    * the correction is zero by construction; letting the date go backwards would
    * only re-open claims that have already been settled by a later document.
+   *
+   * **Three things in the one update, for the same reason the first two are.**
+   * The per-order `provenAmount` is what the seller's screen draws the
+   * correction from and the `STATEMENT_CORRECTED` entries are what say which
+   * document did it; written separately, a failure between them would leave a
+   * sale whose total moved, whose rows did not, and whose timeline never
+   * mentioned it. The checkpoint filter is the gate for all of it.
    */
   async applyStatementCheckpoint(
     id: string,
     checkpointAt: Date,
-    correctionKopecks: number
+    // Structural rather than the domain's own `StatementCorrection`, because
+    // the arrow points the other way: a repository may not import from a module
+    // that consumes it. The caller's type is assignable to this one.
+    correction: {
+      readonly correctionKopecks: number
+      readonly corrected: readonly {
+        readonly orderId: number
+        readonly declaredKopecks: number
+        readonly provenKopecks: number
+      }[]
+    }
   ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    const { correctionKopecks, corrected } = correction
+    const at = Date.now()
+
+    // One filter per corrected order, named `o0`, `o1`… — `cardOrders.$` would
+    // match only the first, and these are positional updates to several rows of
+    // the same array in one statement.
+    const arrayFilters = corrected.map((entry, index) => ({
+      [`o${index}.orderId`]: entry.orderId
+    }))
+
+    const provenAmounts = Object.fromEntries(
+      corrected.map((entry, index) => [
+        `cardOrders.$[o${index}].provenAmount`,
+        entry.provenKopecks
+      ])
+    )
+
+    const events = corrected.map((entry) => ({
+      type: SaleEventType.STATEMENT_CORRECTED,
+      amount: entry.provenKopecks,
+      declaredAmount: entry.declaredKopecks,
+      orderId: entry.orderId,
+      at,
+      evidence: SaleEvidence.STATEMENT
+    }))
+
     return this.saleModel
       .findOneAndUpdate(
         { _id: id, statementCheckpointAt: { $not: { $gte: checkpointAt } } },
         {
-          $set: { statementCheckpointAt: checkpointAt },
-          ...(correctionKopecks > 0 ? { $inc: { receivedAmount: correctionKopecks } } : {})
+          $set: { statementCheckpointAt: checkpointAt, ...provenAmounts },
+          ...(correctionKopecks > 0 ? { $inc: { receivedAmount: correctionKopecks } } : {}),
+          ...(events.length > 0 ? { $push: { events: { $each: events } } } : {})
         },
-        { returnDocument: 'after' }
+        { returnDocument: 'after', ...(arrayFilters.length > 0 ? { arrayFilters } : {}) }
       )
       .lean()
   }

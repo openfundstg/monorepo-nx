@@ -439,6 +439,21 @@ export enum SaleEventType {
    * parsed is being told about our plumbing.
    */
   STATEMENT_ACCEPTED = 'STATEMENT_ACCEPTED',
+  /**
+   * A statement showed more for an order than its seller had declared, and the
+   * difference went back onto the target. Carries `amount` — the figure now
+   * credited — `declaredAmount` and `orderId`.
+   *
+   * **The one entry that corrects an earlier one**, and it exists because
+   * nothing else would say so. The seller answered "₴298 arrived" days ago,
+   * their screen has said ₴298 ever since, and the bank's own record of that
+   * window says ₴300. Moving the figure silently would leave them with a sale
+   * that adds up and a payment row that does not.
+   *
+   * Never downwards: understating what you received costs only yourself, and
+   * this product does not correct a user's figures in its own favour.
+   */
+  STATEMENT_CORRECTED = 'STATEMENT_CORRECTED',
 }
 
 /*
@@ -522,4 +537,5 @@ export const SALE_EVENT_EVIDENCE: Readonly<Record<SaleEventType, SaleEvidence>> 
   [SaleEventType.STATEMENT_SUBMITTED]: SaleEvidence.SELLER,
   [SaleEventType.STATEMENT_REJECTED]: SaleEvidence.STATEMENT,
   [SaleEventType.STATEMENT_ACCEPTED]: SaleEvidence.STATEMENT,
+  [SaleEventType.STATEMENT_CORRECTED]: SaleEvidence.STATEMENT,
 };

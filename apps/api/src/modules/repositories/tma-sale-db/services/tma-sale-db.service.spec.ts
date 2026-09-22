@@ -4,6 +4,8 @@ import {
   BankProvider,
   PUBLIC_ID_PATTERN,
   SaleCardOrderState,
+  SaleEventType,
+  SaleEvidence,
   SaleMethod,
   TmaSaleStatus
 } from '@transacto/contracts'
@@ -150,6 +152,81 @@ describe('TmaSaleDbService', () => {
    * came down while the jars stayed open. What makes the rule liveable is that
    * the product now names the jars, on the dashboard and in the create form.
    */
+  /**
+   * The one write on this service that touches three things at once, and has
+   * to: the sale's total, the rows the seller is looking at, and the entry that
+   * says which document moved them. Written separately, a failure in between
+   * leaves a sale whose figures do not match its own screen.
+   */
+  describe('applying a statement checkpoint', () => {
+    const apply = async (corrected: unknown[]) => {
+      await service.applyStatementCheckpoint(
+        ORDER_ID,
+        new Date('2026-09-20T23:59:59Z'),
+        { correctionKopecks: 400, corrected } as never
+      )
+
+      return model.findOneAndUpdate.mock.calls[0]
+    }
+
+    it('credits the difference and stamps the checkpoint', async () => {
+      const [, update] = await apply([])
+
+      expect(update.$inc).toEqual({ receivedAmount: 400 })
+      expect(update.$set.statementCheckpointAt).toEqual(new Date('2026-09-20T23:59:59Z'))
+    })
+
+    /** The row the seller reads, so it cannot disagree with the total above. */
+    it('writes each corrected order its proven figure', async () => {
+      const [, update, options] = await apply([
+        { orderId: 7, declaredKopecks: 29_800, provenKopecks: 30_000 }
+      ])
+
+      expect(update.$set['cardOrders.$[o0].provenAmount']).toBe(30_000)
+      expect(options.arrayFilters).toEqual([{ 'o0.orderId': 7 }])
+    })
+
+    /**
+     * `cardOrders.$` would match only the first, and one statement routinely
+     * corrects several orders — it is a checkpoint over a period, not an answer
+     * about one payment.
+     */
+    it('gives every corrected order a filter of its own', async () => {
+      const [, update, options] = await apply([
+        { orderId: 7, declaredKopecks: 29_800, provenKopecks: 30_000 },
+        { orderId: 8, declaredKopecks: 29_600, provenKopecks: 30_000 }
+      ])
+
+      expect(options.arrayFilters).toEqual([{ 'o0.orderId': 7 }, { 'o1.orderId': 8 }])
+      expect(update.$set['cardOrders.$[o1].provenAmount']).toBe(30_000)
+    })
+
+    /** Both figures on the entry: the sentence interpolates both. */
+    it('records what changed on the timeline', async () => {
+      const [, update] = await apply([
+        { orderId: 7, declaredKopecks: 29_800, provenKopecks: 30_000 }
+      ])
+
+      expect(update.$push.events.$each).toEqual([
+        expect.objectContaining({
+          type: SaleEventType.STATEMENT_CORRECTED,
+          amount: 30_000,
+          declaredAmount: 29_800,
+          orderId: 7,
+          evidence: SaleEvidence.STATEMENT
+        })
+      ])
+    })
+
+    /** The ordinary case: a seller who told the truth. Nothing to say about it. */
+    it('pushes nothing and filters nothing when the document agrees', async () => {
+      const [, update, options] = await apply([])
+
+      expect(update.$push).toBeUndefined()
+      expect(options.arrayFilters).toBeUndefined()
+    })
+  })
+
   describe('countSlotsHeldByTelegramId', () => {
     const query = async (): Promise<Record<string, unknown>> => {
       await service.countSlotsHeldByTelegramId(885140)

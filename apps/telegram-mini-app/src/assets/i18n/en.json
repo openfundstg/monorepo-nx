@@ -398,6 +398,7 @@
     "card_order_amend_hint": "Add up every transfer for this payment and enter the total. If it is far short we will stop further payments and ask for a statement. We will ask for one at the end either way, to check the figures; until then the remainder stays frozen.",
     "card_order_amend_submit": "Confirm this amount",
     "card_order_declared": "You stated: {{amount}} UAH",
+    "card_order_proven": "The statement proved: {{amount}} UAH",
     "card_checkpoint_title": "A statement is needed",
     "card_checkpoint_hint": "You said one of the payments arrived short. Send a PDF statement for the card — we will check the amounts and release the remainder to your balance. Until then it stays frozen."
   },
@@ -418,7 +419,8 @@
     "ORDER_CONFIRMED": "Payment confirmed",
     "ORDER_DISPUTED": "Payment not confirmed",
     "STATEMENT_SUBMITTED": "Statement sent",
-    "STATEMENT_REJECTED": "Statement not accepted"
+    "STATEMENT_REJECTED": "Statement not accepted",
+    "STATEMENT_CORRECTED": "A statement proved it: {{amount}} UAH credited instead of {{declared}} UAH"
   },
   "status": {
     "created": "Created",

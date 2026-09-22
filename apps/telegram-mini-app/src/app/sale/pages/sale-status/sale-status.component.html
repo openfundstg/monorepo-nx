@@ -436,13 +436,25 @@
               What the seller said arrived, where it was not the whole order.
               Shown after the fact so the figure they gave is on the screen they
               will be asked about if a statement disagrees with it.
+
+              **And struck through once one has.** A row that quietly changed
+              its mind would leave a seller with a sale whose total moved and a
+              payment that never said why; both figures, one crossed out, say
+              exactly what happened and on whose word. Never the other way
+              round — a statement can only correct a claim upwards.
             -->
             @if (cardOrder.declaredAmount; as declared) {
-              <p class="card-order-declared">
+              <p class="card-order-declared" [class.superseded]="!!cardOrder.provenAmount">
                 {{
                   'sale.card_order_declared'
                     | translate: { amount: (declared | uah) }
                 }}
+              </p>
+            }
+
+            @if (cardOrder.provenAmount; as proven) {
+              <p class="card-order-proven">
+                {{ 'sale.card_order_proven' | translate: { amount: (proven | uah) } }}
               </p>
             }
 

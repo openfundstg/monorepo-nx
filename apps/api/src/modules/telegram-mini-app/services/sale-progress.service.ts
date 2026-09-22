@@ -139,6 +139,11 @@ export class SaleProgressService {
         ...(event.orderId !== null && event.orderId !== undefined
           ? { orderId: event.orderId }
           : {}),
+        // Only `STATEMENT_CORRECTED` carries it, and its sentence interpolates
+        // it — see `SaleEvent.declaredAmount`.
+        ...(event.declaredAmount !== null && event.declaredAmount !== undefined
+          ? { declaredAmount: event.declaredAmount }
+          : {}),
         at: event.at
       }))
 
@@ -208,6 +213,7 @@ export class SaleProgressService {
         confirmDeadlineAt: cardOrder.confirmDeadlineAt.toISOString(),
         answeredAt: cardOrder.answeredAt?.toISOString() ?? null,
         declaredAmount: cardOrder.declaredAmount,
+        provenAmount: cardOrder.provenAmount,
         statements: (cardOrder.statements ?? []).map((statement) => ({
           id: statement._id.toString(),
           status: statement.status,

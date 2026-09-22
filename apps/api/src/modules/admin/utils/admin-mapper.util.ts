@@ -613,6 +613,7 @@ const toAdminCardOrderSummary = (
         state: cardOrder.state,
         amount: cardOrder.amount,
         declaredAmount: cardOrder.declaredAmount ?? null,
+        provenAmount: cardOrder.provenAmount ?? null,
         arrivedAt: isoRequired(cardOrder.arrivedAt),
         confirmDeadlineAt: isoRequired(cardOrder.confirmDeadlineAt),
         answeredAt: iso(cardOrder.answeredAt),

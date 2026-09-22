@@ -145,6 +145,15 @@ export interface UnsettledClaim {
   readonly declaredKopecks: number
 }
 
+/** One order's figure, as the seller gave it and as the bank shows it. */
+export interface OrderCorrection {
+  readonly orderId: number
+  /** What the seller said arrived, in UAH kopecks. */
+  readonly declaredKopecks: number
+  /** What the document shows for its window, capped at what was routed. */
+  readonly provenKopecks: number
+}
+
 /** What a statement changes about a sale's figures. */
 export interface StatementCorrection {
   /**
@@ -152,6 +161,15 @@ export interface StatementCorrection {
    * orders this document reaches. Never negative — see the note below.
    */
   readonly correctionKopecks: number
+  /**
+   * The same thing order by order, for the two places that need to name one.
+   *
+   * The sum above moves the sale's total; these move the rows the seller is
+   * looking at and write the entry that says which document did it. Only orders
+   * the document actually corrected are here — an order it agreed with is not a
+   * correction and has nothing to show.
+   */
+  readonly corrected: readonly OrderCorrection[]
   /**
    * Claims the document shows nothing at all for.
    *
@@ -202,6 +220,7 @@ export const statementCorrection = (
   graceMs: number
 ): StatementCorrection => {
   const unsettled: UnsettledClaim[] = []
+  const corrected: OrderCorrection[] = []
   // Oldest first, so each order's window can be cut at the next one's arrival.
   const ordered = [...cardOrders].toSorted(
     (left, right) => left.arrivedAt.getTime() - right.arrivedAt.getTime()
@@ -245,10 +264,30 @@ export const statementCorrection = (
     // else happened to that card in those minutes.
     const attributable = Math.min(shown, order.amount)
 
-    return attributable > declared ? total + (attributable - declared) : total
+    // **Corrected from what is credited now, not from what the seller said.**
+    // A second document reaching over the same window recomputes the same
+    // figure, and measuring against the original claim every time would credit
+    // the same hryvnia twice — a real path, because a later dispute takes a
+    // wider statement with it. `provenAmount` is what the last document moved
+    // this order to, so a stronger one adds only the difference and an
+    // identical one adds nothing.
+    const credited = order.provenAmount ?? declared
+
+    if (attributable <= credited) return total
+
+    // The seller's own figure on the entry, whatever it has since been
+    // corrected to: the sentence is about what they told us, and "₴300 instead
+    // of ₴299.50" would be reporting our own arithmetic back at them.
+    corrected.push({
+      orderId: order.orderId,
+      declaredKopecks: declared,
+      provenKopecks: attributable
+    })
+
+    return total + (attributable - credited)
   }, 0)
 
-  return { correctionKopecks, unsettled }
+  return { correctionKopecks, corrected, unsettled }
 }
 
 /**

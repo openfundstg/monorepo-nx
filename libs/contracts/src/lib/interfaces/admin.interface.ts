@@ -414,6 +414,15 @@ export interface AdminSaleCardOrderSummary {
    * different facts and their disagreement is the thing worth seeing.
    */
   readonly declaredAmount: number | null;
+  /**
+   * What a bank statement showed for this order's window, in UAH kopecks, or
+   * `null` where no document has contradicted the seller.
+   *
+   * The half of a dispute an operator cannot reconstruct from anywhere else:
+   * `declaredAmount` is what they claimed, this is what their own bank shows,
+   * and the sale's total has already moved to the second.
+   */
+  readonly provenAmount: number | null;
   readonly arrivedAt: string;
   readonly confirmDeadlineAt: string;
   readonly answeredAt: string | null;

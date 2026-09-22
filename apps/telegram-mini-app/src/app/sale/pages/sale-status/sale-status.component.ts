@@ -297,6 +297,10 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
           amount: USDT_AMOUNT_EVENTS.has(event.type)
             ? formatUsdt(event.amount ?? 0)
             : formatUah(event.amount ?? 0),
+          // Only `STATEMENT_CORRECTED` interpolates it — the sentence is
+          // "₴300 arrived, not the ₴298 you gave us", and both figures have to
+          // be on the event for it to be sayable at all.
+          declared: formatUah(event.declaredAmount ?? 0),
         },
         at: event.at,
         trackId: `${event.at}-${event.type}-${index}`,

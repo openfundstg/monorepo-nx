@@ -8,8 +8,14 @@
 export interface SaleTimelineEntry {
   /** `SALE_EVENT.<type>` — the enum member *is* the translation key. */
   readonly key: string;
-  /** Pre-formatted interpolation values; the dictionary never sees a number. */
-  readonly params: { readonly amount: string };
+  /**
+   * Pre-formatted interpolation values; the dictionary never sees a number.
+   *
+   * `declared` is read by one sentence — the statement correction, which says
+   * what arrived *instead of* what the seller had given us. Every other entry
+   * carries it unread, which costs a string and keeps the mapping one shape.
+   */
+  readonly params: { readonly amount: string; readonly declared: string };
   /** Epoch milliseconds, for the `dateTime` pipe. */
   readonly at: number;
   /**

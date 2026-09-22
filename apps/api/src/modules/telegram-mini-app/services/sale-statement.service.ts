@@ -262,11 +262,12 @@ export class SaleStatementService {
     // `TmaSaleDbService.corroborateEvents` for which ones and why only those.
     await this.corroborate(sale, statement, statementId)
 
-    const { correctionKopecks, unsettled } = statementCorrection(
+    const correction = statementCorrection(
       sale.cardOrders ?? [],
       statement,
       SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS
     )
+    const { correctionKopecks, unsettled } = correction
 
     // Louder than a correction, because it is a worse fact. The seller said a
     // payment arrived, their USDT went out against it, and the bank's own record
@@ -283,7 +284,7 @@ export class SaleStatementService {
     const updated = await this.saleDbService.applyStatementCheckpoint(
       saleId,
       statement.periodTo,
-      correctionKopecks
+      correction
     )
 
     if (correctionKopecks > 0) {

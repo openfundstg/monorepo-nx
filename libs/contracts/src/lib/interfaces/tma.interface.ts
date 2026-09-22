@@ -276,6 +276,20 @@ export interface SaleCardOrder {
    * checkpoint exists to settle.
    */
   readonly declaredAmount?: number;
+  /**
+   * What a bank statement showed for this order's window, in UAH kopecks, where
+   * that was more than {@link declaredAmount}.
+   *
+   * Absent until a statement contradicts the seller's own figure — which is the
+   * only direction it can: a document showing *less* than they claimed corrects
+   * nothing, because understating what you received costs only yourself.
+   *
+   * **Both figures are kept, and the screen shows both.** Replacing
+   * {@link declaredAmount} would leave a seller looking at a row that had
+   * quietly changed its mind, with nothing to say why; struck through beside
+   * the proven figure, it says exactly what happened and on whose word.
+   */
+  readonly provenAmount?: number;
   readonly state: SaleCardOrderState;
   /** When it was routed here, ISO 8601. */
   readonly arrivedAt: string;
@@ -715,6 +729,16 @@ export interface SaleEvent {
   type: SaleEventType;
   /** UAH kopecks. Present on money events (`PAYMENT_MATCHED`, `ORDER_RECEIVED`). */
   amount?: number;
+  /**
+   * UAH kopecks the seller had declared, on `STATEMENT_CORRECTED` and nowhere
+   * else.
+   *
+   * On the event rather than left to the client to look up on the order,
+   * because the sentence interpolates it: "₴300 instead of ₴298" needs both
+   * figures, and a timeline entry that reached into `cardOrders` for the second
+   * would read a figure that has since been corrected again.
+   */
+  declaredAmount?: number;
   /** Transacto's numeric order id, when the event is about a specific order. */
   orderId?: number;
   /** Epoch milliseconds. */

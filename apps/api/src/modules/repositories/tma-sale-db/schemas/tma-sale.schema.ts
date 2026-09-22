@@ -58,6 +58,16 @@ export class TmaSaleEvent {
   @Prop({ type: Number, default: null })
   orderId: number | null
 
+  /**
+   * What the seller had declared, on `STATEMENT_CORRECTED` and nowhere else.
+   *
+   * The entry says "₴300 arrived, not the ₴298 you gave us", and both figures
+   * have to be on it: a client that reached into `cardOrders` for the second
+   * would read a figure a later statement may have corrected again.
+   */
+  @Prop({ type: Number, default: null })
+  declaredAmount?: number | null
+
   /** Epoch milliseconds. */
   @Prop({ type: Number, required: true })
   at: number
@@ -254,6 +264,21 @@ export class TmaSaleCardOrder {
    */
   @Prop({ type: Number, required: false })
   declaredAmount?: number
+
+  /**
+   * What a bank statement showed for this order's window, in UAH kopecks, where
+   * that was more than {@link declaredAmount}.
+   *
+   * Absent until a document contradicts the seller's figure, and only ever
+   * upwards: a statement showing less than they claimed corrects nothing,
+   * because understating what you received costs only yourself.
+   *
+   * Written in the same update as the checkpoint that credited the difference —
+   * see `applyStatementCheckpoint` — so a row can never disagree with the total
+   * it is part of.
+   */
+  @Prop({ type: Number, required: false })
+  provenAmount?: number
 
   /** Statements uploaded against this order, oldest first. */
   @Prop({ type: [TmaSaleStatementSchema], default: [] })
