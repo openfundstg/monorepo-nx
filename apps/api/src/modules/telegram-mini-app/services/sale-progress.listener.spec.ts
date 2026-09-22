@@ -728,12 +728,45 @@ describe('SaleProgressListener', () => {
       })
 
       it('does not even ask once the sale carries the stamp', async () => {
-        seed(waiting({ tailAnnouncedAt: new Date('2026-09-20T15:00:00Z') }))
+        seed(
+          waiting({
+            tailAnnouncedAt: new Date('2026-09-20T15:00:00Z'),
+            tailAlertMessageId: 4_411,
+          }),
+        )
 
         await listener.handleTraderWsEvent(balanceEvent(380_000))
 
         expect(db.markTailAnnounced).not.toHaveBeenCalled()
         expect(payoutTarget.resolve).not.toHaveBeenCalled()
+      })
+
+      /**
+       * **Announced is not the same as answerable.** A reply takes a tail on by
+       * quoting the message that asked for it, so an alert whose id was never
+       * recorded can never be answered — the seller cannot confirm the transfer
+       * and nobody can claim it. Every tail announced before the answer existed
+       * is in that state.
+       */
+      it('asks again when the first alert was never recorded', async () => {
+        seed(waiting({ tailAnnouncedAt: new Date('2026-09-20T15:00:00Z') }))
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(announced()).toMatchObject({ tailKopecks: 24_000 })
+      })
+
+      /**
+       * …and the repair does not restart the seller's wait. It has been running
+       * since the first alert, and re-stamping it would take away a release they
+       * may already have earned because *our* write was what failed.
+       */
+      it('does not restamp the sale when it asks again', async () => {
+        seed(waiting({ tailAnnouncedAt: new Date('2026-09-20T15:00:00Z') }))
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailAnnounced).not.toHaveBeenCalled()
       })
 
       /**

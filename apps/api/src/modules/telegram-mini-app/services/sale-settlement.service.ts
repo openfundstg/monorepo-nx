@@ -51,6 +51,14 @@ export interface SettleableSale extends SaleClaims, DisposableTerminal {
   tailReachedAt?: Date | null
   /** When an operator was told what to transfer — the second gate's field. */
   tailAnnouncedAt?: Date | null
+  /**
+   * The group message that told them, if it was recorded.
+   *
+   * Read here because an alert nobody can answer is not an alert: a reply finds
+   * its sale by this id and by nothing else, so a tail announced without one —
+   * every tail that existed before the answer did — has to be asked again.
+   */
+  tailAlertMessageId?: number | null
   /** The three things the alert needs to say where the money has to go. */
   telegramId: number
   saleMethod?: SaleMethod | null
@@ -272,8 +280,13 @@ export class SaleSettlementService {
     const tail = saleTailKopecks(latest, minOrderKopecks)
     if (tail === 0) return
 
-    // Cheap pre-check; the write below is what actually decides.
-    if (latest.tailAnnouncedAt) return
+    // **Announced is not the same as answerable.** A reply takes a tail on by
+    // quoting the message that asked for it, so an alert whose id was never
+    // recorded can never be answered — the seller cannot confirm the transfer
+    // and nobody can claim it. That is every tail announced before the answer
+    // existed, and any whose id failed to land afterwards, so both go round
+    // again. Cheap pre-check; the writes below are what actually decide.
+    if (latest.tailAnnouncedAt && latest.tailAlertMessageId != null) return
 
     if (awaitsStatementCheckpoint(latest)) {
       this.logger.log(
@@ -289,12 +302,26 @@ export class SaleSettlementService {
     // `null` rather than throwing, and the message says so.
     const payoutTarget = await this.payoutTarget.resolve(latest)
 
-    const announced = await this.saleDbService.markTailAnnounced(saleId)
-    if (announced === null) return
+    // **Only a first ask takes the gate, and only a first one stamps the sale.**
+    // Asking again is a repair rather than a new ask: the seller's wait has been
+    // running since the original, and restarting it would take away a release
+    // they may already have earned, because *our* write was the thing that
+    // failed.
+    const repeating = latest.tailAnnouncedAt != null
+
+    if (!repeating) {
+      const announced = await this.saleDbService.markTailAnnounced(saleId)
+      if (announced === null) return
+    }
+
+    const unreadable = payoutTarget === null ? ' — and the destination could not be read' : ''
 
     this.logger.log(
-      `Sale ${latest.publicId}: asking an operator to transfer its ${tail} kopeck tail` +
-        (payoutTarget === null ? ' — and the destination could not be read' : '')
+      repeating
+        ? `Sale ${latest.publicId}: asking again for its ${tail} kopeck tail — the first ` +
+            `alert was never recorded, so nobody can answer it${unreadable}`
+        : `Sale ${latest.publicId}: asking an operator to transfer its ${tail} kopeck ` +
+            `tail${unreadable}`
     )
 
     this.eventEmitter.emit(TMA_DOMAIN_EVENT.SALE_TAIL_REACHED, {
