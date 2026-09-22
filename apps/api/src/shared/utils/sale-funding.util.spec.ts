@@ -9,8 +9,10 @@ import {
   isGoalClosingTopUp,
   isRemainderRefundable,
   isSaleFunded,
+  isSaleInTail,
   saleDeliveredFiat,
   saleDisposal,
+  saleTailKopecks,
   settleSale
 } from './sale-funding.util'
 
@@ -198,6 +200,76 @@ describe('isGoalClosingTopUp', () => {
   /** A jar with no target can never be "closed"; those really are unknown. */
   it.each([undefined, null, 0])('is not a top-up for a goal of %p', (goal) => {
     expect(isGoalClosingTopUp({ goal, balance: GOAL, unmatched: 23_000 }, MIN_ORDER)).toBe(false)
+  })
+})
+
+/**
+ * The gap itself, with no policy in it.
+ *
+ * **Separated from `isRemainderRefundable` because being in a tail is a fact
+ * and what to do about it is a choice.** The two were one function, so the
+ * arithmetic was unreachable for everything that only needs the fact — parking
+ * a sale, telling an operator what to transfer, drawing the gap on a screen.
+ */
+describe('saleTailKopecks', () => {
+  const MIN = 300 * 100
+
+  const order = (over: Record<string, unknown> = {}) => ({
+    fiatAmount: 100_000,
+    receivedAmount: 90_000,
+    jarBalance: 90_000,
+    openingJarBalance: 0,
+    ...over,
+  })
+
+  it('is the gap when no order the pipeline routes could close it', () => {
+    expect(saleTailKopecks(order(), MIN)).toBe(10_000)
+    expect(isSaleInTail(order(), MIN)).toBe(true)
+  })
+
+  /** Whatever the policy says — the fact does not depend on the ending. */
+  it.each([
+    SaleRemainderPolicy.WAIT_FOR_TOP_UP,
+    SaleRemainderPolicy.REFUND_TO_BALANCE,
+    undefined
+  ])('reads the same gap under %p', (remainderPolicy) => {
+    expect(saleTailKopecks(order({ remainderPolicy }), MIN)).toBe(10_000)
+  })
+
+  /**
+   * The comparison is strict, unlike `isSaleFunded`'s. A gap of exactly the
+   * floor is one the pipeline can still route an order for, and calling it a
+   * tail would give up on a payment that was still coming.
+   */
+  it('is zero when the gap is exactly one whole order', () => {
+    expect(saleTailKopecks(order({ receivedAmount: 70_000, jarBalance: 70_000 }), MIN)).toBe(0)
+  })
+
+  it('is the gap one kopeck below that', () => {
+    expect(saleTailKopecks(order({ receivedAmount: 70_001, jarBalance: 70_001 }), MIN)).toBe(29_999)
+  })
+
+  it('is zero once the target is reached', () => {
+    expect(saleTailKopecks(order({ receivedAmount: 100_000, jarBalance: 100_000 }), MIN)).toBe(0)
+    expect(saleTailKopecks(order({ receivedAmount: 120_000, jarBalance: 120_000 }), MIN)).toBe(0)
+  })
+
+  /**
+   * Nothing having arrived is not a tail. A target that happens to sit below the
+   * floor would otherwise be in its tail the instant it was created — and every
+   * sale would be, for the moment before its first payment.
+   */
+  it('is zero before anything has arrived', () => {
+    expect(saleTailKopecks(order({ receivedAmount: 0, jarBalance: 0 }), MIN)).toBe(0)
+    expect(saleTailKopecks(order({ fiatAmount: 20_000, receivedAmount: 0, jarBalance: 0 }), MIN)).toBe(0)
+  })
+
+  /**
+   * The jar's own growth counts, as it does for `saleDeliveredFiat` — a jar
+   * holding money no order accounts for has still had that money reach it.
+   */
+  it('measures the gap against whichever record shows more', () => {
+    expect(saleTailKopecks(order({ receivedAmount: 0, jarBalance: 90_000 }), MIN)).toBe(10_000)
   })
 })
 

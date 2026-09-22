@@ -131,43 +131,57 @@ export interface SaleTail extends SaleDelivery {
 }
 
 /**
- * Whether what is left of this order can no longer arrive, and should be
- * refunded instead.
+ * UAH kopecks of the target that no payment can still reach, or `0`.
  *
  * The tail exists because the payment pipeline has a floor. Transacto will not
  * route an order below `minOrderKopecks`, and a terminal's turnover is capped
  * at exactly the order's target — so once the gap is smaller than that floor,
- * nothing can fill it. Today somebody pays it in by hand; an order created with
- * {@link SaleRemainderPolicy.REFUND_TO_BALANCE} gets the gap back as
- * USDT instead and closes successfully.
+ * nothing can fill it. From there the sale has exactly two endings, and which
+ * one it gets is {@link SaleRemainderPolicy}: the gap comes back as USDT, or
+ * somebody transfers it by hand.
+ *
+ * **Policy-free on purpose.** Being in a tail is a fact about the figures and
+ * the pipeline; what to *do* about it is the choice made at creation. The two
+ * were one function and the arithmetic was unreachable for anything that only
+ * needed the fact — which is every caller that has to park a sale, tell an
+ * operator, or show the gap on a screen.
  *
  * **Strictly below the floor, where {@link isSaleFunded} allows equal.**
  * The two are asking different questions and the comparison follows the
  * question. There, money has already arrived and the gap is between what was
  * matched and what the jar holds — a gap of exactly the floor is still money in
  * the jar. Here the gap is money that has *not* arrived, and an order of
- * exactly `minOrderKopecks` is one the pipeline can still route: refunding at
- * that point would give up on a payment that was still coming.
+ * exactly `minOrderKopecks` is one the pipeline can still route: writing it off
+ * at that point would give up on a payment that was still coming.
  *
  * Nothing having arrived yet is not a tail. `delivered <= 0` means the order has
  * not started, and an order whose whole target happens to sit below the floor
- * would otherwise refund itself the instant it was created.
+ * would otherwise be in its tail the instant it was created.
  */
-export const isRemainderRefundable = (order: SaleTail, minOrderKopecks: number): boolean => {
-  if (
-    (order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP) !==
-    SaleRemainderPolicy.REFUND_TO_BALANCE
-  )
-    return false
-
+export const saleTailKopecks = (order: SaleTail, minOrderKopecks: number): number => {
   const delivered = saleDeliveredFiat(order)
-  if (delivered <= 0) return false
+  if (delivered <= 0) return 0
 
   const remainder = order.fiatAmount - delivered
-  if (remainder <= 0) return false
 
-  return remainder < minOrderKopecks
+  return remainder > 0 && remainder < minOrderKopecks ? remainder : 0
 }
+
+/** Whether this order has a gap no payment can reach. */
+export const isSaleInTail = (order: SaleTail, minOrderKopecks: number): boolean =>
+  saleTailKopecks(order, minOrderKopecks) > 0
+
+/**
+ * Whether what is left of this order can no longer arrive, and this order is
+ * one that asked for it back as USDT.
+ *
+ * The fact is {@link saleTailKopecks}; this is the fact plus the choice. An
+ * order created with {@link SaleRemainderPolicy.WAIT_FOR_TOP_UP} has the same
+ * gap and a different ending — somebody pays it in, and the sale waits.
+ */
+export const isRemainderRefundable = (order: SaleTail, minOrderKopecks: number): boolean =>
+  (order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP) ===
+    SaleRemainderPolicy.REFUND_TO_BALANCE && isSaleInTail(order, minOrderKopecks)
 
 /** How a completed order's frozen stake is split, and what it counts as sold. */
 export interface SaleSettlement {

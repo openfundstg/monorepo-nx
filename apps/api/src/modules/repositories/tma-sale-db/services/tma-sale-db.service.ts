@@ -211,6 +211,29 @@ export class TmaSaleDbService {
    * the same reason, even though it is an open status — an order already
    * winding down has nothing to move to.
    */
+  /**
+   * Stamps the moment a sale entered its tail, once.
+   *
+   * **The filter is the idempotency gate**, exactly as `markClosing`'s status
+   * list is: `tailReachedAt: null` matches only the first caller, so everything
+   * hanging off entering a tail — standing routing down upstream, telling an
+   * operator what to transfer, starting the clock on the wait — happens once
+   * however often the figures are re-examined. Every settled order and every
+   * jar scrape asks the same question again.
+   *
+   * `null` therefore means "already stamped", not "no such sale", and a caller
+   * reads it as "somebody else has done this".
+   */
+  async markTailReached(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, tailReachedAt: null },
+        { $set: { tailReachedAt: new Date() } },
+        { new: true }
+      )
+      .lean()
+  }
+
   async markClosing(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
     return this.saleModel
       .findOneAndUpdate(

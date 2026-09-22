@@ -519,6 +519,27 @@ export class TmaSale {
   remainderPolicy: SaleRemainderPolicy
 
   /**
+   * When this sale first had less left to collect than the pipeline will route.
+   *
+   * The moment a sale enters its tail, and a one-way gate. Written rather than
+   * derived even though `saleTailKopecks` recomputes the same fact on demand,
+   * because three things have to happen exactly once and none of them can be
+   * decided from the figures alone: routing is stood down upstream, an operator
+   * is told what to transfer, and the clock starts on how long the seller is
+   * asked to wait for it.
+   *
+   * `null` on every sale that has not reached its tail — which includes every
+   * sale that filled its target outright, since being funded is checked first
+   * and closes the sale before the gap can ever be one.
+   *
+   * Monotone by construction: `receivedAmount` only rises and `fiatAmount` never
+   * moves, so a tail once reached is only ever left by being filled. Nothing
+   * clears this.
+   */
+  @Prop({ type: Date, default: null })
+  tailReachedAt: Date | null
+
+  /**
    * USDT cents handed back as the unfillable tail, on completion.
    *
    * Zero on every order that filled its jar, and on every order that waited for

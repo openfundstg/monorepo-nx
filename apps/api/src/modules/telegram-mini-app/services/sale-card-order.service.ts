@@ -587,20 +587,43 @@ export class SaleCardOrderService {
     // other order.
     await this.resumeIfSettled(credited)
 
-    if (await this.settlement.settleIfFinished(saleId, credited)) {
-      return (await this.saleDbService.findById(saleId)) ?? credited
+    return this.reconsiderFunding(credited)
+  }
+
+  /**
+   * Asks what a sale's figures now mean, and leaves it wherever that says.
+   *
+   * **Every path that moves `receivedAmount` owes this call**, and one of them
+   * did not make it. An order settling came through here; a statement correcting
+   * an understated claim wrote a larger figure and stopped — so a sale the
+   * correction had just funded went on waiting, and one it had just pushed into
+   * its tail kept a credential tuned for orders that could no longer be routed.
+   * Neither is noticed until the *next* order settles, and on a sale with
+   * nothing left to route there is no next order.
+   *
+   * Three things, in this order and for the reason each gives:
+   *
+   * 1. **Settle, if the figures say finished.** `settleIfFinished` is also where
+   *    a sale entering its tail is parked, which has to happen before anything
+   *    re-tunes a credential it has just stood down.
+   * 2. **Re-tune what is left**, so the next order's minimum divides the real
+   *    remainder rather than the original target. `SaleCardLimitsService` says
+   *    what strands when this is skipped.
+   * 3. **Tell the user**, once, whichever of the two happened — a completion
+   *    announces itself, so this is the branch where nothing else would.
+   */
+  async reconsiderFunding(sale: StoredSale): Promise<StoredSale> {
+    const saleId = sale._id.toString()
+
+    if (await this.settlement.settleIfFinished(saleId, sale)) {
+      return (await this.saleDbService.findById(saleId)) ?? sale
     }
 
-    // The sale goes on, so the credential is re-tuned to what is still needed.
-    // Done here rather than on arrival because the figure it divides — what is
-    // outstanding — only changes when an order settles. See
-    // `SaleCardLimitsService` for what strands if this is left at its original
-    // value.
-    await this.limits.retune(credited)
+    await this.limits.retune(sale)
 
-    await this.progressService.emit(credited)
+    await this.progressService.emit(sale)
 
-    return credited
+    return sale
   }
 
   /**

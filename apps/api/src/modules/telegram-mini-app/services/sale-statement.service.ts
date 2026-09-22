@@ -207,7 +207,8 @@ export class SaleStatementService {
     // for a document that had done everything it was sent to do, and the
     // wasted `orders_execute` left a fresh execution marker on a settled order
     // for `handleOrderPaid` to interpret.
-    if (cardOrder.state !== SaleCardOrderState.DISPUTED) return this.reread(saleId, sale)
+    if (cardOrder.state !== SaleCardOrderState.DISPUTED)
+      return this.cardOrders.reconsiderFunding(await this.reread(saleId, sale))
 
     if (verification.finding === StatementFinding.CREDITED)
       return this.cardOrders.confirmFromStatement(sale, cardOrder)
@@ -352,8 +353,13 @@ export class SaleStatementService {
    */
   private async upholdDenial(sale: StoredSale, cardOrder: TmaSaleCardOrder): Promise<StoredSale> {
     const moved = await this.cardOrders.denyFromStatement(sale, cardOrder)
+    const latest = moved ?? (await this.reread(sale._id.toString(), sale))
 
-    return moved ?? this.reread(sale._id.toString(), sale)
+    // The denial is answered and the document still corrected other orders in
+    // the same period, so the figures have to be re-read even here. The order
+    // this upload was addressed to settles nothing; the ones the checkpoint
+    // moved may have funded the sale or pushed it into its tail.
+    return this.cardOrders.reconsiderFunding(latest)
   }
 
   /**

@@ -109,7 +109,9 @@ describe('SaleStatementService', () => {
     cardOrders = {
       resolve: jest.fn(async () => ({ sale: sale(), cardOrder: cardOrder() })),
       confirmFromStatement: jest.fn(async () => sale()),
-      denyFromStatement: jest.fn(async () => sale())
+      denyFromStatement: jest.fn(async () => sale()),
+      // What the figures now mean, asked once the checkpoint has moved them.
+      reconsiderFunding: jest.fn(async (moved: unknown) => moved)
     }
     progress = { emit: jest.fn(async () => undefined) }
 
@@ -143,6 +145,23 @@ describe('SaleStatementService', () => {
 
       expect(cardOrders.denyFromStatement).toHaveBeenCalled()
       expect(cardOrders.confirmFromStatement).not.toHaveBeenCalled()
+    })
+
+    /**
+     * An upheld denial settles nothing, and the document still corrected other
+     * orders inside the same period — so the figures have to be re-read even
+     * here. The confirming branch gets this through `settleConfirmed`.
+     */
+    it('asks what the figures mean after a denial is upheld', async () => {
+      withOrder({ state: SaleCardOrderState.DISPUTED })
+      verification.verify.mockResolvedValue({
+        finding: StatementFinding.NOT_CREDITED,
+        statement: parsed({ movements: [] })
+      })
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(cardOrders.reconsiderFunding).toHaveBeenCalled()
     })
   })
 
@@ -189,6 +208,24 @@ describe('SaleStatementService', () => {
 
       expect(cardOrders.denyFromStatement).not.toHaveBeenCalled()
       expect(cardOrders.confirmFromStatement).not.toHaveBeenCalled()
+    })
+
+    /**
+     * **A correction moves `receivedAmount`, and something has to re-read it.**
+     *
+     * This is the branch that used to end at a re-read and nothing else. A
+     * statement correcting an understated claim writes a larger figure — and a
+     * sale that figure has just funded went on waiting, while one it pushed into
+     * its tail kept a credential tuned for orders that could no longer be
+     * routed. Neither is noticed until the *next* order settles, and a sale with
+     * nothing left to route has no next order.
+     */
+    it('asks what the corrected figures now mean', async () => {
+      const stored = confirmedWithClaim()
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(cardOrders.reconsiderFunding).toHaveBeenCalledWith(stored)
     })
 
     /** And the job it *was* sent to do still happens. */

@@ -2,15 +2,21 @@ import { Injectable, Logger } from '@nestjs/common'
 import { SaleRemainderPolicy } from '@transacto/contracts'
 import {
   awaitsStatementCheckpoint,
+  describeError,
   isRemainderRefundable,
   isSaleFunded,
   parseMinOrderKopecks,
+  saleTailKopecks,
   transactoOrderFloorKopecks,
   type SaleClaims
 } from 'src/shared/utils'
 import { OrderDbService } from 'src/modules/repositories/order-db'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-facade.service'
+import {
+  SaleTerminalService,
+  type DisposableTerminal
+} from 'src/modules/telegram-mini-app/services/sale-terminal.service'
 
 /**
  * The fields the settlement decision is made on.
@@ -19,14 +25,26 @@ import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-f
  * remainder rule needs three more: the opening balance the delivered figure is
  * measured from, the policy the sale was created under, and the card, so
  * anything still in flight on it can be checked before a tail is written off.
+ *
+ * It is a {@link DisposableTerminal} as well, because a sale entering its tail
+ * has its routing stood down here — and those are the four fields that takes.
+ * Required rather than optional, like the terminal interface has them: every
+ * caller passes a whole sale document, and a structural type that allowed one
+ * without a `publicId` would only be describing something that does not exist.
  */
-export interface SettleableSale extends SaleClaims {
+export interface SettleableSale extends SaleClaims, DisposableTerminal {
   receivedAmount: number
   fiatAmount: number
   jarBalance?: number | null
   openingJarBalance?: number | null
   remainderPolicy?: SaleRemainderPolicy | null
-  cardId?: number | null
+  /**
+   * When the sale first had less left than the pipeline will route, if it has.
+   *
+   * Read here only to know whether entering the tail has already been acted on;
+   * the gate that decides it is `TmaSaleDbService.markTailReached`.
+   */
+  tailReachedAt?: Date | null
 }
 
 /**
@@ -48,7 +66,8 @@ export class SaleSettlementService {
   constructor(
     private readonly saleDbService: TmaSaleDbService,
     private readonly saleFacade: SaleFacadeService,
-    private readonly orderDbService: OrderDbService
+    private readonly orderDbService: OrderDbService,
+    private readonly terminalService: SaleTerminalService
   ) {}
 
   /**
@@ -98,6 +117,13 @@ export class SaleSettlementService {
 
     if (isSaleFunded(latest, minOrderKopecks)) return this.saleFacade.completeSale(saleId)
 
+    // Acted on before the ending is chosen, because entering a tail is true
+    // whichever ending this sale asked for — and what it means first is that
+    // nothing more may be routed here. Funded is still checked ahead of it: a
+    // sale that reached its target has no tail, and parking one would stand
+    // down a terminal that is about to be torn down anyway.
+    await this.parkTailIfReached(saleId, latest, minOrderKopecks)
+
     if (!isRemainderRefundable(latest, minOrderKopecks)) return false
 
     // The tail is held while a claim on this sale has not been through a
@@ -145,6 +171,58 @@ export class SaleSettlementService {
     }
 
     return this.saleFacade.completeSale(saleId)
+  }
+
+  /**
+   * Records that this sale has entered its tail, and stops payers being routed
+   * into it. Once.
+   *
+   * **A tail is what nothing may be routed into.** `SaleCardLimitsService`
+   * stops retuning the credential the moment the remainder drops under the
+   * floor — a minimum of zero would mean "any amount at all" — so the window
+   * upstream keeps whatever it was last given. On a ₴60 tail that was a
+   * ₴300–₴364 window, and a payer routed into it overshoots the target: the
+   * seller receives more hryvnia than the USDT they were charged for, and a
+   * card sale has no scraper to notice. So routing comes down instead.
+   *
+   * **Stood down, not switched off.** `stopRouting` is `enable_orders: 0` with
+   * `enabled` left alone, so the terminal keeps being scraped — which is the
+   * whole of how a jar sale's manual top-up is ever seen, and the one thing a
+   * teardown here would break.
+   *
+   * The write is the gate and it comes first, deliberately. A stamped sale whose
+   * routing failed to come down is visible, bounded by the window upstream, and
+   * says so in an error line; an unstamped sale is one nobody is ever told
+   * about, and its tail is the part that needs a person.
+   */
+  private async parkTailIfReached(
+    saleId: string,
+    latest: SettleableSale,
+    minOrderKopecks: number
+  ): Promise<void> {
+    const tail = saleTailKopecks(latest, minOrderKopecks)
+    if (tail === 0) return
+
+    // Cheap pre-check only — every settled order and every jar scrape asks this
+    // again. What actually decides is the filter inside `markTailReached`.
+    if (latest.tailReachedAt) return
+
+    const parked = await this.saleDbService.markTailReached(saleId)
+    if (parked === null) return
+
+    this.logger.log(
+      `Sale ${latest.publicId}: ${tail} kopecks left of ${latest.fiatAmount}, under the ` +
+        `${minOrderKopecks} floor — no order can be routed for it. Standing routing down.`
+    )
+
+    try {
+      await this.terminalService.stopRouting(latest, 'Tail reached')
+    } catch (error: unknown) {
+      this.logger.error(
+        `Sale ${latest.publicId}: reached its tail and routing could not be stood down — a ` +
+          `payer may still be sent there and overshoot the target: ${describeError(error)}`
+      )
+    }
   }
 
   /** The smallest order Transacto will route, and so the width of the tail. */

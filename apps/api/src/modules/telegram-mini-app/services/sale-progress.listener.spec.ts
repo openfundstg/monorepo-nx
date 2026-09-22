@@ -14,6 +14,7 @@ import type { SaleProgressService } from './sale-progress.service'
 import type { SaleFacadeService } from './sale-facade.service'
 import type { SaleComplianceService } from './sale-compliance.service'
 import type { OrderDbService } from 'src/modules/repositories/order-db'
+import type { SaleTerminalService } from './sale-terminal.service'
 
 const CARD_ID = 4242
 const TERMINAL_ID = 23715
@@ -54,6 +55,7 @@ describe('SaleProgressListener', () => {
   let facade: { completeSale: jest.Mock }
   let compliance: { check: jest.Mock }
   let orders: { findUnsettledByCard: jest.Mock }
+  let terminals: { stopRouting: jest.Mock }
   let listener: SaleProgressListener
 
   const originalMinOrder = process.env.TRANSACTO_MIN_ORDER_KOPECKS
@@ -73,6 +75,10 @@ describe('SaleProgressListener', () => {
         .fn()
         .mockImplementation(async (_id, _orderId, amount) => openOrder({ receivedAmount: amount })),
       markAwaitingFiat: jest.fn().mockResolvedValue(openOrder()),
+      // The gate on entering a tail: the first caller gets the document back,
+      // every later one gets `null`. Its own filter is what decides that; here
+      // it answers as the first.
+      markTailReached: jest.fn().mockImplementation(async () => openOrder()),
     }
     progress = { emit: jest.fn().mockResolvedValue(undefined) }
     facade = { completeSale: jest.fn().mockResolvedValue(true) }
@@ -87,10 +93,14 @@ describe('SaleProgressListener', () => {
     // to the listener these assertions tested it through this class; it moved
     // because the card variant settles through a path this listener never sees,
     // and a stub here would leave every completion rule passing against nothing.
+    // What a sale entering its tail does upstream: no new payers, still watched.
+    terminals = { stopRouting: jest.fn().mockResolvedValue(undefined) }
+
     const settlement = new SaleSettlementService(
       db as unknown as TmaSaleDbService,
       facade as unknown as SaleFacadeService,
       orders as unknown as OrderDbService,
+      terminals as unknown as SaleTerminalService,
     )
 
     listener = new SaleProgressListener(
@@ -538,6 +548,117 @@ describe('SaleProgressListener', () => {
       } as unknown as TerminalOrdersExecutedEvent)
 
       expect(facade.completeSale).toHaveBeenCalledWith('order-1')
+    })
+
+    /**
+     * **A tail is what nothing may be routed into**, and that holds whichever
+     * ending the sale asked for.
+     *
+     * `SaleCardLimitsService` stops retuning the credential the moment the
+     * remainder drops under the floor, so the window upstream keeps whatever it
+     * was last given — on a ₴100 tail that is a window for a whole order. A
+     * payer routed into it overshoots the target, and the seller receives more
+     * hryvnia than the USDT they were charged for.
+     */
+    describe('when the tail is reached', () => {
+      const waiting = (over: Record<string, unknown> = {}) =>
+        refunding({ remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP, ...over })
+
+      it('stamps the sale and stands routing down', async () => {
+        seed(waiting())
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailReached).toHaveBeenCalledWith('order-1')
+        expect(terminals.stopRouting).toHaveBeenCalledWith(
+          expect.objectContaining({ publicId: 'Z38SL69F' }),
+          'Tail reached',
+        )
+      })
+
+      /**
+       * Stood down, never switched off. `stopRouting` leaves `enabled` alone so
+       * the terminal keeps being scraped — which is the whole of how a jar
+       * sale's manual top-up is ever seen.
+       */
+      it('does not take the terminal out of service', async () => {
+        seed(waiting())
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(facade.completeSale).not.toHaveBeenCalled()
+      })
+
+      /**
+       * Every jar scrape asks the same question again, so the write is the gate:
+       * a sale already stamped gets no second call upstream.
+       */
+      it('does it once, however often the figures are re-examined', async () => {
+        seed(waiting())
+        db.markTailReached.mockResolvedValue(null)
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(terminals.stopRouting).not.toHaveBeenCalled()
+      })
+
+      /** And the cheap pre-check costs nothing when the document already says so. */
+      it('does not even ask once the sale carries the stamp', async () => {
+        seed(waiting({ tailReachedAt: new Date('2026-09-20T14:52:00Z') }))
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailReached).not.toHaveBeenCalled()
+        expect(terminals.stopRouting).not.toHaveBeenCalled()
+      })
+
+      it('leaves routing alone while the gap could still be filled', async () => {
+        seed(waiting({ receivedAmount: 300_000, jarBalance: 300_000 }))
+
+        await listener.handleTraderWsEvent(balanceEvent(300_000))
+
+        expect(db.markTailReached).not.toHaveBeenCalled()
+        expect(terminals.stopRouting).not.toHaveBeenCalled()
+      })
+
+      /**
+       * A funded sale has no tail, and parking one would stand down a terminal
+       * the completion is about to tear down anyway.
+       */
+      it('parks nothing on a sale that simply reached its target', async () => {
+        seed(waiting({ receivedAmount: 404_000, jarBalance: 404_000 }))
+
+        await listener.handleTraderWsEvent(balanceEvent(404_000))
+
+        expect(facade.completeSale).toHaveBeenCalledWith('order-1')
+        expect(db.markTailReached).not.toHaveBeenCalled()
+      })
+
+      /**
+       * The stamp is the gate and it is written first, deliberately. A stamped
+       * sale whose routing failed to come down is visible, bounded by the window
+       * upstream and says so in an error line; an unstamped one is a sale
+       * nobody is ever told about, and its tail is the part that needs a person.
+       */
+      it('keeps the stamp when routing could not be stood down', async () => {
+        seed(waiting())
+        terminals.stopRouting.mockRejectedValue(new Error('no service trader'))
+
+        await expect(listener.handleTraderWsEvent(balanceEvent(380_000))).resolves.toBeUndefined()
+
+        expect(db.markTailReached).toHaveBeenCalledWith('order-1')
+      })
+
+      /** The refunding ending reaches the same park on its way to closing. */
+      it('parks a refunding sale too, before it settles', async () => {
+        seed(refunding())
+        orders.findUnsettledByCard.mockResolvedValue([{ orderId: 1 }])
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailReached).toHaveBeenCalledWith('order-1')
+        expect(facade.completeSale).not.toHaveBeenCalled()
+      })
     })
   })
 })
