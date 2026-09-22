@@ -10,6 +10,7 @@ import {
   isRemainderRefundable,
   isSaleFunded,
   isSaleInTail,
+  refundsItsTail,
   saleDeliveredFiat,
   saleDisposal,
   saleTailKopecks,
@@ -418,6 +419,33 @@ describe('settleSale', () => {
 
     it('does the same when the policy is absent', () => {
       expect(settleSale(order({ remainderPolicy: undefined })).refundedUsdtCents).toBe(0)
+    })
+
+    /**
+     * **Until the seller stops waiting**, which is the second way an order comes
+     * to refund its tail — and the policy still says it asked to wait, because
+     * that is a snapshot of what was asked for rather than of what happened.
+     *
+     * `refundsItsTail` is the question both this and `isRemainderRefundable`
+     * put, so a released tail cannot be granted a refund by one and priced as a
+     * full fill by the other.
+     */
+    it('refunds the tail once the seller has released the wait', () => {
+      const released = order({
+        remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP,
+        tailWaivedAt: new Date('2026-09-21T10:00:00Z'),
+      })
+
+      expect(refundsItsTail(released)).toBe(true)
+      expect(settleSale(released)).toEqual(settleSale(order()))
+    })
+
+    it('is still waiting while nobody has released it', () => {
+      expect(
+        refundsItsTail(
+          order({ remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP, tailWaivedAt: null }),
+        ),
+      ).toBe(false)
     })
   })
 

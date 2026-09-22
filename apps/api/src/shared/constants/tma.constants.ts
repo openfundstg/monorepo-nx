@@ -217,3 +217,25 @@ export const BANK_PAYMENT_METHOD_ID: Record<BankProvider, number> = {
   [BankProvider.PUMB]: 67,
   [BankProvider.NOVAPAY]: 96
 }
+
+/**
+ * How long a seller is asked to wait for somebody to transfer their tail.
+ *
+ * Past this they may finish the sale themselves and take the gap back as USDT
+ * instead — the same ending a sale created with `REFUND_TO_BALANCE` gets, only
+ * chosen at the end rather than the start.
+ *
+ * **Measured from the moment an operator was told, not from the moment the tail
+ * appeared.** A tail held for a statement of the seller's own can be hours old
+ * before anyone hears about it, and a clock started then would run out while
+ * the request was still unread — which would hand the seller USDT for a
+ * transfer nobody had yet had a chance to make.
+ *
+ * Three hours is what the business chose, and the shape of the trade is: too
+ * short and a tail is refunded while an operator is walking to their desk; too
+ * long and somebody's whole stake sits frozen over a sum under ₴300. Nothing
+ * happens automatically at the end of it — the seller gets a button, because
+ * the hryvnia is what they asked for and only they can say they have stopped
+ * wanting it.
+ */
+export const SALE_TAIL_RELEASE_AFTER_MINUTES = 180

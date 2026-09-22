@@ -48,6 +48,7 @@ import { DropLinkResolverService } from 'src/modules/telegram-mini-app/services/
 import { SaleCancelService } from 'src/modules/telegram-mini-app/services/sale-cancel.service'
 import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
 import { SaleStatementService } from 'src/modules/telegram-mini-app/services/sale-statement.service'
+import { SaleTailService } from 'src/modules/telegram-mini-app/services/sale-tail.service'
 import { toAwaitingJar } from 'src/modules/telegram-mini-app/utils'
 import {
   getTrustLevel
@@ -65,7 +66,8 @@ export class TmaSaleController {
     private readonly dropLinkResolver: DropLinkResolverService,
     private readonly saleCancel: SaleCancelService,
     private readonly cardOrders: SaleCardOrderService,
-    private readonly statements: SaleStatementService
+    private readonly statements: SaleStatementService,
+    private readonly saleTail: SaleTailService
   ) {}
 
   /**
@@ -171,6 +173,61 @@ export class TmaSaleController {
     @Param('id') id: string
   ): Promise<CancelSaleRes> {
     return this.saleCancel.cancel(id, req.tmaUser.id)
+  }
+
+  /**
+   * POST /api/tma/sales/:id/tail/confirm
+   *
+   * The seller says the hand-made transfer that closes their sale arrived.
+   *
+   * A tail is the stretch under Transacto's order floor: nothing can be routed
+   * for it, so it comes as one transfer an operator makes or it does not come
+   * at all. There is no order behind it and therefore no order id — the sale is
+   * the whole address.
+   *
+   * **No body, deliberately.** The figure credited is the gap this sale still
+   * has, re-read on the call; a seller naming their own amount here would be
+   * naming how much of somebody else's USDT to release. Taken at face value for
+   * the reason every confirmation in this variant is, and safe to call twice.
+   *
+   * Card sales only — a jar sale's tail is seen by the scraper rather than
+   * reported, and a button there would credit the same hryvnia twice.
+   */
+  @Post(':id/tail/confirm')
+  @UserTypeTMA()
+  async confirmTail(
+    @Req() req: TmaAuthenticatedRequest,
+    @Param('id') id: string
+  ): Promise<SaleProgress> {
+    const sale = await this.saleTail.confirm(req.tmaUser.id, id)
+
+    return this.saleProgress.build(sale)
+  }
+
+  /**
+   * POST /api/tma/sales/:id/tail/release
+   *
+   * The seller stops waiting for that transfer, and takes the gap as USDT.
+   *
+   * The other ending a tail can have, chosen at the end rather than at
+   * creation. Refused until `SALE_TAIL_RELEASE_AFTER_MINUTES` have passed
+   * **since an operator was told** — a tail held for a statement of the
+   * seller's own can be hours old before anyone hears about it, and a wait
+   * measured from its appearance would run out while the request was still
+   * unread.
+   *
+   * The sale completes successfully rather than being cancelled: what was
+   * delivered was sold, with its profit, and only the gap comes back.
+   */
+  @Post(':id/tail/release')
+  @UserTypeTMA()
+  async releaseTail(
+    @Req() req: TmaAuthenticatedRequest,
+    @Param('id') id: string
+  ): Promise<SaleProgress> {
+    const sale = await this.saleTail.release(req.tmaUser.id, id)
+
+    return this.saleProgress.build(sale)
   }
 
   /**

@@ -6,14 +6,15 @@ import {
   saleCardMinOrderKopecks,
   SaleRemainderPolicy
 } from '@transacto/contracts'
-import type { SaleProgress, SaleEvent } from '@transacto/contracts'
+import type { SaleProgress, SaleEvent, SaleTailProgress } from '@transacto/contracts'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { TmaSaleStatus } from 'src/modules/repositories/tma-sale-db/schemas'
 import { OrderDbService } from 'src/modules/repositories/order-db'
 import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
-import { awaitsStatementCheckpoint, parseMinOrderKopecks,
-  transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar } from 'src/shared/utils'
+import { awaitsStatementCheckpoint, parseMinOrderKopecks, refundsItsTail,
+  transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar, saleTailKopecks } from 'src/shared/utils'
+import { MINUTE_MS, SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 
 /** What every read path here works with: a lean order document plus its id. */
 
@@ -204,7 +205,44 @@ export class SaleProgressService {
       })),
       cardMinOrderKopecks: saleCardMinOrderKopecks(order.fiatAmount, floorKopecks),
       cardMaxOrders: saleCardMaxOrders(order.fiatAmount, floorKopecks),
-      statementRequired: awaitsStatementCheckpoint(order)
+      statementRequired: awaitsStatementCheckpoint(order),
+      tail: this.tail(order, floorKopecks)
+    }
+  }
+
+  /**
+   * The last stretch, once it can only arrive by hand.
+   *
+   * **The seller is owed an explanation and this is it.** From their side the
+   * sale simply stops: the bar is nearly full, no new payer arrives, and
+   * nothing says why. What is happening is that the gap is smaller than the
+   * pipeline will route an order for.
+   *
+   * `null` for every sale that is not in that position, which includes the one
+   * whose tail comes back as USDT — that closes itself, so there is nothing for
+   * a screen to explain and a block would flash for an instant and vanish.
+   *
+   * `releasableAt` is measured from `tailAnnouncedAt`, not from
+   * `tailReachedAt`, and the endpoint enforces the same boundary: a tail held
+   * for a statement of the seller's own can be hours old before anyone hears
+   * about it, and a clock started then would run out while the request was
+   * still unread.
+   */
+  private tail(order: StoredSale, floorKopecks: number): SaleTailProgress | null {
+    const amount = saleTailKopecks(order, floorKopecks)
+    if (amount === 0 || refundsItsTail(order)) return null
+
+    const announcedAt = order.tailAnnouncedAt
+    const releasableAt =
+      announcedAt == null
+        ? null
+        : announcedAt.getTime() + SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS
+
+    return {
+      amount,
+      announced: announcedAt != null,
+      releasableAt,
+      releasable: releasableAt !== null && releasableAt <= Date.now()
     }
   }
 

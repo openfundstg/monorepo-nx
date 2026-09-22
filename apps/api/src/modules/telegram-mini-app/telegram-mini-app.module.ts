@@ -15,6 +15,8 @@ import { CardSaleDestinationService } from 'src/modules/telegram-mini-app/servic
 import type { SaleDestinationStrategy } from 'src/modules/telegram-mini-app/interfaces/sale-destination-strategy.interface'
 import { SaleSettlementService } from 'src/modules/telegram-mini-app/services/sale-settlement.service'
 import { SalePayoutTargetService } from 'src/modules/telegram-mini-app/services/sale-payout-target.service'
+import { SaleTailService } from 'src/modules/telegram-mini-app/services/sale-tail.service'
+import { SaleTailSweepService } from 'src/modules/telegram-mini-app/services/sale-tail-sweep.service'
 import { SaleCardLimitsService } from 'src/modules/telegram-mini-app/services/sale-card-limits.service'
 import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
 import { SaleCardWatchService } from 'src/modules/telegram-mini-app/services/sale-card-watch.service'
@@ -178,6 +180,8 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     // variant's confirmation path — two ways to notice, one set of rules.
     SaleSettlementService,
     SalePayoutTargetService,
+    SaleTailService,
+    SaleTailSweepService,
     // The card variant's unit of work: one order, one question, one answer.
     SaleCardLimitsService,
     SaleCardOrderService,

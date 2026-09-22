@@ -870,8 +870,61 @@ export interface SaleProgress {
    */
   cardMinOrderKopecks?: number;
   cardMaxOrders?: number;
+  /**
+   * The last stretch, once no payment can reach it and the sale is waiting for
+   * somebody to transfer it by hand.
+   *
+   * `null` on every sale that is not in that state — which is most of them, and
+   * includes a sale whose tail comes back as USDT: that one closes itself, so
+   * there is nothing for a screen to explain.
+   */
+  tail?: SaleTailProgress | null;
   /** Epoch milliseconds this snapshot was built. */
   updatedAt: number;
+}
+
+/**
+ * A tail waiting on a person, as the seller's screen has to explain it.
+ *
+ * **The point of it being on the snapshot is that the seller is owed an
+ * explanation.** From their side the sale simply stops: the bar is nearly full,
+ * no new payer arrives, and nothing says why. What is actually happening is
+ * that the gap left is smaller than the payment pipeline will route an order
+ * for, so it can only arrive as one transfer somebody makes by hand — which is
+ * a different kind of waiting from every other pause in this product, and the
+ * only one with no clock a payer is running.
+ */
+export interface SaleTailProgress {
+  /** UAH kopecks still to collect. Always above zero. */
+  amount: number;
+  /**
+   * Whether an operator has been asked to transfer it.
+   *
+   * `false` while the sale is still waiting on a statement of the seller's own —
+   * a declared shortfall no document has settled is about to change this very
+   * figure, so nobody is asked to send a number that is about to move. The
+   * screen says which of the two it is, because only one of them is the
+   * seller's to act on.
+   */
+  announced: boolean;
+  /**
+   * When the seller may finish the sale without the transfer, epoch ms, or
+   * `null` while nobody has been asked yet.
+   *
+   * Measured from the moment the operator was told rather than from the moment
+   * the tail appeared, and the difference is not pedantry: a tail held for a
+   * statement can be hours old before anyone hears about it, and a clock
+   * started then would run out while the request was still unread.
+   */
+  releasableAt: number | null;
+  /**
+   * Whether that moment has passed.
+   *
+   * Sent rather than left to the client to compare against its own clock, for
+   * the reason `cardMinOrderKopecks` is sent: the server decides, and a screen
+   * that worked it out separately could offer a button the endpoint refuses.
+   */
+  releasable: boolean;
 }
 
 /**

@@ -559,6 +559,35 @@ export class TmaSale {
   tailAnnouncedAt: Date | null
 
   /**
+   * When the seller gave up waiting for their tail to be transferred.
+   *
+   * **The policy is not rewritten, and that is the point.**
+   * {@link remainderPolicy} is a snapshot of what was asked for at creation,
+   * and overwriting it would erase the fact that this sale asked for hryvnia
+   * and ended up with USDT. So the choice stays and this records that it was
+   * released, which is also what an operator reading the sale afterwards needs
+   * to see.
+   *
+   * What reads it is `refundsItsTail`: a sale refunds its tail when it asked to
+   * at creation **or** when its seller released the wait. One-way, and only
+   * settable once {@link tailAnnouncedAt} plus
+   * `SALE_TAIL_RELEASE_AFTER_MINUTES` has passed.
+   */
+  @Prop({ type: Date, default: null })
+  tailWaivedAt: Date | null
+
+  /**
+   * When the seller said the hand-made transfer had arrived.
+   *
+   * The gate on crediting it: `receivedAmount` is raised once, however many
+   * times the button is pressed. It is a fact worth keeping beyond that —
+   * `receivedAmount` afterwards carries hryvnia no Transacto order accounts
+   * for, and this is the only thing that says where it came from.
+   */
+  @Prop({ type: Date, default: null })
+  tailConfirmedAt: Date | null
+
+  /**
    * USDT cents handed back as the unfillable tail, on completion.
    *
    * Zero on every order that filled its jar, and on every order that waited for

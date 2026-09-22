@@ -204,6 +204,29 @@ export const ERROR = {
       message: 'That remainder policy is not available for this sale method',
     },
     /**
+     * The sale is not waiting on a hand-made transfer, so there is nothing to
+     * confirm and nothing to release.
+     *
+     * Either it has more to collect than the pipeline's floor — an ordinary
+     * payer is still coming — or its tail comes back as USDT and needs no
+     * person at all. Both are races with a screen that was drawn a moment ago.
+     */
+    TAIL_NOT_WAITING: {
+      code: 1324,
+      message: 'This sale is not waiting for its tail to be transferred',
+    },
+    /**
+     * The seller asked to finish without the transfer before the wait was up.
+     *
+     * The clock runs from the moment an operator was told, so this is also what
+     * answers a seller whose tail is still held for a statement of their own —
+     * nobody has been asked yet, so nothing has started running.
+     */
+    TAIL_NOT_RELEASABLE: {
+      code: 1325,
+      message: 'The wait for this sale’s tail has not run out yet',
+    },
+    /**
      * The market moved between the quote and the submit, far enough to change
      * the target the user was told to set as their jar's goal.
      *

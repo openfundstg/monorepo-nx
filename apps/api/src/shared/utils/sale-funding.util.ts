@@ -128,6 +128,13 @@ export interface SaleTail extends SaleDelivery {
   readonly fiatAmount: number
   /** Absent on orders stored before the choice existed — read as the default. */
   readonly remainderPolicy?: SaleRemainderPolicy | null
+  /**
+   * When the seller gave up waiting for the transfer, if they did.
+   *
+   * The other way an order comes to refund its tail — see
+   * {@link refundsItsTail}.
+   */
+  readonly tailWaivedAt?: Date | null
 }
 
 /**
@@ -172,16 +179,34 @@ export const isSaleInTail = (order: SaleTail, minOrderKopecks: number): boolean 
   saleTailKopecks(order, minOrderKopecks) > 0
 
 /**
- * Whether what is left of this order can no longer arrive, and this order is
- * one that asked for it back as USDT.
+ * Whether this order's tail comes back as USDT rather than waiting for a
+ * person.
  *
- * The fact is {@link saleTailKopecks}; this is the fact plus the choice. An
- * order created with {@link SaleRemainderPolicy.WAIT_FOR_TOP_UP} has the same
- * gap and a different ending — somebody pays it in, and the sale waits.
+ * **Two ways to be that order, and the second is not a change of mind about the
+ * first.** It asked for the refund at creation, or its seller waited the full
+ * `SALE_TAIL_RELEASE_AFTER_MINUTES` for a transfer that never came and released
+ * the wait. `remainderPolicy` is deliberately not rewritten in that second
+ * case: it is a snapshot of what was asked for, and overwriting it would erase
+ * the fact that this sale wanted hryvnia and settled for USDT.
+ *
+ * So the question is asked here rather than off the policy alone, and both
+ * {@link isRemainderRefundable} and {@link settleSale} ask it — a second copy
+ * would be a sale whose refund one of them granted and the other did not price.
+ */
+export const refundsItsTail = (order: SaleTail): boolean =>
+  (order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP) ===
+    SaleRemainderPolicy.REFUND_TO_BALANCE || order.tailWaivedAt != null
+
+/**
+ * Whether what is left of this order can no longer arrive, and this order is
+ * one that gives it back as USDT.
+ *
+ * The fact is {@link saleTailKopecks}; this is the fact plus the ending. An
+ * order still waiting under {@link SaleRemainderPolicy.WAIT_FOR_TOP_UP} has the
+ * same gap and a different ending — somebody pays it in, and the sale waits.
  */
 export const isRemainderRefundable = (order: SaleTail, minOrderKopecks: number): boolean =>
-  (order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP) ===
-    SaleRemainderPolicy.REFUND_TO_BALANCE && isSaleInTail(order, minOrderKopecks)
+  refundsItsTail(order) && isSaleInTail(order, minOrderKopecks)
 
 /** How a completed order's frozen stake is split, and what it counts as sold. */
 export interface SaleSettlement {
@@ -209,15 +234,21 @@ export interface SettleableSale extends SaleTail {
 /**
  * Splits a completing order's stake, and says how much it really sold.
  *
- * **A `WAIT_FOR_TOP_UP` order settles exactly as it always did** — the whole
- * stake is committed and the whole target counts as sold — and that branch
- * is deliberately not routed through the arithmetic below. Such an order only
- * completes once it is funded, so the two agree in every real case; but the
- * jar-growth half of {@link saleDeliveredFiat} reads zero when
+ * **An order still waiting for its tail settles exactly as it always did** —
+ * the whole stake is committed and the whole target counts as sold — and that
+ * branch is deliberately not routed through the arithmetic below. Such an order
+ * only completes once it is funded, so the two agree in every real case; but
+ * the jar-growth half of {@link saleDeliveredFiat} reads zero when
  * `openingJarBalance` was never scraped, and an order stored before that field
  * existed would otherwise have its turnover quietly reduced on completion.
  *
- * For a `REFUND_TO_BALANCE` order the delivered figure is the whole point.
+ * **The question is {@link refundsItsTail}, not the policy.** A seller who
+ * waited the full `SALE_TAIL_RELEASE_AFTER_MINUTES` and released the wait gets
+ * the refunding arithmetic although their policy still reads
+ * `WAIT_FOR_TOP_UP` — the policy is a snapshot of what they asked for, and this
+ * is what happened.
+ *
+ * For an order that does refund, the delivered figure is the whole point.
  * Turnover, the referral cut and the COMPLETED event all move to what actually
  * arrived, because crediting the full target for hryvnia nobody ever paid would
  * inflate the trust ladder and pay a referrer for money that does not exist.
@@ -230,9 +261,7 @@ export interface SettleableSale extends SaleTail {
  * produce a refund larger than the stake it is refunding out of.
  */
 export const settleSale = (order: SettleableSale): SaleSettlement => {
-  const policy = order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP
-
-  if (policy !== SaleRemainderPolicy.REFUND_TO_BALANCE) {
+  if (!refundsItsTail(order)) {
     return {
       settledFiat: order.fiatAmount,
       remainderKopecks: 0,

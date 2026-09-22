@@ -252,6 +252,65 @@ export class TmaSaleDbService {
       .lean()
   }
 
+  /**
+   * Credits a tail the seller says has arrived, once.
+   *
+   * **Not `creditExecutedOrder`, because there is no order.** A tail is the
+   * stretch under the pipeline's floor: Transacto never routed anything for it,
+   * so there is no order id to book it against and no upstream execution to
+   * mark. What arrives is one transfer somebody made by hand, and the seller
+   * saying so is the only record of it — the same testimony-against-interest a
+   * card sale runs on everywhere else.
+   *
+   * `tailConfirmedAt: null` in the filter is the gate, so two taps credit once.
+   * `$inc` rather than a computed `$set`: the figure is read, shown and
+   * confirmed over three round trips, and anything that landed in between is
+   * money this must not overwrite.
+   *
+   * `null` means somebody already confirmed it.
+   */
+  async creditTail(
+    id: string,
+    kopecks: number
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, tailConfirmedAt: null },
+        { $inc: { receivedAmount: kopecks }, $set: { tailConfirmedAt: new Date() } },
+        { new: true }
+      )
+      .lean()
+  }
+
+  /**
+   * Records that the seller stopped waiting for their tail to be transferred.
+   *
+   * The filter carries the whole rule rather than trusting the caller's read:
+   * an operator must have been told (`tailAnnouncedAt` set), the wait must have
+   * run out (`$lte` the cutoff the caller computes), and nobody may have
+   * released it already. Two taps release once, and a request that raced the
+   * clock is refused by the database rather than by a comparison made a moment
+   * earlier.
+   *
+   * {@link TmaSale.remainderPolicy} is deliberately left alone — see the field.
+   */
+  async markTailWaived(
+    id: string,
+    announcedNoLaterThan: Date
+  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        {
+          _id: id,
+          tailWaivedAt: null,
+          tailAnnouncedAt: { $ne: null, $lte: announcedNoLaterThan }
+        },
+        { $set: { tailWaivedAt: new Date() } },
+        { new: true }
+      )
+      .lean()
+  }
+
   async markClosing(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
     return this.saleModel
       .findOneAndUpdate(
@@ -281,6 +340,28 @@ export class TmaSaleDbService {
    */
   async findClosing(): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
     return this.saleModel.find({ status: TmaSaleStatus.CLOSING }).lean()
+  }
+
+  /**
+   * Every open sale that has taken money in, for the sweep that re-examines
+   * their figures.
+   *
+   * **Deliberately not "every sale in its tail".** Being in one is arithmetic
+   * over two fields against a floor that is configurable, so a query for it
+   * would be a `$expr` over a computed difference — unindexable, and a second
+   * statement of a rule `saleTailKopecks` already owns. The set below is the
+   * widest one that is cheap and indexed, and the caller filters it with the
+   * same function everything else uses.
+   *
+   * It is small by construction: a sale is open only while it is collecting,
+   * and how many a user may have at once is what the trust ladder rations.
+   * `receivedAmount > 0` drops the ones that have not started, which can have
+   * no tail at all.
+   */
+  async findOpenWithMoney(): Promise<(TmaSale & { _id: Types.ObjectId })[]> {
+    return this.saleModel
+      .find({ status: { $in: OPEN_STATUSES }, receivedAmount: { $gt: 0 } })
+      .lean()
   }
 
   async countSlotsHeldByTelegramId(telegramId: number): Promise<number> {
