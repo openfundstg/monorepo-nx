@@ -200,9 +200,7 @@ export const refundsItsTail = (order: SaleTail): boolean =>
 
 /** How far a hand-made transfer has got, as the figures record it. */
 export interface SaleTailClaim {
-  /** When an operator was asked to make the transfer. */
-  readonly tailAnnouncedAt?: Date | null
-  /** When one answered and took it on. */
+  /** When an operator answered the alert and took the transfer on. */
   readonly tailClaimedAt?: Date | null
 }
 
@@ -229,11 +227,7 @@ export const saleTailStanding = (
   const amount = saleTailKopecks(order, minOrderKopecks)
   if (amount === 0 || refundsItsTail(order)) return null
 
-  return {
-    amount,
-    announced: order.tailAnnouncedAt != null,
-    claimed: order.tailClaimedAt != null
-  }
+  return { amount, claimed: order.tailClaimedAt != null }
 }
 
 /**

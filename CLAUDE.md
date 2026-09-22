@@ -332,14 +332,23 @@ build` chain.
     the operator is sent to the panel, rather than the alert being withheld: the
     sum and the sale are what make it actionable.
 
-- **That alert is answered, and the answer is what turns a tail into an order.**
+- **That alert is answered, and the answer is what turns a tail into a payment.**
   Asking is not the same as somebody going to their banking app. An operator replies
   `+` to it *before* transferring, and only then does the seller's screen gain a last
-  order — and only then does the sale stop being theirs to end. Everywhere else in
+  payment — and only then does the sale stop being theirs to end. Everywhere else in
   this product an outstanding payment decides *how* a sale ends and never whether its
   owner may ask; this is the one stop that is refused outright, because hryvnia is on
   its way to a card no scraper watches and a sale that closed in between would take a
   real transfer into a finished order.
+
+  - **The seller must not be able to tell it apart from a payer's.** That this one is
+    transferred by hand is a fact about our plumbing, so it is drawn as one more card
+    payment and written to the timeline as `ORDER_RECEIVED` → `ORDER_CONFIRMED` →
+    `PAYMENT_MATCHED`, exactly as a routed order is. Two visible differences, both
+    honest: no countdown, because nobody upstream is running one, and no *did not
+    arrive* key, because that would ask them to dispute **us** — which is what the
+    support line in its place is for. A jar sale shows nothing at all: its transfer
+    arrives as a balance the scraper reads.
 
   - **The refusal does not expire, and no timer could be right.** A seller who says the
     transfer never came is making a claim about what an operator did, and a clock would

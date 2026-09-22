@@ -52,8 +52,9 @@ export class SaleTailService {
    * Three things follow from it, and all three are why the claim exists rather
    * than the alert alone being enough:
    *
-   * - the seller's screen gains a last order, where before it had a stopped bar
-   *   and a promise that somebody had been asked; and
+   * - the seller's screen gains a last payment, indistinguishable from the
+   *   ones a payer sent — which is the point: nothing about where this one
+   *   comes from is theirs to know; and
    * - the sale stops being theirs to end — for good, not for a while — because
    *   hryvnia is now on its way to a card nothing watches, and only a person
    *   can judge a seller who later says it never came.
@@ -85,10 +86,24 @@ export class SaleTailService {
         `stopped by its seller`
     )
 
+    // **`ORDER_RECEIVED`, which is what every other payment on this sale opens
+    // with.** From the seller's side this is one more payment on its way, and
+    // nothing about it being ours to send is theirs to know — a timeline entry
+    // written specially for it would be the one place that said so.
+    const announced =
+      (await this.saleDbService.appendEvent(saleId, {
+        type: SaleEventType.ORDER_RECEIVED,
+        amount: this.tailOf(claimed),
+        at: Date.now(),
+        // Not the seller's word and not a bank's: it is our own record that
+        // somebody undertook to send it.
+        evidence: SaleEvidence.SYSTEM
+      })) ?? claimed
+
     // No money moved, so `reconsiderFunding` has nothing to reconsider — what
     // changed is what the screen may draw and what the stop button may do, and
     // that travels as a snapshot like every other change to those.
-    await this.progressService.emit(claimed)
+    await this.progressService.emit(announced)
 
     return true
   }
@@ -135,6 +150,17 @@ export class SaleTailService {
     this.logger.log(
       `Sale ${sale.publicId}: seller confirms the ${tail} kopeck tail arrived by hand`
     )
+
+    // The same pair, in the same order, that a settled card order writes:
+    // the answer, then the money. A tail that wrote only one of them would read
+    // differently from every other payment on the sale, which is the one thing
+    // this is not allowed to do.
+    await this.saleDbService.appendEvent(saleId, {
+      type: SaleEventType.ORDER_CONFIRMED,
+      amount: tail,
+      at: Date.now(),
+      evidence: SaleEvidence.SELLER
+    })
 
     await this.saleDbService.appendEvent(saleId, {
       type: SaleEventType.PAYMENT_MATCHED,

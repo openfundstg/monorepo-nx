@@ -653,6 +653,22 @@
   font-size: 12px;
 }
 
+/*
+  The line under the last payment, for the case where it did not arrive.
+
+  Placed and sized like `.amend-open`, and muted rather than accented for the
+  same reason: the ordinary answer is the button above it, and this is the
+  exception. `margin-left` is reset because `.link-btn` is written for a link
+  sitting inside a sentence, and this one starts its own line.
+*/
+.card-order-missing {
+  align-self: flex-start;
+  margin-top: 4px;
+  margin-left: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .amend {
   display: flex;
   flex-direction: column;

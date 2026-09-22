@@ -221,9 +221,49 @@
       </div>
     }
 
-    @if (cardOrders().length > 0) {
+    @if (cardOrders().length > 0 || lastPayment()) {
       <div class="card-orders glass-card">
         <h3 class="section-title">{{ 'sale.card_orders_title' | translate }}</h3>
+
+        <!--
+          The last stretch, drawn as what it is to the seller: one more payment
+          to confirm, newest first like every other.
+
+          **Nothing here says where it comes from**, and that is the whole
+          design. That it is transferred by hand rather than routed is a fact
+          about our plumbing; what the seller has to do about it is identical.
+          Two differences they can see, and both are honest: there is no
+          countdown, because nobody upstream is running one, and there is no
+          "did not arrive" key, because denying would ask them to dispute us
+          rather than a payer — which is what the support line under it is for.
+        -->
+        @if (lastPayment(); as payment) {
+          <div class="card-order open">
+            <div class="card-order-head">
+              <strong>{{ payment.amount | uah }} {{ 'common.uah' | translate }}</strong>
+              <span class="card-order-state">
+                {{ 'SALE_CARD_ORDER.AWAITING_CONFIRMATION' | translate }}
+              </span>
+            </div>
+
+            <p class="card-order-hint">{{ 'sale.card_order_no_deadline' | translate }}</p>
+            <p class="card-order-hint">{{ 'sale.card_order_confirm_hint' | translate }}</p>
+
+            <div class="card-order-actions">
+              <button class="primary-btn" [disabled]="tailBusy()" (click)="onConfirmTail()">
+                {{ 'sale.card_order_confirm' | translate }}
+              </button>
+            </div>
+
+            <button type="button" class="link-btn card-order-missing" (click)="onContactSupport()">
+              {{ 'sale.card_order_missing' | translate }}
+            </button>
+
+            @if (tailError()) {
+              <p class="card-order-rejection">{{ tailError() }}</p>
+            }
+          </div>
+        }
 
         @for (cardOrder of cardOrdersNewestFirst(); track cardOrder.orderId) {
           <div class="card-order" [class.open]="cardOrder.orderId === openCardOrder()?.orderId">
@@ -483,24 +523,6 @@
       <div class="error-card glass-card">
         <p>{{ 'status.failed_desc' | translate }}</p>
       </div>
-    }
-
-    <!--
-      The last stretch. Placed above the stop card, because a seller looking at
-      a bar that is nearly full and going nowhere reaches for "stop" next — and
-      this is the block that explains there is nothing wrong.
-    -->
-    @if (tail(); as waiting) {
-      <app-sale-tail
-        [tail]="waiting"
-        [method]="saleMethod()"
-        [busy]="tailBusy()"
-        (confirmTail)="onConfirmTail()"
-      />
-
-      @if (tailError()) {
-        <p class="stop-error">{{ tailError() }}</p>
-      }
     }
 
     <!--

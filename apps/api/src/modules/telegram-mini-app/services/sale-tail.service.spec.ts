@@ -98,10 +98,26 @@ describe('SaleTailService', () => {
     it('pushes the seller a snapshot and settles nothing', async () => {
       await service.claim(SALE_ID)
 
-      expect(progress.emit).toHaveBeenCalledWith(
-        expect.objectContaining({ tailClaimedAt: expect.any(Date) })
-      )
+      expect(progress.emit).toHaveBeenCalled()
       expect(cardOrders.reconsiderFunding).not.toHaveBeenCalled()
+    })
+
+    /**
+     * **The entry every other payment on this sale opens with.** Nothing about
+     * this one being ours to send is the seller's to know, and a timeline row
+     * written specially for it would be the one place that said so.
+     */
+    it('opens it on the timeline as an ordinary payment', async () => {
+      await service.claim(SALE_ID)
+
+      expect(db.appendEvent).toHaveBeenCalledWith(
+        SALE_ID,
+        expect.objectContaining({
+          type: SaleEventType.ORDER_RECEIVED,
+          amount: 6_000,
+          evidence: SaleEvidence.SYSTEM
+        })
+      )
     })
 
     /** Two operators reading the same alert. Ordinary, and said differently. */
@@ -166,10 +182,19 @@ describe('SaleTailService', () => {
       expect(db.creditTail).toHaveBeenCalledWith(SALE_ID, 6_000)
     })
 
-    /** Booked as the seller's own word, which is all a card sale ever has. */
-    it('records it as the seller’s claim', async () => {
+    /**
+     * Booked as the seller's own word, which is all a card sale ever has — and
+     * as the same pair, in the same order, that a settled card order writes.
+     * A tail that wrote only one of them would read differently from every
+     * other payment on the sale, which is the one thing it may not do.
+     */
+    it('closes it on the timeline exactly as a card order does', async () => {
       await service.confirm(TELEGRAM_ID, SALE_ID)
 
+      expect(db.appendEvent.mock.calls.map(([, event]) => event.type)).toEqual([
+        SaleEventType.ORDER_CONFIRMED,
+        SaleEventType.PAYMENT_MATCHED
+      ])
       expect(db.appendEvent).toHaveBeenCalledWith(
         SALE_ID,
         expect.objectContaining({

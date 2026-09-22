@@ -884,39 +884,27 @@ export interface SaleProgress {
 }
 
 /**
- * A tail waiting on a person, as the seller's screen has to explain it.
+ * A tail waiting on a person, as far as the seller's screen has any business
+ * knowing about it.
  *
- * **The point of it being on the snapshot is that the seller is owed an
- * explanation.** From their side the sale simply stops: the bar is nearly full,
- * no new payer arrives, and nothing says why. What is actually happening is
- * that the gap left is smaller than the payment pipeline will route an order
- * for, so it can only arrive as one transfer somebody makes by hand — which is
- * a different kind of waiting from every other pause in this product, and the
- * only one with no clock a payer is running.
+ * A tail is the stretch left when the gap is smaller than the payment pipeline
+ * will route an order for: nothing can be sent to it automatically, so an
+ * operator transfers it by hand. **None of which is the seller's to know.**
+ * What reaches them is one more payment, drawn exactly as a payer's is, because
+ * a block explaining that this one comes from us would be telling them
+ * something about our plumbing and nothing about their money.
  *
- * It has three states and the seller sees all three: nobody has been asked yet
- * (a statement of their own is still outstanding), an operator has been asked,
- * and an operator has taken it on. Only the third is an order on its way, and
- * only the third holds the sale open — for good, until the transfer is
- * confirmed or an operator gives the tail back.
+ * So there is no field here for "an operator has been asked". Until somebody
+ * undertakes to send it there is nothing on its way and nothing to draw; the
+ * sale simply has not filled yet, which is what every open sale looks like.
  */
 export interface SaleTailProgress {
   /** UAH kopecks still to collect. Always above zero. */
   amount: number;
   /**
-   * Whether an operator has been asked to transfer it.
-   *
-   * `false` while the sale is still waiting on a statement of the seller's own —
-   * a declared shortfall no document has settled is about to change this very
-   * figure, so nobody is asked to send a number that is about to move. The
-   * screen says which of the two it is, because only one of them is the
-   * seller's to act on.
-   */
-  announced: boolean;
-  /**
    * Whether an operator has answered that alert and is making the transfer.
    *
-   * **The moment this sale gains a last order, and the moment it stops being
+   * **The moment this sale gains a last payment, and the moment it stops being
    * the seller's to end.** Asking is not the same as somebody going to their
    * banking app: until an operator says they have taken it on, nothing is on
    * its way, the seller may stop the sale like any other, and stopping costs
@@ -929,9 +917,9 @@ export interface SaleTailProgress {
    * hold does not expire: the sale ends when the transfer is confirmed, or when
    * an operator gives the tail back through support.
    *
-   * So this is what the screen draws the order from, what the confirmation
-   * button hangs off, and what `canCancel` goes false on — three things that
-   * have to agree, from one field.
+   * So this is what the screen draws the payment from, what the confirmation
+   * hangs off, and what `canCancel` goes false on — three things that have to
+   * agree, from one field.
    */
   claimed: boolean;
 }

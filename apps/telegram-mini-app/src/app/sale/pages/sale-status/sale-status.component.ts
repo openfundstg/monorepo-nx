@@ -36,7 +36,6 @@ import { ApiErrorService } from '../../../shared/services/api-error.service'
 import { ClockService } from '../../../shared/services/clock.service'
 import { formatRemaining } from '../../../shared/utils/format.util'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
-import { SaleTailComponent } from '../../components/sale-tail/sale-tail.component'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
 import { DateTimePipe } from '../../../shared/pipes/date-time.pipe'
 import { SaleStep } from '../../enums/sale-step.enum'
@@ -51,6 +50,7 @@ import { MetaPixelService } from '../../../shared/services/meta-pixel.service'
 import { PixelStandardEvent } from '../../../shared/enums/pixel-event.enum'
 import { TrackTapDirective } from '../../../shared/directives/track-tap.directive'
 import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
+import { environment } from '../../../../environments/environment'
 
 /** Prefix under which `SaleEventType` members are translated. */
 const EVENT_KEY_PREFIX = 'SALE_EVENT.'
@@ -95,8 +95,7 @@ const LIVE_STATUSES: ReadonlySet<TmaSaleStatus> = new Set([
     UahPipe,
     DateTimePipe,
     UsdtPipe,
-    TrackTapDirective,
-    SaleTailComponent
+    TrackTapDirective
   ],
   templateUrl: './sale-status.component.html',
   styleUrl: './sale-status.component.scss',
@@ -434,9 +433,29 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
    *
    * Straight from the snapshot rather than worked out here: whether a sale is
    * in its tail is arithmetic over a configurable floor, and a screen that
-   * decided it separately could draw a block the endpoints refuse to act on.
+   * decided it separately could draw a payment the endpoints refuse to act on.
    */
   readonly tail = computed(() => this.progress()?.tail ?? null)
+
+  /**
+   * That stretch as a payment to confirm, or `null` — which is all this screen
+   * ever draws of it.
+   *
+   * **Two conditions, and neither is about the tail being unusual.** It has to
+   * have been taken on, because until somebody undertakes to send it there is
+   * nothing on its way and a row would be inviting the seller to confirm a
+   * payment that does not exist. And it has to be a card sale, because a jar's
+   * arrives as a balance the scraper reads — the seller does nothing, sees
+   * nothing, and a button there would credit the same hryvnia twice.
+   *
+   * So a jar sale's last stretch is invisible on purpose, and a card sale's is
+   * indistinguishable from a payer's.
+   */
+  readonly lastPayment = computed(() => {
+    const tail = this.tail()
+
+    return tail?.claimed === true && this.saleMethod() === SaleMethod.CARD ? tail : null
+  })
 
   /** The confirmation is in flight, so a second tap is not a second request. */
   readonly tailBusy = signal(false)
@@ -464,15 +483,26 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
   })
 
   /**
-   * The seller says the hand-made transfer landed.
+   * The seller says the last payment landed.
    *
-   * One tap, unlike stopping: this is the ending they asked for, and the worst
-   * a mis-tap costs is a sale completed a moment early on money that is on its
-   * way. Confirming hryvnia that never came costs them their own stake, which
-   * is what makes it safe to take at face value.
+   * One tap, like confirming any other payment on this sale, and for the same
+   * reason: confirming hryvnia that never came costs them their own stake,
+   * which is what makes it safe to take at face value.
    */
   async onConfirmTail(): Promise<void> {
     await this.runTailAction(() => this.saleService.confirmTail(this.orderId))
+  }
+
+  /**
+   * …and the line under it, for the case where it did not.
+   *
+   * A chat rather than a refusal key. Denying here would be disputing *us*
+   * rather than a payer, which is not a thing a button can adjudicate: whether
+   * the transfer was really made is a question for a person with both sides in
+   * front of them. `openTelegramLink` and not an `<a href>` — see the service.
+   */
+  onContactSupport(): void {
+    if (environment.botUrl) this.tma.openTelegramLink(environment.botUrl)
   }
 
   /**

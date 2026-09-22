@@ -308,19 +308,20 @@ describe('saleTailStanding', () => {
     ).toBeNull()
   })
 
-  it('reports the gap with nobody asked yet', () => {
-    expect(saleTailStanding(order(), MIN)).toEqual({
-      amount: 10_000,
-      announced: false,
-      claimed: false
-    })
+  it('reports the gap with nobody sending it', () => {
+    expect(saleTailStanding(order(), MIN)).toEqual({ amount: 10_000, claimed: false })
   })
 
-  /** Asking starts nothing; it only says somebody has been asked. */
-  it('separates having been asked from having been taken on', () => {
+  /**
+   * **Asking is not on the wire, and that is deliberate.** Whether an operator
+   * has been *asked* is a fact about our plumbing; the seller's screen draws
+   * nothing from it, and a field nothing renders is a field that invites
+   * somebody to render it.
+   */
+  it('says only whether somebody has taken it on', () => {
     expect(
       saleTailStanding(order({ tailAnnouncedAt: new Date('2026-09-21T11:00:00Z') }), MIN)
-    ).toEqual({ amount: 10_000, announced: true, claimed: false })
+    ).toEqual({ amount: 10_000, claimed: false })
 
     expect(
       saleTailStanding(
@@ -330,7 +331,7 @@ describe('saleTailStanding', () => {
         }),
         MIN
       )
-    ).toEqual({ amount: 10_000, announced: true, claimed: true })
+    ).toEqual({ amount: 10_000, claimed: true })
   })
 })
 

@@ -5,6 +5,7 @@ import { ActivatedRoute, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import {
   SaleCardOrderState,
+  SaleMethod,
   SaleStatementRejection,
   SaleStatementStatus,
   TmaSaleStatus,
@@ -271,6 +272,83 @@ describe('SaleStatusComponent payment order', () => {
 });
 
 /**
+ * The last stretch, and how much of it the seller is allowed to notice.
+ *
+ * **They should not be able to tell it apart from a payer's.** That it is
+ * transferred by hand rather than routed is a fact about our plumbing, so the
+ * screen draws it as one more payment to confirm — and draws nothing at all
+ * until somebody has undertaken to send it, because until then nothing is on
+ * its way and the sale simply has not filled yet.
+ */
+describe('SaleStatusComponent last payment', () => {
+  let component: SaleStatusComponent;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'sale-1' } } } },
+        { provide: SaleService, useValue: {} },
+        {
+          provide: WsService,
+          useValue: {
+            connected: signal(true),
+            saleProgress: () => null,
+            connectionEpoch: () => 0,
+            connect: vi.fn(),
+          },
+        },
+        {
+          provide: TmaService,
+          useValue: { hapticFeedback: vi.fn(), showBackButton: vi.fn(), hideBackButton: vi.fn() },
+        },
+        { provide: ClockService, useValue: { now: () => Date.now() } },
+        { provide: MetaPixelService, useValue: { trackConversion: vi.fn() } },
+      ],
+    });
+
+    component = TestBed.runInInjectionContext(() => new SaleStatusComponent());
+  });
+
+  const on = (progress: Partial<SaleProgress>): void => {
+    component.progress.set(progress as SaleProgress);
+  };
+
+  it('draws it once an operator has taken it on', () => {
+    on({ saleMethod: SaleMethod.CARD, tail: { amount: 6_000, claimed: true } });
+
+    expect(component.lastPayment()).toEqual({ amount: 6_000, claimed: true });
+  });
+
+  /** Nothing is on its way, so there is nothing to confirm and nothing to say. */
+  it('draws nothing while nobody has', () => {
+    on({ saleMethod: SaleMethod.CARD, tail: { amount: 6_000, claimed: false } });
+
+    expect(component.lastPayment()).toBeNull();
+  });
+
+  /**
+   * A jar's last stretch arrives as a balance the scraper reads: the seller
+   * does nothing and sees nothing, and a button here would credit the same
+   * hryvnia twice.
+   */
+  it('draws nothing on a jar sale, taken on or not', () => {
+    on({ saleMethod: SaleMethod.JAR, tail: { amount: 6_000, claimed: true } });
+
+    expect(component.lastPayment()).toBeNull();
+  });
+
+  it('draws nothing where there is no tail at all', () => {
+    on({ saleMethod: SaleMethod.CARD });
+
+    expect(component.lastPayment()).toBeNull();
+  });
+});
+
+/**
  * What the stop card promises, and why it cannot always promise a refund.
  *
  * **The button stays and the promise changes.** `sale.stop_hint` quotes a
@@ -346,7 +424,7 @@ describe('SaleStatusComponent stop hint', () => {
   it('still quotes the refund while a tail is waiting to be taken on', () => {
     on({
       pendingAmount: 0,
-      tail: { amount: 6_000, announced: true, claimed: false },
+      tail: { amount: 6_000, claimed: false },
     });
 
     expect(component.stopHintKey()).toBe('sale.stop_hint');
