@@ -402,13 +402,6 @@
   font-size: 18px;
 }
 
-.bank-icon-md {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  object-fit: cover;
-}
-
 .activity-info {
   flex: 1;
   display: flex;
@@ -417,9 +410,35 @@
   min-width: 0;
 }
 
+/*
+  A row and a flex container, because a sale's bank logo sits on the same line
+  as the word. `min-width: 0` so it may still shrink inside `.activity-info`:
+  without it the longest label here — a balance correction's — pushes the row's
+  figures off a narrow screen.
+*/
 .activity-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+/*
+  The bank's logo beside the word, rather than in the tile on the left.
+
+  Sized to the line it sits on — 16px against a 14px cap height — so it reads as
+  a mark on "Продаж" and not as a second icon. `flex-shrink` because the row's
+  right-hand figures may squeeze this column on a narrow phone, and a squashed
+  logo is worse than a clipped one.
+*/
+.bank-icon-inline {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: cover;
 }
 
 .activity-date {

@@ -11,6 +11,8 @@ import { Router } from '@angular/router'
 import { TranslatePipe } from '@ngx-translate/core'
 import { TmaService } from '../../../auth/services/tma.service'
 import { MethodTileComponent } from '../../../shared/components/method-tile/method-tile.component'
+import { SaleMethodIconComponent } from '../../../shared/components/sale-method-icon/sale-method-icon.component'
+import { SaleMethod } from '@transacto/contracts'
 
 /**
  * ⚠️ TEMPORARY — delete this and the three members it supports when the card
@@ -42,7 +44,7 @@ const TAPS_TO_REVEAL_CARD = 5
  */
 @Component({
   selector: 'app-sale-method',
-  imports: [TranslatePipe, MethodTileComponent],
+  imports: [TranslatePipe, MethodTileComponent, SaleMethodIconComponent],
   templateUrl: './sale-method.component.html',
   styleUrl: './sale-method.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -50,6 +52,9 @@ const TAPS_TO_REVEAL_CARD = 5
 export class SaleMethodComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router)
   private readonly tma = inject(TmaService)
+
+  /** Named for the template, which picks a glyph per tile. */
+  protected readonly SaleMethod = SaleMethod
 
   /** ⚠️ TEMPORARY — taps so far on the greyed card tile. */
   private readonly cardTaps = signal(0)

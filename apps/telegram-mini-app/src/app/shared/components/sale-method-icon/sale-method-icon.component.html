@@ -1,0 +1,35 @@
+@if (method() === SaleMethod.JAR) {
+  <svg
+    [attr.width]="size()"
+    [attr.height]="size()"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="7.5" y="3" width="9" height="3" rx="1" />
+    <path
+      d="M8.5 6v1.5c-2.1.8-3.5 2.6-3.5 4.8v6.2A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5v-6.2c0-2.2-1.4-4-3.5-4.8V6"
+    />
+    <circle cx="12" cy="15.5" r="2.25" />
+  </svg>
+} @else {
+  <svg
+    [attr.width]="size()"
+    [attr.height]="size()"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
+    <path d="M3 10h18" />
+    <path d="M7 14.5h4" />
+  </svg>
+}

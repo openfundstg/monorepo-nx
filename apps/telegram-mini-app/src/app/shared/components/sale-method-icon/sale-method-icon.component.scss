@@ -1,0 +1,11 @@
+/*
+  Nothing but the box the glyph sits in. Every colour it draws in is
+  `currentColor`, so the caller decides by setting `color` on this element or
+  anything above it — which is what lets a disabled tile grey its icon out
+  without the icon knowing what a disabled tile is.
+*/
+:host {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

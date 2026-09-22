@@ -23,6 +23,7 @@ import { TrackTapDirective } from '../../../shared/directives/track-tap.directiv
 import { TourAnchorDirective } from '../../../shared/directives/tour-anchor.directive'
 import { ExchangeRateComponent } from '../../../shared/components/exchange-rate/exchange-rate.component'
 import { LogoComponent } from '../../../shared/components/logo/logo.component'
+import { SaleMethodIconComponent } from '../../../shared/components/sale-method-icon/sale-method-icon.component'
 import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
 import { TourStep } from '../../../shared/enums/tour-step.enum'
 import {
@@ -66,7 +67,8 @@ import { selectNextRung, selectTurnoverProgress } from '../../store/trust.select
     TrackTapDirective,
     TourAnchorDirective,
     ExchangeRateComponent,
-    LogoComponent
+    LogoComponent,
+    SaleMethodIconComponent
   ],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',

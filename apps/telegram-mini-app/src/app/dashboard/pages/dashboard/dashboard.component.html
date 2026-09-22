@@ -272,11 +272,16 @@
             } @else if (item.type === 'balance_movement') {
               {{ movementIcon(item.kind) }}
             } @else {
-              <img
-                [src]="'banks/' + item.bankType.toLowerCase() + '.png'"
-                [alt]="'sale.bank_' + item.bankType.toLowerCase() | translate"
-                class="bank-icon-md"
-              />
+              <!--
+                **Where the hryvnia went, not which bank they went through.**
+                The tile used to carry the bank's logo, which answered a
+                question nobody was asking of a *list*: two sales through the
+                same bank looked identical, and the one thing that makes them
+                different kinds of sale — a jar, or the seller's own card — was
+                nowhere on the row. The same two marks the method picker offers
+                them under, so a row and the screen that created it agree.
+              -->
+              <app-sale-method-icon [method]="item.saleMethod" [size]="22" />
             }
           </div>
 
@@ -293,6 +298,16 @@
                 {{ 'dashboard.movement.' + item.kind | translate }}
               } @else {
                 {{ 'dashboard.sale' | translate }}
+                <!--
+                  The bank, now that the tile says something else. Inline and
+                  cap-height, so it reads as a mark on the word rather than as a
+                  second icon competing with the one on the left.
+                -->
+                <img
+                  [src]="'banks/' + item.bankType.toLowerCase() + '.png'"
+                  [alt]="'sale.bank_' + item.bankType.toLowerCase() | translate"
+                  class="bank-icon-inline"
+                />
               }
             </span>
             @if (item.type === 'sale') {

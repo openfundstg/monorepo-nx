@@ -670,6 +670,15 @@ export interface SaleHistoryEntry extends BalanceHistoryEntryBase {
    */
   stakeUsdtCents: number;
   bankType: string;
+  /**
+   * Where the hryvnia went — a jar, or the seller's own card.
+   *
+   * On the row because it is the first thing that distinguishes one sale from
+   * another: the bank is a detail of the destination, the destination is the
+   * shape of the sale. Orders stored before the card variant existed carry no
+   * value, so the server reads them as jars — which is what they were.
+   */
+  saleMethod: SaleMethod;
   /** See {@link TmaSale.publicId}. */
   publicId: string;
   /**

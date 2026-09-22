@@ -1,5 +1,5 @@
 import { Controller, Get, NotFoundException, Req } from '@nestjs/common'
-import { ERROR } from '@transacto/contracts'
+import { ERROR, SaleMethod } from '@transacto/contracts'
 import type { BalanceHistoryEntry, UserProfileResponse } from '@transacto/contracts'
 import { UserTypeTMA } from 'src/modules/auth'
 import type { TmaAuthenticatedRequest } from 'src/shared/interfaces'
@@ -153,6 +153,10 @@ export class TmaUserController {
         // handed back.
         stakeUsdtCents: order.frozenUsdt - order.refundedRemainderUsdt,
         bankType: order.bankType,
+        // Where the hryvnia went, which is what the row's own mark says. `??`
+        // because a lean read applies no default to orders stored before the
+        // card variant existed — and a jar is what those were.
+        saleMethod: order.saleMethod ?? SaleMethod.JAR,
         status: order.status,
         // On the list so the two kinds are distinguishable without opening
         // each one — they end differently enough that "which was this?" is a
