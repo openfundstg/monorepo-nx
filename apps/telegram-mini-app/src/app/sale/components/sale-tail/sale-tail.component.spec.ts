@@ -6,15 +6,14 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { SaleTailComponent } from './sale-tail.component'
 
 /**
- * ₴60 left, an operator asked and having taken it on, and the wait not yet up —
- * the state the block is drawn in while a transfer is actually on its way.
+ * ₴60 left, asked for and taken on — the state the block is drawn in while a
+ * transfer is actually on its way, and the sale is no longer the seller's to
+ * end.
  */
 const tail = (overrides: Partial<SaleTailProgress> = {}): SaleTailProgress => ({
   amount: 6_000,
   announced: true,
   claimed: true,
-  releasableAt: Date.now() + 60_000,
-  releasable: false,
   ...overrides
 })
 
@@ -26,7 +25,6 @@ const tail = (overrides: Partial<SaleTailProgress> = {}): SaleTailProgress => ({
       [method]="method()"
       [busy]="busy()"
       (confirmTail)="confirmed = confirmed + 1"
-      (releaseTail)="released = released + 1"
     />
   `
 })
@@ -35,17 +33,18 @@ class HostComponent {
   readonly method = signal(SaleMethod.CARD)
   readonly busy = signal(false)
   confirmed = 0
-  released = 0
 }
 
 /**
  * The block that explains why a nearly-full sale has stopped.
  *
- * Three things it must never get wrong, and all three are about offering a
- * button the endpoint would refuse: a jar seller has nothing to confirm,
- * because their tail is seen rather than reported; nobody may confirm a
- * transfer no operator has taken on, because nothing was ever started; and
- * nobody may finish without one before the wait has run out.
+ * Two things it must never get wrong, and both are about offering a button the
+ * endpoint would refuse: a jar seller has nothing to confirm, because their
+ * tail is seen rather than reported, and nobody may confirm a transfer no
+ * operator has taken on, because nothing was ever started.
+ *
+ * There is no third button. The other ending — the gap coming back as USDT — is
+ * an operator's call now, so this block names support rather than a time.
  */
 describe('SaleTailComponent', () => {
   let fixture: ComponentFixture<HostComponent>
@@ -162,48 +161,21 @@ describe('SaleTailComponent', () => {
     expect(el().querySelector('.tail-why')).not.toBeNull()
   })
 
-  describe('finishing without the transfer', () => {
-    /**
-     * `releasable` comes from the server rather than being worked out from the
-     * date against this device's clock, so the button cannot be offered where
-     * the endpoint would refuse it.
-     */
-    it('is not offered before the wait is up', () => {
-      expect(button('sale.tail_release')).toBeUndefined()
-      expect(el().textContent).toContain('sale.tail_release_at')
-    })
-
-    it('is offered once it is', async () => {
-      await set({ releasable: true })
-
-      expect(button('sale.tail_release')).toBeDefined()
-      expect(el().textContent).toContain('sale.tail_release_hint')
-    })
-
-    it('emits the release when it is tapped', async () => {
-      await set({ releasable: true })
-
-      button('sale.tail_release')?.click()
-
-      expect(host.released).toBe(1)
-    })
-
-    /** Nobody has been asked, so no clock is running and there is nothing to say. */
-    it('promises no date while nobody has been asked', async () => {
-      await set({ announced: false, claimed: false, releasableAt: null })
-
-      expect(el().textContent).not.toContain('sale.tail_release_at')
-      expect(button('sale.tail_release')).toBeUndefined()
-    })
-  })
-
-  /** One call at a time: both buttons wait for whichever is in flight. */
-  it('disables both buttons while a call is in flight', async () => {
-    await set({ releasable: true })
+  /** A second tap must not be a second request. */
+  it('disables the confirmation while the call is in flight', async () => {
     host.busy.set(true)
     await fixture.whenStable()
 
     expect(button('sale.tail_confirming')?.disabled).toBe(true)
-    expect(button('sale.tail_releasing')?.disabled).toBe(true)
+  })
+
+  /**
+   * There is no way out of the hold on this screen, and that is the design: a
+   * seller saying the transfer never came is making a claim about what an
+   * operator did, so the block sends them to the people who can check.
+   */
+  it('offers no way to finish without the transfer', () => {
+    expect(el().textContent).toContain('sale.tail_hold')
+    expect(el().querySelectorAll('button')).toHaveLength(1)
   })
 })

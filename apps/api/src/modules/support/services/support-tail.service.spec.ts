@@ -41,18 +41,19 @@ const reply = (text: string): TelegramMessage =>
   }) as unknown as TelegramMessage
 
 /**
- * Both halves of one exchange: the ask that goes into the operators' group, and
- * the `+` that answers it.
+ * The whole exchange: the ask that goes into the operators' group, the `+` that
+ * takes it on, and the `-` that gives it back.
  *
- * The answer is what the assertions here are mostly about, because it is
- * load-bearing rather than polite — until it is written nothing is on its way,
- * and once it is, the seller can no longer end their own sale.
+ * The answers are what the assertions here are mostly about, because they are
+ * load-bearing rather than polite. Until the `+` nothing is on its way; after
+ * it the seller can no longer end their own sale, and no timer will let them —
+ * `-` is the only way back out.
  */
 describe('SupportTailService', () => {
   let telegramApi: { sendMessage: jest.Mock }
   let config: { groupId: number | null }
   let saleDb: { rememberTailAlert: jest.Mock; findByTailAlert: jest.Mock }
-  let tails: { claim: jest.Mock }
+  let tails: { claim: jest.Mock; waive: jest.Mock }
   let service: SupportTailService
 
   const build = () =>
@@ -73,7 +74,7 @@ describe('SupportTailService', () => {
         publicId: 'Z38SL69F'
       })
     }
-    tails = { claim: jest.fn().mockResolvedValue(true) }
+    tails = { claim: jest.fn().mockResolvedValue(true), waive: jest.fn().mockResolvedValue(true) }
     service = build()
   })
 
@@ -132,6 +133,17 @@ describe('SupportTailService', () => {
 
       expect(sent()).toContain('«+»')
       expect(sent()).toContain('Прийнято')
+    })
+
+    /**
+     * …and names the way back out in the same breath, because taking a transfer
+     * on holds somebody's sale with no timer behind it. An operator who learns
+     * that only from a support ticket learns it too late.
+     */
+    it('names the answer that gives the tail back', async () => {
+      await service.onSaleTailReached(tail())
+
+      expect(sent()).toContain('«-»')
     })
 
     /** A reply finds its sale by this id and by nothing else. */
@@ -223,7 +235,7 @@ describe('SupportTailService', () => {
     })
 
     /** Operators talk in that thread. A sentence containing a plus is a sentence. */
-    it.each(['+1', 'ок +', 'беру', ''])('ignores %p', async (text) => {
+    it.each(['+1', 'ок +', '-1', 'беру', ''])('ignores %p', async (text) => {
       await service.handleReply(reply(text), ALERT_ID)
 
       expect(saleDb.findByTailAlert).not.toHaveBeenCalled()
@@ -253,6 +265,44 @@ describe('SupportTailService', () => {
       telegramApi.sendMessage.mockRejectedValue(new Error('also down'))
 
       await expect(service.handleReply(reply('+'), ALERT_ID)).resolves.toBeUndefined()
+    })
+  })
+
+  /**
+   * The only way out of a hold that has no timer. A seller saying the transfer
+   * never came is making a claim about what an operator did; support decides,
+   * and this is the lever.
+   */
+  describe('giving it back', () => {
+    it('waives the tail the reply answers', async () => {
+      await service.handleReply(reply('-'), ALERT_ID)
+
+      expect(tails.waive).toHaveBeenCalledWith(SALE_ID)
+      expect(tails.claim).not.toHaveBeenCalled()
+    })
+
+    it('says the seller has it back, and that nothing should be transferred', async () => {
+      await service.handleReply(reply('-'), ALERT_ID)
+
+      expect(sent()).toContain('Z38SL69F')
+      expect(sent()).toContain('USDT')
+      expect(sent()).toContain('Не переказуйте')
+    })
+
+    it('says so when it was already given back', async () => {
+      tails.waive.mockResolvedValue(false)
+
+      await service.handleReply(reply('-'), ALERT_ID)
+
+      expect(sent()).toContain('уже повернуто')
+    })
+
+    it('tells them the sale is past it when there is no tail left', async () => {
+      tails.waive.mockRejectedValue(new ConflictException(ERROR.SALE.TAIL_NOT_WAITING))
+
+      await service.handleReply(reply('-'), ALERT_ID)
+
+      expect(sent()).toContain('Не переказуйте')
     })
   })
 })

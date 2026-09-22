@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
 import { ERROR, formatCardNumber, KOPECKS_PER_UAH, SaleMethod } from '@transacto/contracts'
-import { SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 import { TMA_DOMAIN_EVENT } from 'src/shared/interfaces'
 import type { TelegramMessage, TmaSaleTailReachedEvent } from 'src/shared/interfaces'
 import { describeError, describeTelegramFailure, errorCodeOf } from 'src/shared/utils'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
+import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { SaleTailService } from 'src/modules/telegram-mini-app'
 import { SupportConfig } from 'src/modules/support/constants/support.constants'
 import { SupportAdminText } from 'src/modules/support/constants/support-bot-text.constants'
@@ -34,6 +34,12 @@ const uah = (kopecks: number): string => (kopecks / KOPECKS_PER_UAH).toFixed(2)
  * order. That is the whole of why the claim exists and why this file answers
  * every `+` it takes: silence has to mean "not taken", so it can never be
  * mistaken for "taken".
+ *
+ * **And `-` is the only way back out of it.** The hold has no timer, because a
+ * seller saying the transfer never came is making a claim about what an
+ * operator did and a clock would settle that in their favour by default. So the
+ * seller goes to support and a person decides; `-` under the same alert is that
+ * decision, and it gives the gap back to them as USDT.
  *
  * Nothing here throws. An exception escaping a webhook handler is Telegram
  * redelivering the same update forever.
@@ -85,9 +91,13 @@ export class SupportTailService {
       `Юзер: ${event.telegramId}\n\n` +
       `Менше цієї суми Transacto нікого не зароутить, тому автоматично вона вже не ` +
       `надійде. Роутинг на цей продаж вимкнено, щоб ніхто не перевищив ціль.\n\n` +
-      `➡️ Перш ніж переказувати — відповідьте на це повідомлення «${SupportConfig.TAIL_CLAIM_REPLY}». ` +
-      `Поки ніхто не відповів, продавець може завершити продаж достроково, і переказ ` +
-      `піде в закритий ордер. Переказуйте лише після «${SupportAdminText.TAIL_TAKEN_MARK}».`
+      `➡️ Перш ніж переказувати — відповідьте на це повідомлення ` +
+      `«${SupportConfig.TAIL_CLAIM_REPLY}». Поки ніхто не відповів, продавець може ` +
+      `завершити продаж, і переказ піде в закритий ордер. Переказуйте лише після ` +
+      `«${SupportAdminText.TAIL_TAKEN_MARK}».\n` +
+      `Після цього продаж заблоковано для продавця, доки не надійде переказ, — тож якщо ` +
+      `переказу не буде, відповідьте «${SupportConfig.TAIL_RELEASE_REPLY}», і залишок ` +
+      `повернеться йому в USDT.`
 
     try {
       const sent = await this.telegramApi.sendMessage({ chat_id: groupId, text })
@@ -114,57 +124,65 @@ export class SupportTailService {
    * An operator answers one of those alerts.
    *
    * Reached for every reply in the group's General thread, most of which are
-   * about nothing — so the two cheap checks come first, and a reply that is not
-   * a `+` under an alert of ours leaves exactly as quietly as it did before
-   * this existed.
+   * about nothing — so the two cheap checks come first, and a reply that is
+   * neither answer, or is under something that is not an alert of ours, leaves
+   * exactly as quietly as it did before this existed.
    *
    * The sale is resolved from the message being replied to rather than from
    * anything the operator typed, so there is no id to get wrong and nothing to
    * address the wrong sale with.
    */
   async handleReply(message: TelegramMessage, replyToId: number): Promise<void> {
-    if (message.text?.trim() !== SupportConfig.TAIL_CLAIM_REPLY) return
+    const answer = message.text?.trim()
+    const taking = answer === SupportConfig.TAIL_CLAIM_REPLY
+    if (!taking && answer !== SupportConfig.TAIL_RELEASE_REPLY) return
 
     const sale = await this.saleDb.findByTailAlert(replyToId)
     if (!sale) return
 
-    const saleId = sale._id.toString()
-
     // **Logged on the way in, before anything can refuse it.** The whole
-    // visible effect of a `+` is a sentence back in the chat, so "I wrote it
-    // and nothing happened" has two completely different causes — it never
+    // visible effect of an answer is a sentence back in the chat, so "I wrote
+    // it and nothing happened" has two completely different causes — it never
     // reached this deployment, or it reached it and was refused. One line here
     // is what tells those apart without a reproduction.
     this.logger.log(
-      `Tail of sale ${sale.publicId} answered by ${message.from?.id ?? 'unknown'}`
+      `Tail of sale ${sale.publicId} answered '${answer}' by ${message.from?.id ?? 'unknown'}`
     )
 
     try {
-      const taken = await this.tails.claim(saleId)
-
-      await this.answer(
-        message,
-        taken
-          ? SupportAdminText.tailClaimed(sale.publicId, SALE_TAIL_RELEASE_AFTER_MINUTES)
-          : SupportAdminText.TAIL_ALREADY_CLAIMED
-      )
+      await this.answer(message, taking ? await this.take(sale) : await this.give(sale))
     } catch (error: unknown) {
       await this.answer(message, this.textFor(error))
 
       this.logger.warn(
-        `Tail of sale ${sale.publicId} could not be taken on: ${describeError(error)}`
+        `Tail of sale ${sale.publicId} could not be answered: ${describeError(error)}`
       )
     }
+  }
+
+  /** `+`: this operator is making the transfer. */
+  private async take(sale: StoredSale): Promise<string> {
+    return (await this.tails.claim(sale._id.toString()))
+      ? SupportAdminText.tailClaimed(sale.publicId, SupportConfig.TAIL_RELEASE_REPLY)
+      : SupportAdminText.TAIL_ALREADY_CLAIMED
+  }
+
+  /** `-`: nobody is, and the seller gets the gap back as USDT. */
+  private async give(sale: StoredSale): Promise<string> {
+    return (await this.tails.waive(sale._id.toString()))
+      ? SupportAdminText.tailWaived(sale.publicId)
+      : SupportAdminText.TAIL_ALREADY_WAIVED
   }
 
   /**
    * Which sentence a failure deserves.
    *
    * Two outcomes an operator acts on differently, and only the code tells them
-   * apart. "No longer waiting" means do not transfer at all — the sale has
-   * closed or filled, and the money would land in a finished order. Anything
-   * else means try again, and saying "do not transfer" where the truth is "ask
-   * me again" is how a seller is left waiting for a transfer nobody makes.
+   * apart. "No longer waiting" means there is nothing to do either way — the
+   * sale has closed or filled, so a transfer would land in a finished order and
+   * there is no gap left to give back. Anything else means try again, and
+   * saying "do not transfer" where the truth is "ask me again" is how a seller
+   * is left waiting for a transfer nobody makes.
    */
   private textFor(error: unknown): string {
     const code = errorCodeOf(error)

@@ -235,69 +235,49 @@ describe('SaleTailService', () => {
     })
   })
 
-  describe('the seller stops waiting', () => {
+  describe('an operator gives the tail back', () => {
     /**
-     * The whole rule travels into the filter rather than being decided here and
-     * written there, so a request that raced the clock is refused by the
-     * database and not by a comparison made a moment earlier.
+     * The seller cannot reach this. Once somebody has taken the transfer on,
+     * "it never arrived" is a claim about what an operator did, and no timer
+     * settles that honestly — so the verdict arrives from the group instead.
      */
-    it('releases it only once both moments are older than the wait', async () => {
-      jest.useFakeTimers().setSystemTime(new Date('2026-09-21T13:00:00Z'))
-      try {
-        await service.release(TELEGRAM_ID, SALE_ID)
-      } finally {
-        jest.useRealTimers()
-      }
+    it('waives it and hands the sale to the settlement rules', async () => {
+      await expect(service.waive(SALE_ID)).resolves.toBe(true)
 
-      expect(db.markTailWaived).toHaveBeenCalledWith(
-        SALE_ID,
-        new Date('2026-09-21T10:00:00Z')
-      )
-    })
-
-    it('hands the released sale to the settlement rules', async () => {
-      await service.release(TELEGRAM_ID, SALE_ID)
-
+      expect(db.markTailWaived).toHaveBeenCalledWith(SALE_ID)
       expect(cardOrders.reconsiderFunding).toHaveBeenCalledWith(
         expect.objectContaining({ tailWaivedAt: expect.any(Date) })
       )
     })
 
-    /** Available to a jar sale too: its seller can be left waiting just as long. */
-    it('does not refuse a jar sale', async () => {
-      db.findById.mockResolvedValue(sale({ saleMethod: SaleMethod.JAR }))
+    /** Available whether or not anybody ever took it on. */
+    it('does not need the tail to have been claimed', async () => {
+      db.findById.mockResolvedValue(unclaimed())
 
-      await expect(service.release(TELEGRAM_ID, SALE_ID)).resolves.toBeDefined()
+      await expect(service.waive(SALE_ID)).resolves.toBe(true)
     })
 
-    /**
-     * The clock runs from the later of being told and being taken on, so a tail
-     * nobody has been asked about has no clock running at all — which is what a
-     * seller whose tail is still held for a statement of their own meets, and
-     * an operator who takes one on late restarts it.
-     */
-    it('refuses while the wait has not run out', async () => {
-      db.markTailWaived.mockResolvedValue(null)
-
-      await expect(service.release(TELEGRAM_ID, SALE_ID)).rejects.toMatchObject({
-        response: ERROR.SALE.TAIL_NOT_RELEASABLE
-      })
-    })
-
-    it('is a no-op once somebody has already released it', async () => {
+    /** Two operators answering the same alert. Given back once. */
+    it('answers false when it was already given back', async () => {
       db.findById.mockResolvedValue(sale({ tailWaivedAt: new Date('2026-09-21T13:00:00Z') }))
       db.markTailWaived.mockResolvedValue(null)
 
-      await expect(service.release(TELEGRAM_ID, SALE_ID)).resolves.toBeDefined()
+      await expect(service.waive(SALE_ID)).resolves.toBe(false)
       expect(cardOrders.reconsiderFunding).not.toHaveBeenCalled()
+    })
+
+    it('refuses a sale the filter would not take', async () => {
+      db.markTailWaived.mockResolvedValue(null)
+
+      await expect(service.waive(SALE_ID)).rejects.toMatchObject({
+        response: ERROR.SALE.TAIL_NOT_WAITING
+      })
     })
 
     it('refuses a sale that is no longer in its tail', async () => {
       db.findById.mockResolvedValue(sale({ receivedAmount: 50_000 }))
 
-      await expect(service.release(TELEGRAM_ID, SALE_ID)).rejects.toBeInstanceOf(
-        ConflictException
-      )
+      await expect(service.waive(SALE_ID)).rejects.toBeInstanceOf(ConflictException)
       expect(db.markTailWaived).not.toHaveBeenCalled()
     })
   })

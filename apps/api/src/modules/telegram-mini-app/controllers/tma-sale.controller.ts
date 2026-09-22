@@ -192,6 +192,11 @@ export class TmaSaleController {
    *
    * Card sales only — a jar sale's tail is seen by the scraper rather than
    * reported, and a button there would credit the same hryvnia twice.
+   *
+   * **There is no sibling endpoint for the other ending.** Giving a tail back
+   * is an operator's call, taken in the group where the transfer was asked for:
+   * once somebody has taken it on, "it never arrived" is a claim about what
+   * they did, and this seller is not the one who can settle it.
    */
   @Post(':id/tail/confirm')
   @UserTypeTMA()
@@ -200,32 +205,6 @@ export class TmaSaleController {
     @Param('id') id: string
   ): Promise<SaleProgress> {
     const sale = await this.saleTail.confirm(req.tmaUser.id, id)
-
-    return this.saleProgress.build(sale)
-  }
-
-  /**
-   * POST /api/tma/sales/:id/tail/release
-   *
-   * The seller stops waiting for that transfer, and takes the gap as USDT.
-   *
-   * The other ending a tail can have, chosen at the end rather than at
-   * creation. Refused until `SALE_TAIL_RELEASE_AFTER_MINUTES` have passed
-   * **since an operator was told** — a tail held for a statement of the
-   * seller's own can be hours old before anyone hears about it, and a wait
-   * measured from its appearance would run out while the request was still
-   * unread.
-   *
-   * The sale completes successfully rather than being cancelled: what was
-   * delivered was sold, with its profit, and only the gap comes back.
-   */
-  @Post(':id/tail/release')
-  @UserTypeTMA()
-  async releaseTail(
-    @Req() req: TmaAuthenticatedRequest,
-    @Param('id') id: string
-  ): Promise<SaleProgress> {
-    const sale = await this.saleTail.release(req.tmaUser.id, id)
 
     return this.saleProgress.build(sale)
   }

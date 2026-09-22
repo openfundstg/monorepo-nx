@@ -184,11 +184,11 @@ export const isSaleInTail = (order: SaleTail, minOrderKopecks: number): boolean 
  * person.
  *
  * **Two ways to be that order, and the second is not a change of mind about the
- * first.** It asked for the refund at creation, or its seller waited the full
- * `SALE_TAIL_RELEASE_AFTER_MINUTES` for a transfer that never came and released
- * the wait. `remainderPolicy` is deliberately not rewritten in that second
- * case: it is a snapshot of what was asked for, and overwriting it would erase
- * the fact that this sale wanted hryvnia and settled for USDT.
+ * first.** It asked for the refund at creation, or an operator gave its tail
+ * back after the transfer it was waiting for never came. `remainderPolicy` is
+ * deliberately not rewritten in that second case: it is a snapshot of what was
+ * asked for, and overwriting it would erase the fact that this sale wanted
+ * hryvnia and settled for USDT.
  *
  * So the question is asked here rather than off the policy alone, and both
  * {@link isRemainderRefundable} and {@link settleSale} ask it — a second copy
@@ -198,8 +198,8 @@ export const refundsItsTail = (order: SaleTail): boolean =>
   (order.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP) ===
     SaleRemainderPolicy.REFUND_TO_BALANCE || order.tailWaivedAt != null
 
-/** The two moments the wait for a hand-made transfer is measured from. */
-export interface SaleTailClock {
+/** How far a hand-made transfer has got, as the figures record it. */
+export interface SaleTailClaim {
   /** When an operator was asked to make the transfer. */
   readonly tailAnnouncedAt?: Date | null
   /** When one answered and took it on. */
@@ -221,33 +221,18 @@ export interface SaleTailClock {
  * `null` where there is no gap, and where the gap comes back as USDT: that
  * ending closes the sale by itself, so there is nothing for a screen to explain
  * and nothing for a transfer to hold open.
- *
- * `now` is passed rather than read so a caller settling a batch judges every
- * sale in it against one instant.
  */
 export const saleTailStanding = (
-  order: SaleTail & SaleTailClock,
-  minOrderKopecks: number,
-  waitMs: number,
-  now: number
+  order: SaleTail & SaleTailClaim,
+  minOrderKopecks: number
 ): SaleTailProgress | null => {
   const amount = saleTailKopecks(order, minOrderKopecks)
   if (amount === 0 || refundsItsTail(order)) return null
 
-  // The later of the two, because a claim taken hours after the announcement is
-  // owed its own window — see `SaleTailProgress.releasableAt`.
-  const started = Math.max(
-    order.tailAnnouncedAt?.getTime() ?? 0,
-    order.tailClaimedAt?.getTime() ?? 0
-  )
-  const releasableAt = started === 0 ? null : started + waitMs
-
   return {
     amount,
     announced: order.tailAnnouncedAt != null,
-    claimed: order.tailClaimedAt != null,
-    releasableAt,
-    releasable: releasableAt !== null && releasableAt <= now
+    claimed: order.tailClaimedAt != null
   }
 }
 
@@ -261,13 +246,15 @@ export const saleTailStanding = (
  * scraper: a sale that closed in between would take a real transfer into a
  * finished order, with nothing to notice it and nobody to give it back to.
  *
- * Bounded, which is what makes it bearable: it lifts by itself the moment the
- * wait runs out, and what the seller gets then is the better of the two exits —
- * finishing the sale successfully with the gap back as USDT, rather than
- * stopping it.
+ * **It does not expire, and no timer could be right.** A seller who says the
+ * transfer never came is making a claim about what an operator did, and only a
+ * person who can look at both sides can settle that. A clock would settle it in
+ * the seller's favour by default — handing back USDT for a transfer that may
+ * well have landed — so the way out is support, and `SaleTailService.waive` is
+ * what an operator reaches for once they have decided.
  */
 export const tailHoldsTheSale = (tail: SaleTailProgress | null): boolean =>
-  tail !== null && tail.claimed && !tail.releasable
+  tail !== null && tail.claimed
 
 /**
  * Whether what is left of this order can no longer arrive, and this order is
@@ -314,10 +301,9 @@ export interface SettleableSale extends SaleTail {
  * `openingJarBalance` was never scraped, and an order stored before that field
  * existed would otherwise have its turnover quietly reduced on completion.
  *
- * **The question is {@link refundsItsTail}, not the policy.** A seller who
- * waited the full `SALE_TAIL_RELEASE_AFTER_MINUTES` and released the wait gets
- * the refunding arithmetic although their policy still reads
- * `WAIT_FOR_TOP_UP` — the policy is a snapshot of what they asked for, and this
+ * **The question is {@link refundsItsTail}, not the policy.** A sale whose tail
+ * an operator gave back gets the refunding arithmetic although its policy still
+ * reads `WAIT_FOR_TOP_UP` — the policy is a snapshot of what they asked for, and this
  * is what happened.
  *
  * For an order that does refund, the delivered figure is the whole point.

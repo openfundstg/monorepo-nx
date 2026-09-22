@@ -98,7 +98,17 @@ export const SupportConfig = {
    * thread, and a message that merely *contains* a plus is a sentence, not an
    * answer.
    */
-  TAIL_CLAIM_REPLY: '+'
+  TAIL_CLAIM_REPLY: '+',
+  /**
+   * …and what they write to give the tail back instead.
+   *
+   * **The other half of the claim, and the only way out of it.** Taking a
+   * transfer on holds the seller's sale open with no timer on it, because "it
+   * never arrived" is a claim about what an operator did and only a person can
+   * settle that. This is that person's verdict: the gap goes back to the seller
+   * as USDT and the sale completes.
+   */
+  TAIL_RELEASE_REPLY: '-'
 } as const
 
 /**

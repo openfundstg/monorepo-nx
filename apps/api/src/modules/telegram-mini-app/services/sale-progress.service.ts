@@ -15,7 +15,6 @@ import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { awaitsStatementCheckpoint, parseMinOrderKopecks,
   transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar, saleTailStanding,
   tailHoldsTheSale } from 'src/shared/utils'
-import { MINUTE_MS, SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 
 /** What every read path here works with: a lean order document plus its id. */
 
@@ -239,16 +238,10 @@ export class SaleProgressService {
    * the same stopped bar.
    *
    * The rule itself is `saleTailStanding`, shared with the endpoint that would
-   * refuse the stop — see there for why both edges of the clock are what they
-   * are.
+   * refuse the stop.
    */
   private tail(order: StoredSale): SaleTailProgress | null {
-    return saleTailStanding(
-      order,
-      transactoOrderFloorKopecks(),
-      SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS,
-      Date.now()
-    )
+    return saleTailStanding(order, transactoOrderFloorKopecks())
   }
 
   /**

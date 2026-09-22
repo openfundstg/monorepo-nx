@@ -341,16 +341,17 @@ build` chain.
   its way to a card no scraper watches and a sale that closed in between would take a
   real transfer into a finished order.
 
-  - **The refusal is bounded, or it would be a hostage.** It lifts by itself after
-    `SALE_TAIL_RELEASE_AFTER_MINUTES`, measured from the **later** of the alert and the
-    `+` — so an operator who picks up a two-hour-old alert gets the full window, and a
-    seller can never finish out from under a transfer already in flight.
-    `TAIL_IN_TRANSFER` and `TAIL_NOT_RELEASABLE` are two halves of one thing: at any
-    moment exactly one of them is what a seller can be told.
-  - **Silence means "not taken".** Every `+` under one of our alerts is answered in the
-    group, so an operator never has to guess whether it registered — including the two
-    answers that mean *do not transfer at all*. The alert says as much in the message
-    that asks.
+  - **The refusal does not expire, and no timer could be right.** A seller who says the
+    transfer never came is making a claim about what an operator did, and a clock would
+    settle that claim in their favour by default — handing back USDT for money that may
+    well have landed. So the way out is a person: the seller goes to support, and an
+    operator replies `-` under the same alert, which gives the gap back as USDT and
+    completes the sale. There is no endpoint for it on the seller's side, deliberately.
+  - **Silence means "not taken".** Every `+` and every `-` under one of our alerts is
+    answered in the group, so an operator never has to guess whether it registered —
+    including the answers that mean *do not transfer at all*. The alert itself names both
+    replies, because taking a transfer on holds somebody's sale open indefinitely and an
+    operator who learns that from a support ticket learns it too late.
   - **One reading, three consumers.** `saleTailStanding` answers `SaleTailProgress`
     itself, so the block the seller sees, the `canCancel` under it and the endpoint that
     would refuse the stop are the same object rather than three computations that have

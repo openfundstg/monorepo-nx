@@ -20,7 +20,6 @@ import {
   tailHoldsTheSale,
   transactoOrderFloorKopecks
 } from 'src/shared/utils'
-import { MINUTE_MS, SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
 
@@ -96,9 +95,9 @@ export class SaleCancelService {
     // declines outright. An operator is at this moment sending hryvnia to the
     // seller's own card; a sale that ended in between would take a real
     // transfer into a finished order, and a card has no scraper to notice it
-    // arriving. It lifts by itself once the wait runs out, and what the seller
-    // gets then is the better exit — finishing the sale with the gap back as
-    // USDT, through `SaleTailService.release`.
+    // arriving. It does not expire: a seller who says the transfer never came
+    // is making a claim about what an operator did, and the way out of it is
+    // support and `SaleTailService.waive`, not a timer.
     if (this.heldByATransfer(order)) throw new ConflictException(ERROR.SALE.TAIL_IN_TRANSFER)
 
     // Outstanding payments do not refuse the stop any more — they decide which
@@ -120,14 +119,7 @@ export class SaleCancelService {
    * disagree about a sale that may not be stopped.
    */
   private heldByATransfer(order: StoredSale): boolean {
-    return tailHoldsTheSale(
-      saleTailStanding(
-        order,
-        transactoOrderFloorKopecks(),
-        SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS,
-        Date.now()
-      )
-    )
+    return tailHoldsTheSale(saleTailStanding(order, transactoOrderFloorKopecks()))
   }
 
   /**

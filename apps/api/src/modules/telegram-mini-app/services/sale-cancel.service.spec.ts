@@ -8,7 +8,6 @@ import type { SaleTerminalService } from './sale-terminal.service'
 import type { SaleProgressService } from './sale-progress.service'
 import type { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import type { BalanceLedgerService } from './balance-ledger.service'
-import { SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 
 const TELEGRAM_ID = 885140
 const CARD_ID = 100
@@ -377,30 +376,26 @@ describe('SaleCancelService', () => {
       expect(service.canCancel(heldByATransfer() as never)).toBe(false)
     })
 
-    /** Bounded, not indefinite: it lifts by itself once the wait runs out. */
-    it('is true again once the wait has run out', () => {
-      const old = MINUTES_AGO(SALE_TAIL_RELEASE_AFTER_MINUTES + 1)
+    /**
+     * **And it does not expire.** Whether the transfer was really made is a
+     * question for a person, and a timer would answer it in the seller's favour
+     * by default — handing back USDT for money that may well have landed. The
+     * way out is an operator giving the tail back.
+     */
+    it('is false however long ago the transfer was taken on', () => {
+      const old = MINUTES_AGO(60 * 24 * 7)
 
       expect(
         service.canCancel(
           heldByATransfer({ tailAnnouncedAt: old, tailClaimedAt: old }) as never,
         ),
-      ).toBe(true)
+      ).toBe(false)
     })
 
-    /**
-     * The later of the two starts the wait: an operator who takes a tail on
-     * hours after it was announced is owed the same window, or the seller could
-     * finish out from under a transfer already in flight.
-     */
-    it('is false while only the announcement is old enough', () => {
-      expect(
-        service.canCancel(
-          heldByATransfer({
-            tailAnnouncedAt: MINUTES_AGO(SALE_TAIL_RELEASE_AFTER_MINUTES + 1),
-          }) as never,
-        ),
-      ).toBe(false)
+    it('is true again once an operator gave the tail back', () => {
+      expect(service.canCancel(heldByATransfer({ tailWaivedAt: new Date() }) as never)).toBe(
+        true,
+      )
     })
 
     /** Asking is not the same as somebody going to their banking app. */

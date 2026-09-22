@@ -346,13 +346,7 @@ describe('SaleStatusComponent stop hint', () => {
   it('still quotes the refund while a tail is waiting to be taken on', () => {
     on({
       pendingAmount: 0,
-      tail: {
-        amount: 6_000,
-        announced: true,
-        claimed: false,
-        releasableAt: Date.now() + 60_000,
-        releasable: false,
-      },
+      tail: { amount: 6_000, announced: true, claimed: false },
     });
 
     expect(component.stopHintKey()).toBe('sale.stop_hint');

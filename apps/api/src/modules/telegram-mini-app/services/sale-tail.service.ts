@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { ERROR, SaleEvidence, SaleEventType, SaleMethod } from '@transacto/contracts'
-import { MINUTE_MS, SALE_TAIL_RELEASE_AFTER_MINUTES } from 'src/shared/constants'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import type { StoredSale } from 'src/modules/repositories/tma-sale-db/schemas'
 import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
@@ -54,11 +53,10 @@ export class SaleTailService {
    * than the alert alone being enough:
    *
    * - the seller's screen gains a last order, where before it had a stopped bar
-   *   and a promise that somebody had been asked;
-   * - the sale stops being theirs to end, because hryvnia is now on its way to
-   *   a card nothing watches; and
-   * - the clock starts again, so the operator has the full wait to make the
-   *   transfer however long the alert had been sitting there.
+   *   and a promise that somebody had been asked; and
+   * - the sale stops being theirs to end — for good, not for a while — because
+   *   hryvnia is now on its way to a card nothing watches, and only a person
+   *   can judge a seller who later says it never came.
    *
    * Refused on a sale that is no longer waiting, or no longer open — an
    * operator told "accepted" for a sale that closed would transfer into a
@@ -83,8 +81,8 @@ export class SaleTailService {
     }
 
     this.logger.log(
-      `Sale ${claimed.publicId}: an operator has taken its tail on; it cannot be stopped ` +
-        `for the next ${SALE_TAIL_RELEASE_AFTER_MINUTES} minutes`
+      `Sale ${claimed.publicId}: an operator has taken its tail on; it can no longer be ` +
+        `stopped by its seller`
     )
 
     // No money moved, so `reconsiderFunding` has nothing to reconsider — what
@@ -149,58 +147,45 @@ export class SaleTailService {
   }
 
   /**
-   * The seller stops waiting, and takes the tail as USDT.
+   * An operator gives the tail back, and it becomes USDT.
    *
-   * Available to both variants: a jar sale can be left waiting on a trader's
-   * transfer exactly as a card sale can, and the seller is owed the same way
-   * out of it.
+   * **The seller cannot reach this, and that is the whole design.** Once
+   * somebody has taken the transfer on, "it never arrived" is a claim about
+   * what an operator did, and there is no timer that settles such a claim
+   * honestly — one would settle it in the seller's favour by default, handing
+   * back USDT for a transfer that may well have landed. So the sale is held,
+   * the seller is sent to support, and a person who can look at both sides
+   * decides. This is the lever they pull.
    *
-   * **The clock runs from the later of being told and being taken on**, not
-   * from the moment the tail appeared. A tail held for a statement of the
-   * seller's own can be hours old before anyone hears about it, and a wait that
-   * had already run out by then would hand back USDT for a transfer nobody had
-   * a chance to make; an operator who takes one on late is owed the same window
-   * for the same reason. A sale nobody has been asked about yet therefore has
-   * no clock running at all, and is refused here.
+   * Available whether or not anybody claimed it: an operator may equally give
+   * back a tail nobody ever took on. The whole rule is the filter's — an alert
+   * must have gone out, and nobody may have given it back already — so two
+   * replies give it back once.
    *
-   * The whole rule travels into the filter of `markTailWaived` rather than
-   * being decided here and written there: a request that raced the clock is
-   * refused by the database, not by a comparison made a moment earlier.
+   * `false` means it was already given back, which is not a failure and is
+   * worth saying differently in the chat.
    */
-  async release(telegramId: number, saleId: string): Promise<StoredSale> {
-    const sale = await this.load(saleId, telegramId)
+  async waive(saleId: string): Promise<boolean> {
+    const sale = await this.load(saleId)
 
     this.tailOf(sale)
 
-    const waived = await this.saleDbService.markTailWaived(saleId, this.releasableFrom())
+    const waived = await this.saleDbService.markTailWaived(saleId)
 
     if (!waived) {
-      // Either somebody released it already, or the wait is not up. The second
-      // is the one worth a message: the screen sends `releasableAt` and this
-      // refuses anything earlier, so a client with a fast clock is told rather
-      // than quietly given a refund.
-      if (sale.tailWaivedAt) return (await this.saleDbService.findById(saleId)) ?? sale
+      if (sale.tailWaivedAt) return false
 
-      throw new ConflictException(ERROR.SALE.TAIL_NOT_RELEASABLE)
+      throw new ConflictException(ERROR.SALE.TAIL_NOT_WAITING)
     }
 
     this.logger.warn(
-      `Sale ${waived.publicId}: seller stopped waiting for its tail after ` +
-        `${SALE_TAIL_RELEASE_AFTER_MINUTES} minutes; it comes back as USDT`
+      `Sale ${waived.publicId}: an operator gave its tail back rather than transferring it; ` +
+        `it comes back to the seller as USDT`
     )
 
-    return this.cardOrders.reconsiderFunding(waived)
-  }
+    await this.cardOrders.reconsiderFunding(waived)
 
-  /**
-   * How far in the past the wait has to have started for it to be over.
-   *
-   * Computed here and compared in the database — against both moments the wait
-   * can have started from — so the boundary is one value used once rather than
-   * a rule stated on both sides of a round trip.
-   */
-  private releasableFrom(): Date {
-    return new Date(Date.now() - SALE_TAIL_RELEASE_AFTER_MINUTES * MINUTE_MS)
+    return true
   }
 
   /**
@@ -209,9 +194,9 @@ export class SaleTailService {
    * The same 404 for "not yours" as for "not there": an id that is not the
    * caller's should not be confirmable by the shape of the error.
    *
-   * `telegramId` is omitted only by {@link claim}, which has no seller to be:
-   * it is answered by an operator, and what proves their right to answer is
-   * that the alert was posted in the operators' group in the first place.
+   * `telegramId` is omitted by {@link claim} and {@link waive}, which have no
+   * seller to be: both are answered by an operator, and what proves their right
+   * to answer is that the alert was posted in the operators' group at all.
    */
   private async load(saleId: string, telegramId?: number): Promise<StoredSale> {
     const sale = await this.saleDbService.findById(saleId)

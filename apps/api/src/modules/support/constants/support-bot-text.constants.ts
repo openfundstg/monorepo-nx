@@ -725,15 +725,30 @@ export const SupportAdminText = {
   USER_DEACTIVATED: '🚫 Повідомлення не доставлено: акаунт користувача видалено.',
   /** What the alert tells operators to wait for. See the constant above. */
   TAIL_TAKEN_MARK,
-  /** The answer to a `+` that took a sale's tail on. */
-  tailClaimed: (publicId: string, holdMinutes: number): string =>
+  /**
+   * The answer to a `+` that took a sale's tail on.
+   *
+   * It says the hold is open-ended on purpose. An operator who takes a transfer
+   * on and does not make it leaves a seller who cannot end their own sale and
+   * has no timer to wait out — so the line that records the claim is also the
+   * line that says what it costs somebody else.
+   */
+  tailClaimed: (publicId: string, releaseReply: string): string =>
     `${TAIL_TAKEN_MARK}: переказ за продажем ${publicId} закріплено за вами.\n` +
-    `Продавець уже бачить цей ордер і не зможе завершити продаж достроково ` +
-    `наступні ${Math.round(holdMinutes / 60)} год. Надходження він підтвердить сам.`,
+    `Продавець бачить цей ордер і більше не може завершити продаж — ні зараз, ні пізніше. ` +
+    `Надходження він підтвердить сам.\n` +
+    `Якщо переказу не буде — відповідьте «${releaseReply}» на те саме повідомлення, ` +
+    `і залишок повернеться йому в USDT.`,
   /** Somebody else got there first — which is ordinary, and not a failure. */
   TAIL_ALREADY_CLAIMED:
     'ℹ️ Цей переказ уже взяли раніше. Перевірте, хто саме, перш ніж переказувати — ' +
     'подвійний переказ нікому не повернуть.',
+  /** The tail given back: the seller gets USDT and the sale closes. */
+  tailWaived: (publicId: string): string =>
+    `↩️ Залишок за продажем ${publicId} повернуто продавцю в USDT, продаж завершено.\n` +
+    `Не переказуйте: переказ уже нікуди зараховувати.`,
+  /** Already given back — the same shape of "somebody was first" as the claim. */
+  TAIL_ALREADY_WAIVED: 'ℹ️ Залишок за цим продажем уже повернуто раніше.',
   /**
    * The one answer that means *do not transfer*: the sale has closed or filled,
    * so the money would land in an order that is already over.

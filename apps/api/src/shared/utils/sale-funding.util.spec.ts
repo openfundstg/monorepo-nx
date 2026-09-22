@@ -283,8 +283,6 @@ describe('saleTailKopecks', () => {
  */
 describe('saleTailStanding', () => {
   const MIN = 300 * 100
-  const WAIT = 180 * 60_000
-  const NOW = Date.parse('2026-09-21T13:00:00Z')
 
   /** ₴100 short of ₴1 000, so ₴100 of tail against a ₴300 floor. */
   const order = (over: Record<string, unknown> = {}) => ({
@@ -299,87 +297,45 @@ describe('saleTailStanding', () => {
   })
 
   it('is null where there is no gap', () => {
-    expect(saleTailStanding(order({ receivedAmount: 100_000, jarBalance: 100_000 }), MIN, WAIT, NOW))
+    expect(saleTailStanding(order({ receivedAmount: 100_000, jarBalance: 100_000 }), MIN))
       .toBeNull()
   })
 
   /** That ending closes the sale by itself, so there is nothing to explain. */
   it('is null where the gap comes back as USDT', () => {
     expect(
-      saleTailStanding(
-        order({ remainderPolicy: SaleRemainderPolicy.REFUND_TO_BALANCE }),
-        MIN,
-        WAIT,
-        NOW
-      )
+      saleTailStanding(order({ remainderPolicy: SaleRemainderPolicy.REFUND_TO_BALANCE }), MIN)
     ).toBeNull()
   })
 
   it('reports the gap with nobody asked yet', () => {
-    expect(saleTailStanding(order(), MIN, WAIT, NOW)).toEqual({
+    expect(saleTailStanding(order(), MIN)).toEqual({
       amount: 10_000,
       announced: false,
-      claimed: false,
-      releasableAt: null,
-      releasable: false
+      claimed: false
     })
   })
 
-  /** Asking starts the clock; it does not put a transfer on its way. */
-  it('starts the clock at the announcement', () => {
-    const announced = new Date('2026-09-21T11:00:00Z')
+  /** Asking starts nothing; it only says somebody has been asked. */
+  it('separates having been asked from having been taken on', () => {
+    expect(
+      saleTailStanding(order({ tailAnnouncedAt: new Date('2026-09-21T11:00:00Z') }), MIN)
+    ).toEqual({ amount: 10_000, announced: true, claimed: false })
 
-    expect(saleTailStanding(order({ tailAnnouncedAt: announced }), MIN, WAIT, NOW)).toEqual({
-      amount: 10_000,
-      announced: true,
-      claimed: false,
-      releasableAt: Date.parse('2026-09-21T14:00:00Z'),
-      releasable: false
-    })
-  })
-
-  /**
-   * An operator who takes a tail on hours after it was announced is owed the
-   * same window — or the seller could finish out from under a transfer that is
-   * already in flight.
-   */
-  it('restarts it at the claim', () => {
-    const standing = saleTailStanding(
-      order({
-        tailAnnouncedAt: new Date('2026-09-21T09:00:00Z'),
-        tailClaimedAt: new Date('2026-09-21T12:30:00Z')
-      }),
-      MIN,
-      WAIT,
-      NOW
-    )
-
-    expect(standing).toMatchObject({
-      claimed: true,
-      releasableAt: Date.parse('2026-09-21T15:30:00Z'),
-      releasable: false
-    })
-  })
-
-  it('is releasable once the later of the two has run out', () => {
-    const standing = saleTailStanding(
-      order({
-        tailAnnouncedAt: new Date('2026-09-21T09:00:00Z'),
-        tailClaimedAt: new Date('2026-09-21T09:30:00Z')
-      }),
-      MIN,
-      WAIT,
-      NOW
-    )
-
-    expect(standing).toMatchObject({ releasable: true })
+    expect(
+      saleTailStanding(
+        order({
+          tailAnnouncedAt: new Date('2026-09-21T11:00:00Z'),
+          tailClaimedAt: new Date('2026-09-21T12:30:00Z')
+        }),
+        MIN
+      )
+    ).toEqual({ amount: 10_000, announced: true, claimed: true })
   })
 })
 
 describe('tailHoldsTheSale', () => {
   const MIN = 300 * 100
-  const WAIT = 180 * 60_000
-  const NOW = Date.parse('2026-09-21T13:00:00Z')
 
   const order = (over: Record<string, unknown> = {}) => ({
     fiatAmount: 100_000,
@@ -393,7 +349,7 @@ describe('tailHoldsTheSale', () => {
   })
 
   const held = (over: Record<string, unknown> = {}) =>
-    tailHoldsTheSale(saleTailStanding(order(over), MIN, WAIT, NOW))
+    tailHoldsTheSale(saleTailStanding(order(over), MIN))
 
   /** Hryvnia is on its way to a card nothing watches. */
   it('holds a sale an operator is transferring', () => {
@@ -405,14 +361,23 @@ describe('tailHoldsTheSale', () => {
     expect(held({ tailClaimedAt: null })).toBe(false)
   })
 
-  /** Bounded, which is what makes it bearable. */
-  it('stops holding once the wait has run out', () => {
+  /**
+   * **And it does not expire.** A claim a day old holds the sale exactly as one
+   * a minute old does: whether the transfer was really made is a question for a
+   * person, and a timer would answer it in the seller's favour by default.
+   */
+  it('goes on holding however old the claim is', () => {
     expect(
       held({
-        tailAnnouncedAt: new Date('2026-09-21T09:00:00Z'),
-        tailClaimedAt: new Date('2026-09-21T09:00:00Z')
+        tailAnnouncedAt: new Date('2020-01-01T00:00:00Z'),
+        tailClaimedAt: new Date('2020-01-01T00:00:00Z')
       })
-    ).toBe(false)
+    ).toBe(true)
+  })
+
+  /** Until an operator gives it back, which is the way out. */
+  it('stops holding once the tail was given back', () => {
+    expect(held({ tailWaivedAt: new Date('2026-09-21T13:00:00Z') })).toBe(false)
   })
 
   it('holds nothing where there is no tail', () => {

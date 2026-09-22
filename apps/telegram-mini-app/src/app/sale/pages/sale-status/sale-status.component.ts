@@ -438,10 +438,7 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
    */
   readonly tail = computed(() => this.progress()?.tail ?? null)
 
-  /**
-   * Which of the two tail calls is in flight, so both buttons wait for it
-   * rather than racing — and so the one that was pressed can say so.
-   */
+  /** The confirmation is in flight, so a second tap is not a second request. */
   readonly tailBusy = signal(false)
   readonly tailError = signal('')
 
@@ -478,16 +475,14 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
     await this.runTailAction(() => this.saleService.confirmTail(this.orderId))
   }
 
-  /** …or stops waiting for it, once the wait has run out. */
-  async onReleaseTail(): Promise<void> {
-    await this.runTailAction(() => this.saleService.releaseTail(this.orderId))
-  }
-
   /**
-   * Both tail calls, which differ only in which endpoint they reach.
+   * The confirmation, wrapped.
    *
    * The answer is the same snapshot the socket pushes, so the screen updates
    * from the response rather than waiting for a round trip through the gateway.
+   *
+   * Still a wrapper around one call, because the alternative — inlining it into
+   * `onConfirmTail` — loses the guard that makes a double tap one request.
    */
   private async runTailAction(call: () => Promise<SaleProgress>): Promise<void> {
     if (this.tailBusy()) return

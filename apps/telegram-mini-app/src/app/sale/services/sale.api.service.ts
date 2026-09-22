@@ -88,14 +88,14 @@ export class SaleApiService {
    * **No body, and there is nothing to put in one.** A tail has no order behind
    * it and therefore no order id, and the amount is the gap the server re-reads
    * — a figure named here would be a figure this screen had let go stale.
+   *
+   * **The only tail call a seller can make.** The other ending — the gap coming
+   * back as USDT — is an operator's decision taken in their own chat: once
+   * somebody has taken the transfer on, whether it was really made is not a
+   * question this screen's owner can answer about themselves.
    */
   confirmTail(id: string): Observable<SaleProgress> {
     return this.http.post<SaleProgress>(`${this.base}/${id}/tail/confirm`, {});
-  }
-
-  /** …and stops waiting for it, taking the gap back as USDT instead. */
-  releaseTail(id: string): Observable<SaleProgress> {
-    return this.http.post<SaleProgress>(`${this.base}/${id}/tail/release`, {});
   }
 
   /** …and says it did not, which pauses the sale and asks for a statement. */

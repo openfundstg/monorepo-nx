@@ -352,41 +352,23 @@ export class TmaSaleDbService {
   }
 
   /**
-   * Records that the seller stopped waiting for their tail to be transferred.
+   * Records that the tail was given back rather than transferred.
    *
-   * The filter carries the whole rule rather than trusting the caller's read:
-   * an operator must have been told (`tailAnnouncedAt` set), the wait must have
-   * run out (`$lte` the cutoff the caller computes), and nobody may have
-   * released it already. Two taps release once, and a request that raced the
-   * clock is refused by the database rather than by a comparison made a moment
-   * earlier.
+   * **An operator's decision, and there is no timer behind it.** A seller
+   * saying the transfer never came is making a claim about what an operator
+   * did; only a person who can look at both sides settles that, so what reaches
+   * here is the verdict rather than the elapsed time.
    *
-   * **Both moments have to be old enough, which is `max(…) <= cutoff` written
-   * as two conditions rather than as an `$expr`.** An operator who takes a tail
-   * on two hours after it was announced starts the window again: the seller
-   * must not be able to finish out from under a transfer that is in flight, and
-   * a claim that has not yet had its own three hours is exactly that. Spelled
-   * as an `$or` because `tailClaimedAt: null` also matches the documents
-   * written before the field existed — a comparison would silently let them all
-   * through or hold them all back, depending on how null sorts.
+   * The filter is the idempotency gate and nothing more: an alert must have
+   * gone out, and nobody may have given it back already. Two replies give it
+   * back once.
    *
    * {@link TmaSale.remainderPolicy} is deliberately left alone — see the field.
    */
-  async markTailWaived(
-    id: string,
-    waitStartedNoLaterThan: Date
-  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+  async markTailWaived(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
     return this.saleModel
       .findOneAndUpdate(
-        {
-          _id: id,
-          tailWaivedAt: null,
-          tailAnnouncedAt: { $ne: null, $lte: waitStartedNoLaterThan },
-          $or: [
-            { tailClaimedAt: null },
-            { tailClaimedAt: { $lte: waitStartedNoLaterThan } }
-          ]
-        },
+        { _id: id, tailWaivedAt: null, tailAnnouncedAt: { $ne: null } },
         { $set: { tailWaivedAt: new Date() } },
         { new: true }
       )

@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { SaleMethod, type SaleTailProgress } from '@transacto/contracts';
 import { TranslatePipe } from '@ngx-translate/core';
-import { DateTimePipe } from '../../../shared/pipes/date-time.pipe';
 import { UahPipe } from '../../../shared/pipes/uah.pipe';
 
 /**
@@ -19,7 +18,9 @@ import { UahPipe } from '../../../shared/pipes/uah.pipe';
  * three states and they are not decorations: nobody has been asked yet (a
  * statement of the seller's own is still outstanding), somebody has been asked,
  * and somebody has **taken it on**. Only the last is an order on its way, and
- * only the last is why the stop button has gone.
+ * only the last is why the stop button has gone — for good, until the transfer
+ * lands or support gives the gap back, which is why that state names support
+ * rather than a time.
  *
  * Its own component rather than more of `sale-status`, which is already 800
  * lines — and because the page renders the stop card twice, so a block placed
@@ -27,7 +28,7 @@ import { UahPipe } from '../../../shared/pipes/uah.pipe';
  */
 @Component({
   selector: 'app-sale-tail',
-  imports: [TranslatePipe, UahPipe, DateTimePipe],
+  imports: [TranslatePipe, UahPipe],
   templateUrl: './sale-tail.component.html',
   styleUrl: './sale-tail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -45,11 +46,10 @@ export class SaleTailComponent {
    */
   readonly method = input.required<SaleMethod>();
 
-  /** A call is in flight; both buttons wait for it rather than racing. */
+  /** The confirmation is in flight, so it says so rather than being tapped twice. */
   readonly busy = input(false);
 
   readonly confirmTail = output<void>();
-  readonly releaseTail = output<void>();
 
   protected readonly SaleMethod = SaleMethod;
 

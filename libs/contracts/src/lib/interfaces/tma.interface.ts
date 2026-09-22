@@ -897,7 +897,8 @@ export interface SaleProgress {
  * It has three states and the seller sees all three: nobody has been asked yet
  * (a statement of their own is still outstanding), an operator has been asked,
  * and an operator has taken it on. Only the third is an order on its way, and
- * only the third holds the sale open.
+ * only the third holds the sale open — for good, until the transfer is
+ * confirmed or an operator gives the tail back.
  */
 export interface SaleTailProgress {
   /** UAH kopecks still to collect. Always above zero. */
@@ -918,37 +919,21 @@ export interface SaleTailProgress {
    * **The moment this sale gains a last order, and the moment it stops being
    * the seller's to end.** Asking is not the same as somebody going to their
    * banking app: until an operator says they have taken it on, nothing is on
-   * its way, the seller is owed no waiting, and stopping early costs nobody
-   * anything. Once one has, real hryvnia is about to be sent to a card, and a
-   * sale that closed in between would take it into a finished order.
+   * its way, the seller may stop the sale like any other, and stopping costs
+   * nobody anything. Once one has, real hryvnia is about to be sent to a card,
+   * and a sale that closed in between would take it into a finished order.
+   *
+   * **And there is no clock on the other side of it.** A seller who says the
+   * transfer never came is making a claim about what an operator did, and no
+   * timer can settle that — only a person who can look at both sides. So the
+   * hold does not expire: the sale ends when the transfer is confirmed, or when
+   * an operator gives the tail back through support.
    *
    * So this is what the screen draws the order from, what the confirmation
    * button hangs off, and what `canCancel` goes false on — three things that
    * have to agree, from one field.
    */
   claimed: boolean;
-  /**
-   * When the seller may finish the sale without the transfer, epoch ms, or
-   * `null` while nobody has been asked yet.
-   *
-   * Measured from the **later** of the two moments above, and both edges of
-   * that are deliberate. From the announcement rather than from the tail
-   * appearing, because a tail held for a statement can be hours old before
-   * anyone hears about it and a clock started then would run out while the
-   * request was still unread. From the claim when there is one, because an
-   * operator who takes the transfer on three hours later is owed the same
-   * window as one who takes it on at once — and the seller must not be able to
-   * finish out from under a transfer already in flight.
-   */
-  releasableAt: number | null;
-  /**
-   * Whether that moment has passed.
-   *
-   * Sent rather than left to the client to compare against its own clock, for
-   * the reason `cardMinOrderKopecks` is sent: the server decides, and a screen
-   * that worked it out separately could offer a button the endpoint refuses.
-   */
-  releasable: boolean;
 }
 
 /**

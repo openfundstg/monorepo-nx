@@ -216,18 +216,6 @@ export const ERROR = {
       message: 'This sale is not waiting for its tail to be transferred',
     },
     /**
-     * The seller asked to finish without the transfer before the wait was up.
-     *
-     * The clock runs from the later of the moment an operator was told and the
-     * moment one took the transfer on, so this is also what answers a seller
-     * whose tail is still held for a statement of their own — nobody has been
-     * asked yet, so nothing has started running.
-     */
-    TAIL_NOT_RELEASABLE: {
-      code: 1325,
-      message: 'The wait for this sale’s tail has not run out yet',
-    },
-    /**
      * The seller asked to stop a sale an operator is transferring the tail of.
      *
      * **The one thing in this product that refuses a stop outright**, and it is
@@ -235,13 +223,19 @@ export const ERROR = {
      * seller's own card. A sale that closed in between would take a real
      * transfer into a finished order, and no scraper watches a card to notice.
      *
-     * Bounded rather than indefinite: it lifts by itself once the wait runs
-     * out, and `TAIL_NOT_RELEASABLE` is its other half — at any moment exactly
-     * one of the two is what a seller can be told.
+     * It does not expire, and that is deliberate rather than harsh. A seller
+     * who says the transfer never came is making a claim about what an operator
+     * did, and no timer can settle that — only a person who can look at both
+     * sides. So the way out is support, and the client says so rather than
+     * quoting a time.
+     *
+     * (1325 was `TAIL_NOT_RELEASABLE`, the refusal that answered a seller
+     * asking to finish before that timer ran out. It is retired with the timer;
+     * the number is not reused.)
      */
     TAIL_IN_TRANSFER: {
       code: 1326,
-      message: 'An operator is transferring this sale’s tail; it cannot be stopped yet',
+      message: 'An operator is transferring this sale’s tail; it can only be stopped through support',
     },
     /**
      * The seller said the hand-made transfer arrived before anybody had taken

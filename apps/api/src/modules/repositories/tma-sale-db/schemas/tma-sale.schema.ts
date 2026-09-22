@@ -588,11 +588,11 @@ export class TmaSale {
    * see `tailHoldsTheSale` — until the transfer is confirmed or the wait runs
    * out.
    *
-   * It also restarts the clock. `SALE_TAIL_RELEASE_AFTER_MINUTES` is measured
-   * from the later of this and {@link tailAnnouncedAt}, so an operator who
-   * takes a tail on hours after it was announced gets the same window as one
-   * who takes it on at once, rather than a seller who may finish out from under
-   * a transfer already in flight.
+   * **The hold it starts has no timer.** A seller who says the transfer never
+   * came is making a claim about what an operator did, and a clock would settle
+   * that claim in their favour by default — handing back USDT for a transfer
+   * that may well have landed. So it ends one of two ways: the seller confirms
+   * the money, or an operator gives the tail back ({@link tailWaivedAt}).
    *
    * One-way: an operator who changes their mind is a conversation in the group,
    * not a field that goes back to `null`.
@@ -601,7 +601,7 @@ export class TmaSale {
   tailClaimedAt: Date | null
 
   /**
-   * When the seller gave up waiting for their tail to be transferred.
+   * When an operator gave the tail back rather than transferring it.
    *
    * **The policy is not rewritten, and that is the point.**
    * {@link remainderPolicy} is a snapshot of what was asked for at creation,
@@ -611,9 +611,8 @@ export class TmaSale {
    * to see.
    *
    * What reads it is `refundsItsTail`: a sale refunds its tail when it asked to
-   * at creation **or** when its seller released the wait. One-way, and only
-   * settable once the later of {@link tailAnnouncedAt} and
-   * {@link tailClaimedAt}, plus `SALE_TAIL_RELEASE_AFTER_MINUTES`, has passed.
+   * at creation **or** when an operator gave it back. One-way, and settable
+   * only on a sale somebody was actually asked about — see `markTailWaived`.
    */
   @Prop({ type: Date, default: null })
   tailWaivedAt: Date | null
