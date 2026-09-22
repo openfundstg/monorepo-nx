@@ -245,6 +245,10 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     // orders. One-way: the Mini App still learns of the bot only through a
     // neutral domain event.
     SaleCardOrderService,
+    // …and whose replies in the operators' group take a sale's tail on. The
+    // same one-way arrangement: the alert that asks goes out as an event, and
+    // only the answer to it comes back as a call.
+    SaleTailService,
     // Exported for the admin panel, which serves an operator the documents a
     // dispute or a top-up was settled on. Reading the stores is the panel's
     // only business with them — nothing there writes one.

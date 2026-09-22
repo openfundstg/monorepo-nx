@@ -680,6 +680,18 @@ export const supportInlineButtonLabel = (
  * header. Each is a *function* where it names something, so the value is a
  * parameter rather than a sentence spliced together at the call site.
  */
+/**
+ * The word an alert tells operators to wait for before transferring.
+ *
+ * A module constant rather than a member read back off the object, because
+ * {@link SupportAdminText.tailClaimed} needs it while that object is still
+ * being defined — and because it is quoted in two places that must not drift:
+ * the alert says what a successful answer looks like, and the answer opens with
+ * it. If the two disagreed, the instruction would be to wait for something that
+ * never arrives.
+ */
+const TAIL_TAKEN_MARK = '✅ Прийнято'
+
 export const SupportAdminText = {
   /** Posted once into a brand-new topic, above the user's first message. */
   topicIntro: (name: string, username: string, telegramId: number): string =>
@@ -710,5 +722,27 @@ export const SupportAdminText = {
   USER_BLOCKED_BOT:
     '🚫 Повідомлення не доставлено: користувач заблокував бота. ' +
     'Він отримає відповідь лише після того, як сам розблокує чат.',
-  USER_DEACTIVATED: '🚫 Повідомлення не доставлено: акаунт користувача видалено.'
+  USER_DEACTIVATED: '🚫 Повідомлення не доставлено: акаунт користувача видалено.',
+  /** What the alert tells operators to wait for. See the constant above. */
+  TAIL_TAKEN_MARK,
+  /** The answer to a `+` that took a sale's tail on. */
+  tailClaimed: (publicId: string, holdMinutes: number): string =>
+    `${TAIL_TAKEN_MARK}: переказ за продажем ${publicId} закріплено за вами.\n` +
+    `Продавець уже бачить цей ордер і не зможе завершити продаж достроково ` +
+    `наступні ${Math.round(holdMinutes / 60)} год. Надходження він підтвердить сам.`,
+  /** Somebody else got there first — which is ordinary, and not a failure. */
+  TAIL_ALREADY_CLAIMED:
+    'ℹ️ Цей переказ уже взяли раніше. Перевірте, хто саме, перш ніж переказувати — ' +
+    'подвійний переказ нікому не повернуть.',
+  /**
+   * The one answer that means *do not transfer*: the sale has closed or filled,
+   * so the money would land in an order that is already over.
+   */
+  TAIL_NOT_WAITING:
+    '⚠️ Цей продаж більше не чекає переказу — його вже завершено або добрано. ' +
+    'Не переказуйте: гроші підуть у закритий ордер.',
+  /** Anything else. "Try again" rather than "no", because "no" costs a seller. */
+  TAIL_CLAIM_FAILED:
+    '⚠️ Не вдалося закріпити переказ. Спробуйте відповісти ще раз і не переказуйте, ' +
+    'доки не буде підтвердження.'
 } as const

@@ -310,7 +310,7 @@ build` chain.
   operator woken at two in the morning cannot make that transfer from four digits,
   and sending them to the panel to look it up puts a step between a person and
   somebody else's money. So `TmaSaleTailReachedEvent.payoutTarget` carries the card
-  in full, `SupportAlertsListener` prints it grouped in fours, and
+  in full, `SupportTailService` prints it grouped in fours, and
   `SalePayoutTargetService` — the only file in this product that reaches for one —
   reads it back from `credentials_list` at that moment.
 
@@ -326,11 +326,35 @@ build` chain.
 
   - **It is never stored.** The event is in-process; the sale keeps four digits,
     exactly as before.
-  - **It is never logged.** Not by the resolver, not by the listener, not on a
-    failure path — those name the sale's `publicId` and stop.
+  - **It is never logged.** Not by the resolver, not by the service that sends the
+    alert, not on a failure path — those name the sale's `publicId` and stop.
   - **`null` is an answer.** A destination that could not be read is said so and
     the operator is sent to the panel, rather than the alert being withheld: the
     sum and the sale are what make it actionable.
+
+- **That alert is answered, and the answer is what turns a tail into an order.**
+  Asking is not the same as somebody going to their banking app. An operator replies
+  `+` to it *before* transferring, and only then does the seller's screen gain a last
+  order — and only then does the sale stop being theirs to end. Everywhere else in
+  this product an outstanding payment decides *how* a sale ends and never whether its
+  owner may ask; this is the one stop that is refused outright, because hryvnia is on
+  its way to a card no scraper watches and a sale that closed in between would take a
+  real transfer into a finished order.
+
+  - **The refusal is bounded, or it would be a hostage.** It lifts by itself after
+    `SALE_TAIL_RELEASE_AFTER_MINUTES`, measured from the **later** of the alert and the
+    `+` — so an operator who picks up a two-hour-old alert gets the full window, and a
+    seller can never finish out from under a transfer already in flight.
+    `TAIL_IN_TRANSFER` and `TAIL_NOT_RELEASABLE` are two halves of one thing: at any
+    moment exactly one of them is what a seller can be told.
+  - **Silence means "not taken".** Every `+` under one of our alerts is answered in the
+    group, so an operator never has to guess whether it registered — including the two
+    answers that mean *do not transfer at all*. The alert says as much in the message
+    that asks.
+  - **One reading, three consumers.** `saleTailStanding` answers `SaleTailProgress`
+    itself, so the block the seller sees, the `canCancel` under it and the endpoint that
+    would refuse the stop are the same object rather than three computations that have
+    to agree.
 
 - **A card sale's timeline records whose word each entry stands on.** A jar sale keeps its
   history by being *watched* — the scraper polls a balance, so every row is an observation of

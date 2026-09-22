@@ -11,6 +11,7 @@ import { SupportTopicService } from 'src/modules/support/services/support-topic.
 import { SupportUserService } from 'src/modules/support/services/support-user.service'
 import { SupportFiatWatchService } from 'src/modules/support/services/support-fiat-watch.service'
 import { SupportCardSaleService } from 'src/modules/support/services/support-card-sale.service'
+import { SupportTailService } from 'src/modules/support/services/support-tail.service'
 import {
   buttonOf,
   classifyUpdate,
@@ -42,6 +43,7 @@ export class SupportService {
     private readonly userService: SupportUserService,
     private readonly fiatWatchService: SupportFiatWatchService,
     private readonly cardSaleService: SupportCardSaleService,
+    private readonly tailService: SupportTailService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis
   ) {}
 
@@ -133,5 +135,11 @@ export class SupportService {
 
       return this.relayService.relayToUser(message, threadId)
     }
+
+    // General, where this bot posts its alerts and nobody has a topic. The only
+    // answer it takes today is a `+` under a tail alert; everything else leaves
+    // as quietly as it did before that existed.
+    if (classified.kind === SupportUpdateKind.GROUP_REPLY)
+      return this.tailService.handleReply(classified.message, classified.replyToId)
   }
 }

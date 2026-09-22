@@ -3,3 +3,6 @@ export { TelegramMiniAppModule } from './telegram-mini-app.module'
 // The direction is one-way and stays that way: the Mini App still learns of
 // the bot only through a neutral domain event.
 export { SaleCardOrderService } from './services/sale-card-order.service'
+// …and whose reply in the operators' group takes a sale's tail on, which is
+// the one thing about a sale that nobody in the Mini App can do.
+export { SaleTailService } from './services/sale-tail.service'

@@ -64,6 +64,67 @@ describe('classifyUpdate', () => {
   })
 
   /**
+   * …unless it answers something, which in General can only be one of the
+   * bot's own alerts — nothing else is posted there.
+   */
+  it('reads a reply in General as an answer to the bot', () => {
+    const classified = classifyUpdate(
+      update({
+        message: message({
+          chat: { id: GROUP_ID, type: TelegramChatType.SUPERGROUP },
+          from: user({ id: 99, first_name: 'Оператор' }),
+          reply_to_message: { message_id: 4_411 },
+          text: '+'
+        })
+      }),
+      GROUP_ID
+    )
+
+    expect(classified).toMatchObject({
+      kind: SupportUpdateKind.GROUP_REPLY,
+      replyToId: 4_411
+    })
+  })
+
+  /**
+   * A topic is one person's conversation and everything in it is relayed to
+   * them, quote or no quote — which is how an operator normally answers.
+   */
+  it('keeps a reply inside a topic on the relay path', () => {
+    const classified = classifyUpdate(
+      update({
+        message: message({
+          chat: { id: GROUP_ID, type: TelegramChatType.SUPERGROUP, is_forum: true },
+          message_thread_id: 42,
+          from: user({ id: 99, first_name: 'Оператор' }),
+          reply_to_message: { message_id: 4_411 },
+          text: '+'
+        })
+      }),
+      GROUP_ID
+    )
+
+    expect(classified).toMatchObject({ kind: SupportUpdateKind.ADMIN_MESSAGE, threadId: 42 })
+  })
+
+  /** Another group's reply is not ours, however it is shaped. */
+  it('ignores a reply from a chat that is not the support group', () => {
+    const classified = classifyUpdate(
+      update({
+        message: message({
+          chat: { id: -1_009_999_999_999, type: TelegramChatType.SUPERGROUP },
+          from: user({ id: 99, first_name: 'Оператор' }),
+          reply_to_message: { message_id: 4_411 },
+          text: '+'
+        })
+      }),
+      GROUP_ID
+    )
+
+    expect(classified.kind).toBe(SupportUpdateKind.IGNORED)
+  })
+
+  /**
    * Telegram posts one of these into the group the instant our own bot creates
    * a topic. Relaying it would send every user the paperwork for their own
    * thread.

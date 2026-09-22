@@ -88,7 +88,17 @@ export const SupportConfig = {
    * and the key cannot be edited into one belonging to somebody else.
    */
   CARD_SALE_CONFIRM_PREFIX: 'csale:ok:',
-  CARD_SALE_DENY_PREFIX: 'csale:no:'
+  CARD_SALE_DENY_PREFIX: 'csale:no:',
+  /**
+   * What an operator writes under a tail alert to take the transfer on.
+   *
+   * A reply rather than a key, and one character rather than a command,
+   * because the whole point is that it costs nothing to do from a phone at two
+   * in the morning. Matched exactly after trimming: operators talk in that
+   * thread, and a message that merely *contains* a plus is a sentence, not an
+   * answer.
+   */
+  TAIL_CLAIM_REPLY: '+'
 } as const
 
 /**

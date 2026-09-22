@@ -26,6 +26,7 @@ import {
   SupportMenuService,
   SupportRelayService,
   SupportService,
+  SupportTailService,
   SupportTopicService,
   SupportUserService,
   SupportWebhookRegistrarService,
@@ -48,7 +49,8 @@ import {
     // sender can know it did. The Mini App owns the matching and must not know
     // this module exists, so what arrives from there is an event, not a call.
     TmaFiatDepositWatchDbModule,
-    // A card sale's orders, which this bot's inline keys answer.
+    // A card sale's orders, which this bot's inline keys answer, and a sale's
+    // tail, which an operator takes on by replying to the alert about it.
     //
     // The one place the arrow points this way, and it points only this way:
     // the Mini App never imports this module, and still learns that the bot
@@ -93,6 +95,7 @@ import {
     SupportFiatWatchService,
     SupportCardSaleService,
     SupportMenuService,
+    SupportTailService,
     SupportTopicService,
     SupportRelayService,
     SupportService,

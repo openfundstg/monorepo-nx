@@ -19,6 +19,23 @@ const privateUpdate = (text?: string): TelegramUpdate =>
     }
   }) as TelegramUpdate
 
+/**
+ * A reply in the group's General thread — no topic, which is what tells it from
+ * an operator answering a customer.
+ */
+const generalReply = (text: string, replyToId = 77): TelegramUpdate =>
+  ({
+    update_id: 13,
+    message: {
+      message_id: 3,
+      date: 1_780_000_000,
+      from: { id: 99, is_bot: false, first_name: 'Оператор' },
+      chat: { id: GROUP_ID, type: TelegramChatType.SUPERGROUP },
+      reply_to_message: { message_id: replyToId },
+      text
+    }
+  }) as TelegramUpdate
+
 const topicUpdate = (text?: string): TelegramUpdate =>
   ({
     update_id: 12,
@@ -40,6 +57,7 @@ describe('SupportService', () => {
   let users: { remember: jest.Mock }
   let fiatWatch: { handleUnsubscribe: jest.Mock }
   let cardSale: { handleAnswer: jest.Mock }
+  let tail: { handleReply: jest.Mock }
   let service: SupportService
 
   beforeEach(() => {
@@ -58,6 +76,7 @@ describe('SupportService', () => {
     users = { remember: jest.fn().mockResolvedValue(SupportLocale.UK) }
     fiatWatch = { handleUnsubscribe: jest.fn().mockResolvedValue(undefined) }
     cardSale = { handleAnswer: jest.fn().mockResolvedValue(undefined) }
+    tail = { handleReply: jest.fn().mockResolvedValue(undefined) }
 
     service = new SupportService(
       { isEnabled: true, requireGroupId: () => GROUP_ID } as never,
@@ -67,6 +86,7 @@ describe('SupportService', () => {
       users as never,
       fiatWatch as never,
       cardSale as never,
+      tail as never,
       redis as never
     )
   })
@@ -199,6 +219,25 @@ describe('SupportService', () => {
 
     expect(redis.set).toHaveBeenNthCalledWith(1, expect.any(String), '1', 'PX', 60_000, 'NX')
     expect(redis.set).toHaveBeenNthCalledWith(2, expect.any(String), '1', 'EX', 86_400)
+  })
+
+  /**
+   * General is where the alerts are, and a reply there answers the bot rather
+   * than a customer — so it must never reach the relay.
+   */
+  it('hands a General reply to the tail handler, not to a user', async () => {
+    await service.handleUpdate(generalReply('+'))
+
+    expect(tail.handleReply).toHaveBeenCalledWith(expect.objectContaining({ text: '+' }), 77)
+    expect(relay.relayToUser).not.toHaveBeenCalled()
+  })
+
+  /** A topic is one person's conversation, whatever is quoted inside it. */
+  it('still relays a reply inside a topic', async () => {
+    await service.handleUpdate(topicUpdate('+'))
+
+    expect(relay.relayToUser).toHaveBeenCalledTimes(1)
+    expect(tail.handleReply).not.toHaveBeenCalled()
   })
 
   /**

@@ -29,6 +29,13 @@ export type ClassifiedUpdate =
       readonly threadId: number
     }
   | {
+      readonly kind: SupportUpdateKind.GROUP_REPLY
+      readonly message: TelegramMessage
+      readonly from: TelegramUser
+      /** The id, in the group, of the message being answered. */
+      readonly replyToId: number
+    }
+  | {
       readonly kind: SupportUpdateKind.CALLBACK_QUERY
       readonly query: TelegramCallbackQuery
       readonly from: TelegramUser
@@ -103,6 +110,20 @@ export const classifyUpdate = (update: TelegramUpdate, groupId: number): Classif
   const threadId = message.message_thread_id
   if (message.chat.id === groupId && threadId && !isForumServiceMessage(message))
     return { kind: SupportUpdateKind.ADMIN_MESSAGE, message, from, threadId }
+
+  // …and General, where the bot posts its alerts. A reply there answers the
+  // bot rather than a customer, which is the whole difference between this and
+  // the branch above — so the absence of a topic is the discriminator, not the
+  // presence of a quote. Anything unrecognised falls through to `IGNORED`
+  // exactly as it did before, one lookup later.
+  const repliedTo = message.reply_to_message
+  if (message.chat.id === groupId && !threadId && repliedTo)
+    return {
+      kind: SupportUpdateKind.GROUP_REPLY,
+      message,
+      from,
+      replyToId: repliedTo.message_id
+    }
 
   return IGNORED
 }

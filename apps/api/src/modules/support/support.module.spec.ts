@@ -2,6 +2,7 @@ import { SupportModule } from './support.module'
 import { SupportAlertsListener } from './services/support-alerts.listener'
 import { SupportService } from './services/support.service'
 import { SupportRelayService } from './services/support-relay.service'
+import { SupportTailService } from './services/support-tail.service'
 import { SupportWebhookRegistrarService } from './services/support-webhook-registrar.service'
 import { bootModuleGraph } from 'src/shared/testing/module-wiring'
 
@@ -38,6 +39,19 @@ describe('SupportModule wiring', () => {
     const moduleRef = await bootGraph()
 
     expect(moduleRef.get(SupportAlertsListener)).toBeInstanceOf(SupportAlertsListener)
+
+    await moduleRef.close()
+  })
+
+  /**
+   * Reached by the event bus in one direction and by the dispatcher in the
+   * other, and it injects across the module boundary into the Mini App — which
+   * is exactly the wiring a unit test cannot see go wrong.
+   */
+  it('resolves the service that asks for a tail and takes the answer', async () => {
+    const moduleRef = await bootGraph()
+
+    expect(moduleRef.get(SupportTailService)).toBeInstanceOf(SupportTailService)
 
     await moduleRef.close()
   })
