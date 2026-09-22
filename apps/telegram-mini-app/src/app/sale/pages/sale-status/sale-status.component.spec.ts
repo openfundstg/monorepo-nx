@@ -269,3 +269,95 @@ describe('SaleStatusComponent payment order', () => {
     expect(component.cardOrders().map((order) => order.orderId)).toEqual([1, 2, 3]);
   });
 });
+
+/**
+ * What the stop card promises, and why it cannot always promise a refund.
+ *
+ * **The button stays and the promise changes.** `sale.stop_hint` quotes a
+ * refund, and under any of these three that figure is either wrong or
+ * premature: a payer mid-transfer can still reduce it, a statement can still
+ * correct it, and a tail can still arrive as hryvnia. So the hint names what is
+ * being waited on rather than a number nobody can stand behind yet.
+ */
+describe('SaleStatusComponent stop hint', () => {
+  let component: SaleStatusComponent;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'sale-1' } } } },
+        { provide: SaleService, useValue: {} },
+        {
+          provide: WsService,
+          useValue: {
+            connected: signal(true),
+            saleProgress: () => null,
+            connectionEpoch: () => 0,
+            connect: vi.fn(),
+          },
+        },
+        {
+          provide: TmaService,
+          useValue: { hapticFeedback: vi.fn(), showBackButton: vi.fn(), hideBackButton: vi.fn() },
+        },
+        { provide: ClockService, useValue: { now: () => Date.now() } },
+        { provide: MetaPixelService, useValue: { trackConversion: vi.fn() } },
+      ],
+    });
+
+    component = TestBed.runInInjectionContext(() => new SaleStatusComponent());
+  });
+
+  const on = (progress: Partial<SaleProgress>): void => {
+    component.progress.set(progress as SaleProgress);
+  };
+
+  it('quotes the refund while nothing is being waited on', () => {
+    on({ pendingAmount: 0 });
+
+    expect(component.stopHintKey()).toBe('sale.stop_hint');
+  });
+
+  it('says a payment is still on its way', () => {
+    on({ pendingAmount: 30_000 });
+
+    expect(component.stopHintKey()).toBe('sale.stop_hint_winding_down');
+  });
+
+  it('says a statement is what is being waited on', () => {
+    on({ pendingAmount: 0, statementRequired: true });
+
+    expect(component.stopHintKey()).toBe('sale.stop_hint_statement');
+  });
+
+  /**
+   * Ordered most-final first: a tail is the end of the sale, a statement is a
+   * document the seller owes, an outstanding order is somebody else's clock.
+   */
+  it('says the tail is, ahead of either of those', () => {
+    on({
+      pendingAmount: 30_000,
+      statementRequired: true,
+      tail: { amount: 6_000, announced: true, releasableAt: Date.now() + 60_000, releasable: false },
+    });
+
+    expect(component.stopHintKey()).toBe('sale.stop_hint_tail');
+  });
+
+  /**
+   * Once the wait is up the seller has a button of their own, so the stop card
+   * goes back to quoting what stopping actually does.
+   */
+  it('stops naming the tail once the seller may finish without it', () => {
+    on({
+      pendingAmount: 0,
+      tail: { amount: 6_000, announced: true, releasableAt: Date.now() - 1, releasable: true },
+    });
+
+    expect(component.stopHintKey()).toBe('sale.stop_hint');
+  });
+});

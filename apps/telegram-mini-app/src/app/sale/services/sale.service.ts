@@ -64,6 +64,16 @@ export class SaleService {
     return firstValueFrom(this.api.denyOrder(id, orderId));
   }
 
+  /** See {@link SaleApiService.confirmTail}. */
+  confirmTail(id: string): Promise<SaleProgress> {
+    return firstValueFrom(this.api.confirmTail(id));
+  }
+
+  /** See {@link SaleApiService.releaseTail}. */
+  releaseTail(id: string): Promise<SaleProgress> {
+    return firstValueFrom(this.api.releaseTail(id));
+  }
+
   /** See {@link SaleApiService.uploadStatement}. */
   uploadStatement(id: string, orderId: number, file: File): Promise<SaleProgress> {
     return firstValueFrom(this.api.uploadStatement(id, orderId, file));

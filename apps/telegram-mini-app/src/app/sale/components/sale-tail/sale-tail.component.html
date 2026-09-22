@@ -1,0 +1,46 @@
+<div class="tail-card glass-card">
+  <div class="tail-head">
+    <span class="tail-title">{{ 'sale.tail_title' | translate }}</span>
+    <span class="tail-amount">{{ tail().amount | uah }} ₴</span>
+  </div>
+
+  <!--
+    Why it stopped, before what to do about it. A seller looking at a bar that
+    is nearly full and going nowhere reads this block for the reason first.
+  -->
+  <p class="tail-why">{{ 'sale.tail_why' | translate }}</p>
+
+  @if (tail().announced) {
+    <p class="tail-state">{{ 'sale.tail_announced' | translate }}</p>
+  } @else {
+    <!--
+      Nobody has been asked yet, and this is the one branch where the delay is
+      the seller's to clear: the statement they owe is about to correct the very
+      figure an operator would be told to transfer.
+    -->
+    <p class="tail-state waiting">{{ 'sale.tail_awaiting_statement' | translate }}</p>
+  }
+
+  @if (canConfirm()) {
+    <button type="button" class="primary-btn" [disabled]="busy()" (click)="confirmTail.emit()">
+      {{ (busy() ? 'sale.tail_confirming' : 'sale.tail_confirm') | translate }}
+    </button>
+  }
+
+  <!--
+    The other ending, and it only appears once the wait has actually run out —
+    the server sends `releasable` rather than a date this screen compares
+    against its own clock, so the button cannot be offered where the endpoint
+    would refuse it.
+  -->
+  @if (tail().releasable) {
+    <button type="button" class="ghost-btn" [disabled]="busy()" (click)="releaseTail.emit()">
+      {{ (busy() ? 'sale.tail_releasing' : 'sale.tail_release') | translate }}
+    </button>
+    <p class="tail-hint">{{ 'sale.tail_release_hint' | translate }}</p>
+  } @else if (tail().releasableAt; as at) {
+    <p class="tail-hint">
+      {{ 'sale.tail_release_at' | translate: { at: (at | dateTime) } }}
+    </p>
+  }
+</div>

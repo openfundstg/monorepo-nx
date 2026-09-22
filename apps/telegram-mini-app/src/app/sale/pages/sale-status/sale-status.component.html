@@ -22,7 +22,7 @@
     -->
     @if (canCancel()) {
       <div class="stop-card glass-card">
-        <p class="stop-hint">{{ 'sale.stop_hint' | translate }}</p>
+        <p class="stop-hint">{{ stopHintKey() | translate }}</p>
 
         <button
           type="button"
@@ -486,12 +486,31 @@
     }
 
     <!--
+      The last stretch. Placed above the stop card, because a seller looking at
+      a bar that is nearly full and going nowhere reaches for "stop" next — and
+      this is the block that explains there is nothing wrong.
+    -->
+    @if (tail(); as waiting) {
+      <app-sale-tail
+        [tail]="waiting"
+        [method]="saleMethod()"
+        [busy]="tailBusy()"
+        (confirmTail)="onConfirmTail()"
+        (releaseTail)="onReleaseTail()"
+      />
+
+      @if (tailError()) {
+        <p class="stop-error">{{ tailError() }}</p>
+      }
+    }
+
+    <!--
       Stopping early. Shown only while the backend says it is actually possible,
       so a payment in play disables it rather than letting the tap fail.
     -->
     @if (canCancel()) {
       <div class="stop-card glass-card">
-        <p class="stop-hint">{{ 'sale.stop_hint' | translate }}</p>
+        <p class="stop-hint">{{ stopHintKey() | translate }}</p>
 
         <button
           type="button"

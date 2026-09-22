@@ -16,6 +16,7 @@ import {
   isAcceptedStatementFile,
   SALE_STATEMENT_MAX_BYTES,
   SaleCardOrderState,
+  SaleMethod,
   SaleEventType,
   KOPECKS_PER_UAH,
   SaleRemainderPolicy,
@@ -35,6 +36,7 @@ import { ApiErrorService } from '../../../shared/services/api-error.service'
 import { ClockService } from '../../../shared/services/clock.service'
 import { formatRemaining } from '../../../shared/utils/format.util'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
+import { SaleTailComponent } from '../../components/sale-tail/sale-tail.component'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
 import { DateTimePipe } from '../../../shared/pipes/date-time.pipe'
 import { SaleStep } from '../../enums/sale-step.enum'
@@ -87,7 +89,15 @@ const LIVE_STATUSES: ReadonlySet<TmaSaleStatus> = new Set([
 
 @Component({
   selector: 'app-sale-status',
-  imports: [FormsModule, TranslatePipe, UahPipe, DateTimePipe, UsdtPipe, TrackTapDirective],
+  imports: [
+    FormsModule,
+    TranslatePipe,
+    UahPipe,
+    DateTimePipe,
+    UsdtPipe,
+    TrackTapDirective,
+    SaleTailComponent
+  ],
   templateUrl: './sale-status.component.html',
   styleUrl: './sale-status.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -419,6 +429,84 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
    */
   readonly awaitingJarClosure = computed(() => this.progress()?.awaitingJarClosure === true)
 
+  /**
+   * The last stretch, once no payment can reach it, or `null`.
+   *
+   * Straight from the snapshot rather than worked out here: whether a sale is
+   * in its tail is arithmetic over a configurable floor, and a screen that
+   * decided it separately could draw a block the endpoints refuse to act on.
+   */
+  readonly tail = computed(() => this.progress()?.tail ?? null)
+
+  /**
+   * Which of the two tail calls is in flight, so both buttons wait for it
+   * rather than racing — and so the one that was pressed can say so.
+   */
+  readonly tailBusy = signal(false)
+  readonly tailError = signal('')
+
+  /**
+   * Why stopping will not settle on the spot, if it will not.
+   *
+   * **The button stays and what changes is the promise.** `sale.stop_hint`
+   * quotes a refund, and under any of these three that figure is either wrong
+   * or premature — a payer mid-transfer can still reduce it, a statement can
+   * still correct it, and a tail can still arrive as hryvnia. So the hint names
+   * what is being waited on instead.
+   *
+   * Ordered most-final first: a tail is the end of the sale, a statement is a
+   * document the seller owes, an outstanding order is somebody else's clock.
+   */
+  readonly stopHintKey = computed(() => {
+    const tail = this.tail()
+
+    if (tail !== null && !tail.releasable) return 'sale.stop_hint_tail'
+    if (this.statementRequired()) return 'sale.stop_hint_statement'
+    if ((this.progress()?.pendingAmount ?? 0) > 0) return 'sale.stop_hint_winding_down'
+
+    return 'sale.stop_hint'
+  })
+
+  /**
+   * The seller says the hand-made transfer landed.
+   *
+   * One tap, unlike stopping: this is the ending they asked for, and the worst
+   * a mis-tap costs is a sale completed a moment early on money that is on its
+   * way. Confirming hryvnia that never came costs them their own stake, which
+   * is what makes it safe to take at face value.
+   */
+  async onConfirmTail(): Promise<void> {
+    await this.runTailAction(() => this.saleService.confirmTail(this.orderId))
+  }
+
+  /** …or stops waiting for it, once the wait has run out. */
+  async onReleaseTail(): Promise<void> {
+    await this.runTailAction(() => this.saleService.releaseTail(this.orderId))
+  }
+
+  /**
+   * Both tail calls, which differ only in which endpoint they reach.
+   *
+   * The answer is the same snapshot the socket pushes, so the screen updates
+   * from the response rather than waiting for a round trip through the gateway.
+   */
+  private async runTailAction(call: () => Promise<SaleProgress>): Promise<void> {
+    if (this.tailBusy()) return
+
+    this.tailBusy.set(true)
+    this.tailError.set('')
+
+    try {
+      this.progress.set(await call())
+      this.tma.hapticFeedback('success')
+    } catch (error: unknown) {
+      this.tailError.set(this.apiError.messageFor(error))
+      this.tma.hapticFeedback('error')
+    } finally {
+      this.tailBusy.set(false)
+    }
+  }
+
   /** Two taps: the first arms, the second commits. */
   readonly cancelArmed = signal(false)
   readonly cancelling = signal(false)
@@ -469,6 +557,17 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
   readonly cardOrders = computed<readonly SaleCardOrder[]>(
     () => this.progress()?.cardOrders ?? []
   )
+
+  /**
+   * Which variant this sale is, from the snapshot.
+   *
+   * Absent on a sale written before the variant existed, which means a jar —
+   * the same reading the contract's own doc gives. Not inferred from
+   * `cardOrders` being empty: a card sale before its first payer has none
+   * either, and the tail block would then offer a jar seller a button their
+   * endpoint refuses.
+   */
+  readonly saleMethod = computed(() => this.progress()?.saleMethod ?? SaleMethod.JAR)
 
   /**
    * The same payments, newest first — the order the list is read in.
