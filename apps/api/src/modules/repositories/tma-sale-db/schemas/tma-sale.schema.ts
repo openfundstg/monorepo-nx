@@ -540,6 +540,25 @@ export class TmaSale {
   tailReachedAt: Date | null
 
   /**
+   * When an operator was told what to transfer to close this sale's tail.
+   *
+   * A second gate beside {@link tailReachedAt} rather than the same one,
+   * because the two happen at different moments. A sale is parked the instant
+   * its gap drops under the floor; the alert waits until there is nothing left
+   * to ask the seller for, since a declared shortfall no statement has settled
+   * is about to change the very figure an operator would be told to transfer.
+   *
+   * One-way, like its neighbour: the announcement is repeated by whatever
+   * re-examines a held tail, not by clearing this.
+   *
+   * `null` on a sale that has not reached its tail, on one still waiting for a
+   * statement, and on every sale that asked for its tail back as USDT — that
+   * ending needs no operator at all.
+   */
+  @Prop({ type: Date, default: null })
+  tailAnnouncedAt: Date | null
+
+  /**
    * USDT cents handed back as the unfillable tail, on completion.
    *
    * Zero on every order that filled its jar, and on every order that waited for

@@ -15,6 +15,8 @@ import type { SaleFacadeService } from './sale-facade.service'
 import type { SaleComplianceService } from './sale-compliance.service'
 import type { OrderDbService } from 'src/modules/repositories/order-db'
 import type { SaleTerminalService } from './sale-terminal.service'
+import type { SalePayoutTargetService } from './sale-payout-target.service'
+import type { EventEmitter2 } from '@nestjs/event-emitter'
 
 const CARD_ID = 4242
 const TERMINAL_ID = 23715
@@ -56,6 +58,8 @@ describe('SaleProgressListener', () => {
   let compliance: { check: jest.Mock }
   let orders: { findUnsettledByCard: jest.Mock }
   let terminals: { stopRouting: jest.Mock }
+  let payoutTarget: { resolve: jest.Mock }
+  let emitter: { emit: jest.Mock }
   let listener: SaleProgressListener
 
   const originalMinOrder = process.env.TRANSACTO_MIN_ORDER_KOPECKS
@@ -79,6 +83,9 @@ describe('SaleProgressListener', () => {
       // every later one gets `null`. Its own filter is what decides that; here
       // it answers as the first.
       markTailReached: jest.fn().mockImplementation(async () => openOrder()),
+      // The second gate: told once, and only once nothing is left to ask the
+      // seller for. Answers as the first caller here.
+      markTailAnnounced: jest.fn().mockImplementation(async () => openOrder()),
     }
     progress = { emit: jest.fn().mockResolvedValue(undefined) }
     facade = { completeSale: jest.fn().mockResolvedValue(true) }
@@ -95,12 +102,18 @@ describe('SaleProgressListener', () => {
     // and a stub here would leave every completion rule passing against nothing.
     // What a sale entering its tail does upstream: no new payers, still watched.
     terminals = { stopRouting: jest.fn().mockResolvedValue(undefined) }
+    // Where an operator would be asked to transfer the tail. A jar link here,
+    // since every sale in this file is a jar sale.
+    payoutTarget = { resolve: jest.fn().mockResolvedValue('https://example.test/jar/abc') }
+    emitter = { emit: jest.fn() }
 
     const settlement = new SaleSettlementService(
       db as unknown as TmaSaleDbService,
       facade as unknown as SaleFacadeService,
       orders as unknown as OrderDbService,
       terminals as unknown as SaleTerminalService,
+      payoutTarget as unknown as SalePayoutTargetService,
+      emitter as unknown as EventEmitter2,
     )
 
     listener = new SaleProgressListener(
@@ -658,6 +671,146 @@ describe('SaleProgressListener', () => {
 
         expect(db.markTailReached).toHaveBeenCalledWith('order-1')
         expect(facade.completeSale).not.toHaveBeenCalled()
+      })
+    })
+
+    /**
+     * Somebody has to transfer the last stretch, and somebody has to be told.
+     *
+     * **These assertions are on the emitter rather than on a message**, because
+     * the settlement rules must not know a Telegram group exists — they publish
+     * a neutral fact and `SupportAlertsListener` decides it is worth a sentence.
+     */
+    describe('asking an operator to close the tail', () => {
+      const waiting = (over: Record<string, unknown> = {}) =>
+        refunding({ remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP, ...over })
+
+      const announced = () =>
+        emitter.emit.mock.calls.find(([name]) => name === 'tma.sale_tail_reached')?.[1]
+
+      it('announces the tail with the sum and where it has to go', async () => {
+        seed(waiting())
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailAnnounced).toHaveBeenCalledWith('order-1')
+        expect(announced()).toMatchObject({
+          publicId: 'Z38SL69F',
+          tailKopecks: 24_000,
+          fiatAmount: 404_000,
+          receivedAmount: 380_000,
+          payoutTarget: 'https://example.test/jar/abc',
+        })
+      })
+
+      /**
+       * The destination is an answer, not a requirement. An alert that cannot
+       * name one is still worth sending — the sum and the sale are what make it
+       * actionable, and the message says to look in the panel.
+       */
+      it('announces it even when the destination could not be read', async () => {
+        seed(waiting())
+        payoutTarget.resolve.mockResolvedValue(null)
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(announced()).toMatchObject({ payoutTarget: null })
+      })
+
+      /** Told once. Every jar scrape asks the same question again. */
+      it('does not tell them twice', async () => {
+        seed(waiting())
+        db.markTailAnnounced.mockResolvedValue(null)
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(announced()).toBeUndefined()
+      })
+
+      it('does not even ask once the sale carries the stamp', async () => {
+        seed(waiting({ tailAnnouncedAt: new Date('2026-09-20T15:00:00Z') }))
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailAnnounced).not.toHaveBeenCalled()
+        expect(payoutTarget.resolve).not.toHaveBeenCalled()
+      })
+
+      /**
+       * **Held while a declared shortfall has not been through a statement.**
+       * That document is about to correct the very figure an operator would be
+       * told to transfer — ₴4 of it, on the sale this was written for — so
+       * nobody is asked to send a number that is about to move. Whatever accepts
+       * the statement re-examines the figures, which is what brings it back.
+       */
+      it('waits for a statement that may still correct the figure', async () => {
+        seed(
+          waiting({
+            cardOrders: [{ orderId: 1, declaredAmount: 29_600, answeredAt: new Date() }],
+            statementCheckpointAt: null,
+          }),
+        )
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailAnnounced).not.toHaveBeenCalled()
+        expect(announced()).toBeUndefined()
+      })
+
+      /** And the park still happens, because that cannot wait for anybody. */
+      it('parks the sale even while the announcement waits', async () => {
+        seed(
+          waiting({
+            cardOrders: [{ orderId: 1, declaredAmount: 29_600, answeredAt: new Date() }],
+            statementCheckpointAt: null,
+          }),
+        )
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailReached).toHaveBeenCalledWith('order-1')
+      })
+
+      /** A refunding sale needs nobody: its tail comes back on its own. */
+      it('tells nobody about a tail that is about to be refunded', async () => {
+        seed(refunding())
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(db.markTailAnnounced).not.toHaveBeenCalled()
+        expect(announced()).toBeUndefined()
+      })
+
+      it('tells nobody while the gap could still be filled', async () => {
+        seed(waiting({ receivedAmount: 300_000, jarBalance: 300_000 }))
+
+        await listener.handleTraderWsEvent(balanceEvent(300_000))
+
+        expect(db.markTailAnnounced).not.toHaveBeenCalled()
+      })
+
+      /**
+       * The destination is resolved before the gate is taken, so a sale is never
+       * stamped as announced on the strength of a message that was never
+       * composed.
+       */
+      it('resolves the destination before taking the gate', async () => {
+        seed(waiting())
+        const order: string[] = []
+        payoutTarget.resolve.mockImplementation(async () => {
+          order.push('resolve')
+
+          return null
+        })
+        db.markTailAnnounced.mockImplementation(async () => {
+          order.push('mark')
+
+          return openOrder()
+        })
+
+        await listener.handleTraderWsEvent(balanceEvent(380_000))
+
+        expect(order).toEqual(['resolve', 'mark'])
       })
     })
   })

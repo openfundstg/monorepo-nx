@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { SaleRemainderPolicy } from '@transacto/contracts'
+import { EventEmitter2 } from '@nestjs/event-emitter'
+import { SaleMethod, SaleRemainderPolicy } from '@transacto/contracts'
 import {
   awaitsStatementCheckpoint,
   describeError,
@@ -17,6 +18,9 @@ import {
   SaleTerminalService,
   type DisposableTerminal
 } from 'src/modules/telegram-mini-app/services/sale-terminal.service'
+import { SalePayoutTargetService } from 'src/modules/telegram-mini-app/services/sale-payout-target.service'
+import { TMA_DOMAIN_EVENT } from 'src/shared/interfaces'
+import type { TmaSaleTailReachedEvent } from 'src/shared/interfaces'
 
 /**
  * The fields the settlement decision is made on.
@@ -45,6 +49,12 @@ export interface SettleableSale extends SaleClaims, DisposableTerminal {
    * the gate that decides it is `TmaSaleDbService.markTailReached`.
    */
   tailReachedAt?: Date | null
+  /** When an operator was told what to transfer — the second gate's field. */
+  tailAnnouncedAt?: Date | null
+  /** The three things the alert needs to say where the money has to go. */
+  telegramId: number
+  saleMethod?: SaleMethod | null
+  dropLink?: string | null
 }
 
 /**
@@ -67,7 +77,9 @@ export class SaleSettlementService {
     private readonly saleDbService: TmaSaleDbService,
     private readonly saleFacade: SaleFacadeService,
     private readonly orderDbService: OrderDbService,
-    private readonly terminalService: SaleTerminalService
+    private readonly terminalService: SaleTerminalService,
+    private readonly payoutTarget: SalePayoutTargetService,
+    private readonly eventEmitter: EventEmitter2
   ) {}
 
   /**
@@ -124,7 +136,14 @@ export class SaleSettlementService {
     // down a terminal that is about to be torn down anyway.
     await this.parkTailIfReached(saleId, latest, minOrderKopecks)
 
-    if (!isRemainderRefundable(latest, minOrderKopecks)) return false
+    if (!isRemainderRefundable(latest, minOrderKopecks)) {
+      // The other ending. A sale that asked to wait needs a person to transfer
+      // the tail, and this is where that person is told — on the branch where
+      // no refund is coming, because a refunding sale needs nobody.
+      await this.announceTailIfDue(saleId, latest, minOrderKopecks)
+
+      return false
+    }
 
     // The tail is held while a claim on this sale has not been through a
     // statement.
@@ -223,6 +242,71 @@ export class SaleSettlementService {
           `payer may still be sent there and overshoot the target: ${describeError(error)}`
       )
     }
+  }
+
+  /**
+   * Tells an operator what to transfer to finish this sale. Once.
+   *
+   * **Reached only on the waiting ending**, because it is the only one that
+   * needs a person: a sale that asked for its tail back as USDT gets it from
+   * the branch above without anybody being told anything.
+   *
+   * **And only once there is nothing left to ask the seller for.** A declared
+   * shortfall no statement has settled is about to change the very figure an
+   * operator would be told to transfer — ₴4 of it, on the sale this was written
+   * for — so the alert waits for the document rather than naming a number that
+   * is about to move. Whatever accepts that statement re-examines the figures,
+   * which is what brings this back.
+   *
+   * A second gate beside {@link parkTailIfReached}'s, and a second field, for
+   * exactly that reason: the park cannot wait and the alert has to.
+   *
+   * **The destination is a payment credential**, and it goes onto the event and
+   * no further. Nothing on this path logs it — the log line names the sale.
+   */
+  private async announceTailIfDue(
+    saleId: string,
+    latest: SettleableSale,
+    minOrderKopecks: number
+  ): Promise<void> {
+    const tail = saleTailKopecks(latest, minOrderKopecks)
+    if (tail === 0) return
+
+    // Cheap pre-check; the write below is what actually decides.
+    if (latest.tailAnnouncedAt) return
+
+    if (awaitsStatementCheckpoint(latest)) {
+      this.logger.log(
+        `Sale ${latest.publicId} is in its tail and a declared shortfall has not been through ` +
+          `a statement; not asking anyone to transfer a figure that document may correct`
+      )
+
+      return
+    }
+
+    // Resolved before the gate is taken, so a sale is never stamped as
+    // announced on the strength of a message this could not compose. It answers
+    // `null` rather than throwing, and the message says so.
+    const payoutTarget = await this.payoutTarget.resolve(latest)
+
+    const announced = await this.saleDbService.markTailAnnounced(saleId)
+    if (announced === null) return
+
+    this.logger.log(
+      `Sale ${latest.publicId}: asking an operator to transfer its ${tail} kopeck tail` +
+        (payoutTarget === null ? ' — and the destination could not be read' : '')
+    )
+
+    this.eventEmitter.emit(TMA_DOMAIN_EVENT.SALE_TAIL_REACHED, {
+      saleId,
+      publicId: latest.publicId,
+      telegramId: latest.telegramId,
+      saleMethod: latest.saleMethod ?? SaleMethod.JAR,
+      tailKopecks: tail,
+      fiatAmount: latest.fiatAmount,
+      receivedAmount: latest.receivedAmount,
+      payoutTarget
+    } satisfies TmaSaleTailReachedEvent)
   }
 
   /** The smallest order Transacto will route, and so the width of the tail. */

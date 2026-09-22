@@ -1,5 +1,6 @@
 import type {
   FiatDepositWatchMode,
+  SaleMethod,
   TmaDepositStatus,
   TmaFiatDepositStatus,
   TmaSaleStatus
@@ -82,7 +83,22 @@ export const TMA_DOMAIN_EVENT = {
    * something different — a document rather than a tap — and because routing to
    * the terminal has stopped by the time it fires, which is worth saying.
    */
-  SALE_CARD_ORDER_DISPUTED: 'tma.sale_card_order_disputed'
+  SALE_CARD_ORDER_DISPUTED: 'tma.sale_card_order_disputed',
+  /**
+   * A sale has less left to collect than the pipeline will route an order for,
+   * and it asked to wait for that last stretch rather than have it back as
+   * USDT — so somebody has to transfer it by hand.
+   *
+   * Fires once per sale, gated by `tailAnnouncedAt`, and only once there is
+   * nothing left to ask the seller for: a declared shortfall no statement has
+   * settled holds it, because the figure an operator would be told to transfer
+   * is the one that document is about to correct.
+   *
+   * Neutral for the usual reason — the settlement rules must not know a
+   * Telegram group exists — and it carries the whole sentence's figures rather
+   * than an id to re-read, like {@link FIAT_DEPOSIT_STUCK}.
+   */
+  SALE_TAIL_REACHED: 'tma.sale_tail_reached'
 } as const
 
 /** Payload of {@link TMA_DOMAIN_EVENT.BALANCE_UPDATED} and its referral twin. */
@@ -198,4 +214,52 @@ export interface TmaSaleCardOrderEvent {
   readonly amount: number
   /** When silence becomes a dispute, epoch milliseconds. */
   readonly confirmDeadlineAt: number
+}
+
+/**
+ * Payload of {@link TMA_DOMAIN_EVENT.SALE_TAIL_REACHED}.
+ *
+ * Carries the figures rather than only the id, like its siblings: the consumer
+ * writes a sentence a person acts on, and one that had to re-read the row would
+ * go quiet exactly when the database is the unwell thing.
+ *
+ * **`payoutTarget` is a payment credential, and it is the one payload in this
+ * file that carries one.** Everything else about this codebase keeps a card
+ * number off every wire it does not have to be on — it is never persisted, it
+ * never reaches a log line, and `TmaFiatDepositStuckEvent` says in as many
+ * words that nothing on it is a credential. This is a deliberate exception,
+ * decided because an operator reading the alert has to be able to make the
+ * transfer without going and finding the card first. See the root `CLAUDE.md`
+ * for the reasoning and its cost.
+ *
+ * What follows from that:
+ *
+ * - **It must never be logged.** Not by the emitter, not by the consumer, not
+ *   in a failure path. Whoever handles this payload logs the sale's `publicId`
+ *   and nothing else about where the money goes.
+ * - **It is not stored.** The event is in-process; the sale keeps only
+ *   `payoutCardTail`, four digits, exactly as it did before.
+ * - `null` when it could not be resolved — Transacto unreachable for a card
+ *   sale, or a jar sale with no link recorded. The message says so rather than
+ *   pretending, and the operator falls back to the panel.
+ */
+export interface TmaSaleTailReachedEvent {
+  readonly saleId: string
+  readonly publicId: string
+  readonly telegramId: number
+  /** Which kind of destination {@link payoutTarget} is. */
+  readonly saleMethod: SaleMethod
+  /** UAH kopecks still to collect. Above zero and below the pipeline's floor. */
+  readonly tailKopecks: number
+  /** UAH kopecks the sale is for. */
+  readonly fiatAmount: number
+  /** UAH kopecks that have arrived so far. */
+  readonly receivedAmount: number
+  /**
+   * Where the transfer has to go: the seller's card in full on a card sale, the
+   * jar's public link on a jar sale, or `null` when neither could be read.
+   *
+   * A credential — see the note above.
+   */
+  readonly payoutTarget: string | null
 }

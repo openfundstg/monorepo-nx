@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
-import { KOPECKS_PER_UAH } from '@transacto/contracts'
+import { formatCardNumber, KOPECKS_PER_UAH, SaleMethod } from '@transacto/contracts'
 import { TelegramBotApiService } from 'src/modules/support/services/telegram-bot.api.service'
 import { SupportConfigService } from 'src/modules/support/services/support-config.service'
 import { TMA_DOMAIN_EVENT } from 'src/shared/interfaces'
-import type { TmaFiatDepositStuckEvent } from 'src/shared/interfaces'
+import type { TmaFiatDepositStuckEvent, TmaSaleTailReachedEvent } from 'src/shared/interfaces'
 import { describeError } from 'src/shared/utils'
 
 /** Hryvnia, as an operator reads them: `700` rather than `70000`. */
@@ -70,5 +70,68 @@ export class SupportAlertsListener {
           describeError(error)
       )
     }
+  }
+
+  /**
+   * A sale with less left to collect than any payer can be routed for, and a
+   * seller waiting for somebody to transfer it.
+   *
+   * Fires once per sale — the gate is on the sale, not here — and only once
+   * nothing is left to ask the seller for, so the figure below is not one a
+   * statement is about to correct.
+   *
+   * **This message carries a card number, and it is the only one that does.**
+   * Every other alert in this file deliberately holds them back — "no card
+   * number, no receipt link, no payer name" is written two methods up. The
+   * exception is a decision rather than an oversight: an operator woken at two
+   * in the morning cannot make a transfer from four digits, and the cost of
+   * putting it here is that it sits in this group's history on every operator's
+   * phone. The root `CLAUDE.md` records that trade and why it was taken.
+   *
+   * It is the *seller's own* card, which is what makes it bearable — this
+   * product never puts a third party's credential anywhere near a chat.
+   */
+  @OnEvent(TMA_DOMAIN_EVENT.SALE_TAIL_REACHED)
+  async onSaleTailReached(event: TmaSaleTailReachedEvent): Promise<void> {
+    const { groupId } = this.config
+    if (groupId === null) return
+
+    const text =
+      `🟡 Продаж ${event.publicId} добирає останнє\n\n` +
+      `Треба переказати: ${uah(event.tailKopecks)} ₴\n` +
+      `${this.destination(event)}\n` +
+      `Продаж: ${uah(event.fiatAmount)} ₴ · зараховано ${uah(event.receivedAmount)} ₴\n` +
+      `Юзер: ${event.telegramId}\n\n` +
+      `Менше цієї суми Transacto нікого не зароутить, тому автоматично вона вже не ` +
+      `надійде. Роутинг на цей продаж вимкнено, щоб ніхто не перевищив ціль.`
+
+    try {
+      await this.telegramApi.sendMessage({ chat_id: groupId, text })
+    } catch (error: unknown) {
+      // The sale, never the destination.
+      this.logger.error(
+        `Could not announce the tail of sale ${event.publicId} to the support group: ` +
+          describeError(error)
+      )
+    }
+  }
+
+  /**
+   * The one line an operator acts on.
+   *
+   * Grouped into fours for a card, because a number read off a phone and typed
+   * into a banking app is read in fours — `formatCardNumber` is the same
+   * grouping the create form shows. A jar sale's link goes as it is.
+   *
+   * A destination that could not be read says so and names what to do instead,
+   * rather than leaving a blank line somebody has to interpret.
+   */
+  private destination(event: TmaSaleTailReachedEvent): string {
+    if (event.payoutTarget === null)
+      return 'Куди: не вдалося прочитати — подивіться реквізити продажу в панелі'
+
+    return event.saleMethod === SaleMethod.CARD
+      ? `Картка: ${formatCardNumber(event.payoutTarget)}`
+      : `Банка: ${event.payoutTarget}`
   }
 }

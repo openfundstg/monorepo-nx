@@ -14,6 +14,7 @@ import { JarSaleDestinationService } from 'src/modules/telegram-mini-app/service
 import { CardSaleDestinationService } from 'src/modules/telegram-mini-app/services/card-sale-destination.service'
 import type { SaleDestinationStrategy } from 'src/modules/telegram-mini-app/interfaces/sale-destination-strategy.interface'
 import { SaleSettlementService } from 'src/modules/telegram-mini-app/services/sale-settlement.service'
+import { SalePayoutTargetService } from 'src/modules/telegram-mini-app/services/sale-payout-target.service'
 import { SaleCardLimitsService } from 'src/modules/telegram-mini-app/services/sale-card-limits.service'
 import { SaleCardOrderService } from 'src/modules/telegram-mini-app/services/sale-card-order.service'
 import { SaleCardWatchService } from 'src/modules/telegram-mini-app/services/sale-card-watch.service'
@@ -176,6 +177,7 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     // When a sale is finished, shared by the scraper's listener and the card
     // variant's confirmation path — two ways to notice, one set of rules.
     SaleSettlementService,
+    SalePayoutTargetService,
     // The card variant's unit of work: one order, one question, one answer.
     SaleCardLimitsService,
     SaleCardOrderService,

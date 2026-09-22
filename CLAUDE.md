@@ -299,6 +299,39 @@ build` chain.
     client also sends the browser's own `User-Agent`: the proxy fixes the address, and
     `axios/1.18.1` from a datacentre is the other half of the signal.
 
+- **A whole card number reaches exactly one place outside this process, and it is
+  the operators' Telegram group.** Everything else here keeps one off every wire it
+  does not have to be on: a sale stores `payoutCardTail` and four digits, a full PAN
+  goes upstream as a credential's `cred` and is never written down, and no card —
+  ours or a stranger's — may reach a log line.
+
+  The exception is the alert that asks somebody to transfer a sale's **tail**: the
+  last stretch under Transacto's order floor, which no payer can be routed for. An
+  operator woken at two in the morning cannot make that transfer from four digits,
+  and sending them to the panel to look it up puts a step between a person and
+  somebody else's money. So `TmaSaleTailReachedEvent.payoutTarget` carries the card
+  in full, `SupportAlertsListener` prints it grouped in fours, and
+  `SalePayoutTargetService` — the only file in this product that reaches for one —
+  reads it back from `credentials_list` at that moment.
+
+  **What it costs.** The number then sits in that group's history on every
+  operator's phone, outside this repository's control and outside its retention
+  sweeps. What makes the trade bearable is whose card it is: the **seller's own**,
+  named by them at creation. A third party's credential never goes near a chat —
+  which is why `TmaFiatDepositStuckEvent` still says in as many words that nothing
+  on it is one, and why the recipient card on a fiat receipt is logged by its length
+  and nothing else.
+
+  Three things hold it in one place, and none of them is a preference:
+
+  - **It is never stored.** The event is in-process; the sale keeps four digits,
+    exactly as before.
+  - **It is never logged.** Not by the resolver, not by the listener, not on a
+    failure path — those name the sale's `publicId` and stop.
+  - **`null` is an answer.** A destination that could not be read is said so and
+    the operator is sent to the panel, rather than the alert being withheld: the
+    sum and the sale are what make it actionable.
+
 - **A card sale's timeline records whose word each entry stands on.** A jar sale keeps its
   history by being *watched* — the scraper polls a balance, so every row is an observation of
   money that is either there or not. Nobody can poll a seller's own card:

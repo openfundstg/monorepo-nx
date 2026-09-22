@@ -234,6 +234,24 @@ export class TmaSaleDbService {
       .lean()
   }
 
+  /**
+   * Stamps the moment an operator was told about a sale's tail, once.
+   *
+   * The same gate as {@link markTailReached} and a separate field, because the
+   * two moments differ: a tail is parked at once and announced only when there
+   * is nothing left to ask the seller for. `null` means somebody has already
+   * told them.
+   */
+  async markTailAnnounced(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
+    return this.saleModel
+      .findOneAndUpdate(
+        { _id: id, tailAnnouncedAt: null },
+        { $set: { tailAnnouncedAt: new Date() } },
+        { new: true }
+      )
+      .lean()
+  }
+
   async markClosing(id: string): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
     return this.saleModel
       .findOneAndUpdate(
