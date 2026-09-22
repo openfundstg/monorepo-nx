@@ -80,10 +80,14 @@ export class CreateSaleDto {
   /**
    * What to do with a tail no payment can cover.
    *
-   * Optional, and absent means
-   * {@link SaleRemainderPolicy.WAIT_FOR_TOP_UP} — a client that predates
-   * the choice must keep getting exactly the behaviour it has always had, not a
-   * validation error and not a policy it never asked for.
+   * Optional, and absent means whatever `defaultRemainderPolicy` says for the
+   * method being created — `REFUND_TO_BALANCE`, so an unstated preference never
+   * resolves to the one ending that waits on a person.
+   *
+   * **A named policy the method cannot give is refused, not substituted.**
+   * `isRemainderPolicyAvailable` is the rule, shared with the create form so
+   * the picker cannot offer what this would reject; `WAIT_FOR_TOP_UP` on a jar
+   * is the case today.
    */
   @IsOptional()
   @IsEnum(SaleRemainderPolicy)

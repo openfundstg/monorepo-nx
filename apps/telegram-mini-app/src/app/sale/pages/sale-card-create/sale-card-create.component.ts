@@ -79,6 +79,9 @@ export class SaleCardCreateComponent implements OnInit {
    */
   readonly remainderPolicy = signal<SaleRemainderPolicy>(DEFAULT_REMAINDER_POLICY)
 
+  /** Which sale this form creates — the remainder picker asks. */
+  protected readonly SaleMethod = SaleMethod
+
   /** Only the banks whose statements something can read — see the constant. */
   protected readonly banks = CARD_SALE_BANKS
   protected readonly minOrderUsdt = MIN_USDT_AMOUNT

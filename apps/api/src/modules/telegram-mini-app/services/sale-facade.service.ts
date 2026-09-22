@@ -1,15 +1,16 @@
 import {
   ERROR,
   cardTail,
+  defaultRemainderPolicy,
   isGoalWithinTolerance,
   isQuoteStillValid,
+  isRemainderPolicyAvailable,
   MIN_USDT_AMOUNT,
   MIN_USDT_CENTS,
   priceSale,
   SaleEventType,
   SaleMethod,
   SaleReceiverNameSource,
-  SaleRemainderPolicy,
   roundToWholeUah,
   sellRate,
   SaleBlockReason
@@ -125,12 +126,25 @@ export class SaleFacadeService {
     request: CreateSaleReq
   ) {
     const { fiatAmount, bankType, cardNumber, quotedRate } = request
-    const remainderPolicy = request.remainderPolicy ?? SaleRemainderPolicy.WAIT_FOR_TOP_UP
 
     // Absent means a jar sale, which is what every client that predates the
     // choice is asking for and the only thing it could have meant.
     const saleMethod = request.saleMethod ?? SaleMethod.JAR
     const destinations = this.destinationFor(saleMethod)
+
+    // After the method, because the answer depends on it — and refused rather
+    // than substituted. `isRemainderPolicyAvailable` is the same rule the create
+    // form greys the option out with, read from the contract so the picker and
+    // this cannot come to disagree about what is on offer.
+    const remainderPolicy = request.remainderPolicy ?? defaultRemainderPolicy(saleMethod)
+
+    if (!isRemainderPolicyAvailable(saleMethod, remainderPolicy)) {
+      this.logger.warn(
+        `Refused a ${saleMethod} sale for telegramId ${telegramId}: ${remainderPolicy} is not ` +
+          `an ending this method can give a tail`
+      )
+      throw new BadRequestException(ERROR.SALE.REMAINDER_POLICY_UNAVAILABLE)
+    }
 
     // 1. Load the user and their level.
     //

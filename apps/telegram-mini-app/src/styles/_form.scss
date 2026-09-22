@@ -375,6 +375,31 @@
 }
 
 /*
+  An ending this sale method cannot be given yet. The row stays, because it is
+  the only answer to "can I just wait for the full amount".
+*/
+.remainder-option.coming-soon {
+  background: var(--bg);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/*
+  Greyed by colour, not by `opacity` on the row, which would take the badge down
+  with the text it sits inside — and the badge is the one thing on a switched-off
+  row that has to stay readable, being the only answer to "why". The bank tiles
+  learned this the hard way and moved their dimming onto the contents too.
+*/
+.remainder-option.coming-soon .remainder-title,
+.remainder-option.coming-soon .remainder-desc {
+  color: var(--text-faint);
+}
+
+.remainder-option.coming-soon .remainder-radio {
+  border-color: var(--border-strong);
+}
+
+/*
   A radio in look only: the whole row is the target, which is the tap area a
   thumb actually hits on a phone.
 */

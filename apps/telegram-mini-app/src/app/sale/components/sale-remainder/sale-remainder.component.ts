@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, inject, model } from '@angular/core';
-import { SaleRemainderPolicy } from '@transacto/contracts';
+import { ChangeDetectionStrategy, Component, computed, inject, input, model } from '@angular/core';
+import { SaleMethod, SaleRemainderPolicy } from '@transacto/contracts';
 import { TranslatePipe } from '@ngx-translate/core';
 import { TmaService } from '../../../auth/services/tma.service';
-import { REMAINDER_POLICY_OPTIONS } from '../../constants/sale-create.const';
+import { remainderPolicyOptions, type RemainderPolicyOption } from '../../constants/sale-create.const';
 import { SalePricingService } from '../../services/sale-pricing.service';
 
 /**
@@ -21,6 +21,12 @@ import { SalePricingService } from '../../services/sale-pricing.service';
  *
  * The selection is a `model()`, so each form owns the value and this owns the
  * asking — the pattern the bank picker would use if it were extracted too.
+ *
+ * **What is on offer is not the same on both, and the method input is why.**
+ * Waiting is an ending a jar sale cannot be given yet, so that row arrives
+ * greyed and badged from {@link remainderPolicyOptions} — which reads the same
+ * contract rule the server refuses by, rather than a second list kept in step
+ * by hand.
  */
 @Component({
   selector: 'app-sale-remainder',
@@ -35,14 +41,26 @@ export class SaleRemainderComponent {
   /** The floor the "return anything under ₴X" copy names, from the priced config. */
   readonly pricing = inject(SalePricingService);
 
+  /** Which sale is asking — it decides what the picker may offer. */
+  readonly method = input.required<SaleMethod>();
+
   readonly policy = model.required<SaleRemainderPolicy>();
 
-  protected readonly options = REMAINDER_POLICY_OPTIONS;
+  protected readonly options = computed(() => remainderPolicyOptions(this.method()));
 
-  protected select(policy: SaleRemainderPolicy): void {
-    if (policy === this.policy()) return;
+  /**
+   * `pointer-events: none` on the greyed row already stops the tap, and this
+   * refuses it again.
+   *
+   * Belt and braces on purpose: the stylesheet is what a user meets and this is
+   * what holds when a rule changes — the bank picker keeps the same pair, and
+   * the comment on `.bank-option.unavailable` says which of the two makes the
+   * grey mean something.
+   */
+  protected select(option: RemainderPolicyOption): void {
+    if (option.comingSoon || option.policy === this.policy()) return;
 
-    this.policy.set(policy);
+    this.policy.set(option.policy);
     this.tma.hapticFeedback('light');
   }
 }

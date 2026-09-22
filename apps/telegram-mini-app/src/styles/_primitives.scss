@@ -127,6 +127,30 @@
   white-space: nowrap;
 }
 
+/*
+  "Recommended", beside the name of the option a screen would pick for you.
+
+  The same shape as `.soon-badge` and the opposite colour, because the two are
+  drawn in the same slot and only ever one at a time — an option nobody can pick
+  is not one to recommend. It shares that stylesheet's reasoning about size: it
+  sits inside a title rather than standing on its own.
+
+  The bank picker says this with a corner ribbon instead, and that is not this
+  badge being ignored — a tile has a corner to hang one on and a list row does
+  not. The word is the same key either way.
+*/
+.recommended-badge {
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
 /* --- Buttons ------------------------------------------------------------- */
 
 .primary-btn {

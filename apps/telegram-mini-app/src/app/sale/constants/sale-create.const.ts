@@ -1,4 +1,9 @@
-import { BankProvider, SaleRemainderPolicy } from '@transacto/contracts';
+import {
+  BankProvider,
+  isRemainderPolicyAvailable,
+  SaleMethod,
+  SaleRemainderPolicy,
+} from '@transacto/contracts';
 import { BANK_NAME_KEY } from '../../shared/constants/bank-name.const';
 
 /**
@@ -84,43 +89,74 @@ export interface RemainderPolicyOption {
   readonly policy: SaleRemainderPolicy;
   readonly titleKey: string;
   readonly descriptionKey: string;
+  /** Draws the badge, and is why this one is listed first. */
+  readonly recommended?: boolean;
+  /** Listed, greyed and badged — not an ending this method can give yet. */
+  readonly comingSoon?: boolean;
 }
 
 /**
- * What happens to a tail no payment can cover, in the order it is rendered —
- * **the one policy an order can actually be created with first**.
+ * Where each policy's own copy lives, and the one thing that differs by method.
  *
- * **Both are real choices now, and both sale variants ask the question.** The
- * second was greyed out and badged while waiting for a tail to be paid in by
- * hand was not something a user could ask for. It is: on a card sale it means
- * an operator transferring the last few hryvnia, which some sellers would
- * rather have than USDT back.
+ * Only the *waiting* description does. Refunding reads the same either way — a
+ * tail under the floor comes back as USDT and the sale closes — but waiting
+ * names who is being waited for, and on a jar that is the jar reaching its goal
+ * while on a card it is a transfer arriving. One key for both said "банка" to
+ * somebody selling to a card, which is a sentence about a thing their sale does
+ * not have.
  */
-export const REMAINDER_POLICY_OPTIONS: readonly RemainderPolicyOption[] = [
+const REMAINDER_WAIT_DESCRIPTION: Readonly<Record<SaleMethod, string>> = {
+  [SaleMethod.JAR]: 'sale.remainder_wait_desc',
+  [SaleMethod.CARD]: 'sale.remainder_wait_desc_card',
+};
+
+/**
+ * What happens to a tail no payment can cover, in the order it is rendered —
+ * **the recommended ending first, and it is the only one every method has**.
+ *
+ * A function of the method rather than a constant, because what is on offer
+ * depends on it: `isRemainderPolicyAvailable` comes from the contract, so this
+ * greys out exactly what the server would refuse. A picker that offered an
+ * ending `POST /tma/sales` rejects would read to a user as the app being
+ * broken, which is what a second copy of that rule eventually produces.
+ *
+ * The unavailable row is greyed and badged rather than dropped, so the screen
+ * answers "can I just wait for the full amount" instead of saying nothing
+ * about it.
+ */
+export const remainderPolicyOptions = (
+  method: SaleMethod,
+): readonly RemainderPolicyOption[] => [
   {
     policy: SaleRemainderPolicy.REFUND_TO_BALANCE,
     titleKey: 'sale.remainder_refund_title',
     descriptionKey: 'sale.remainder_refund_desc',
+    recommended: true,
   },
   {
     policy: SaleRemainderPolicy.WAIT_FOR_TOP_UP,
     titleKey: 'sale.remainder_wait_title',
-    descriptionKey: 'sale.remainder_wait_desc',
+    descriptionKey: REMAINDER_WAIT_DESCRIPTION[method],
+    comingSoon: !isRemainderPolicyAvailable(method, SaleRemainderPolicy.WAIT_FOR_TOP_UP),
   },
-] as const;
-
+];
 
 /**
- * Selected on first paint: the first policy a user can actually choose.
+ * Selected on first paint: the recommended policy, by construction.
  *
- * The first row, which is what a picker with nothing disabled should start on.
+ * Derived from the flag rather than named separately, exactly as
+ * {@link DEFAULT_BANK} is — recommending one ending while pre-selecting another
+ * is the kind of disagreement that only shows up in front of a user. It is
+ * available on every method, so one value covers both forms.
  *
- * Note this is **not** the server's default. `POST /tma/sales` falls back to
- * {@link SaleRemainderPolicy.WAIT_FOR_TOP_UP} when the field is absent, which
- * is what a client older than the choice must keep getting; this screen names
- * the policy on every order it creates, so the two never meet.
+ * It now agrees with the server's own fallback, `defaultRemainderPolicy`, which
+ * it did not before: `POST /tma/sales` used to default to `WAIT_FOR_TOP_UP` for
+ * a client that named nothing.
  */
-export const DEFAULT_REMAINDER_POLICY: SaleRemainderPolicy = REMAINDER_POLICY_OPTIONS[0].policy;
+export const DEFAULT_REMAINDER_POLICY: SaleRemainderPolicy = (
+  remainderPolicyOptions(SaleMethod.CARD).find((option) => option.recommended) ??
+  remainderPolicyOptions(SaleMethod.CARD)[0]
+).policy;
 
 /**
  * The smallest order the payment pipeline routes, until the server says

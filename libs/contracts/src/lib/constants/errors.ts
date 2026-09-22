@@ -190,6 +190,20 @@ export const ERROR = {
       message: 'The card number does not match the one the drop link pays into',
     },
     /**
+     * The chosen ending for a tail is not one this sale method can give it —
+     * `WAIT_FOR_TOP_UP` on a jar today. See `isRemainderPolicyAvailable`, which
+     * is the same rule the create form greys the option out with.
+     *
+     * A refusal rather than a quiet substitution: the user asked for a
+     * particular ending, and giving them the other one without saying so is how
+     * somebody ends up with USDT when they were waiting for hryvnia. It is only
+     * reachable from a client old enough to still offer the option.
+     */
+    REMAINDER_POLICY_UNAVAILABLE: {
+      code: 1323,
+      message: 'That remainder policy is not available for this sale method',
+    },
+    /**
      * The market moved between the quote and the submit, far enough to change
      * the target the user was told to set as their jar's goal.
      *

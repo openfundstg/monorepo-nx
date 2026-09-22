@@ -70,7 +70,7 @@
           @if (!isBankEnabled(bank.provider)) {
             <span class="bank-ribbon muted">{{ 'sale.bank_unavailable' | translate }}</span>
           } @else if (bank.recommended) {
-            <span class="bank-ribbon">{{ 'sale.bank_recommended' | translate }}</span>
+            <span class="bank-ribbon">{{ 'common.recommended' | translate }}</span>
           }
           <img [src]="bank.icon" class="bank-icon-img" [alt]="bank.nameKey | translate" />
           <span class="bank-name">{{ bank.nameKey | translate }}</span>
@@ -220,7 +220,7 @@
     Placed last, immediately above the confirm button: everything above decides
     what the order *is*, and this decides what happens when it is nearly done.
   -->
-  <app-sale-remainder [(policy)]="remainderPolicy" />
+  <app-sale-remainder [method]="SaleMethod.JAR" [(policy)]="remainderPolicy" />
 
   <!-- Submit -->
   <!-- Static `disabled` as well as the binding — see deposit-create for why. -->

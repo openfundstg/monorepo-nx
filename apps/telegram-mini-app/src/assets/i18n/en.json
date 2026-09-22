@@ -258,7 +258,6 @@
     "bank_privat": "PrivatBank",
     "bank_pumb": "PUMB",
     "bank_novapay": "NovaPay",
-    "bank_recommended": "Recommended",
     "instructions": "Instructions",
     "instructions_mono": "Create \"мобнобанку\" in Monobank",
     "instructions_privat": "Create \"конверт\" in Privat24",
@@ -333,6 +332,7 @@
     "remainder_label": "What to do with the remainder",
     "remainder_wait_title": "Wait for the full amount",
     "remainder_wait_desc": "The sale finishes only once the jar reaches its full goal.",
+    "remainder_wait_desc_card": "The sale finishes only once you have received the full amount down to the last hryvnia. An operator sends the last transfer, and you confirm it on the sale screen.",
     "remainder_refund_title": "Return the remainder to my balance",
     "remainder_refund_desc": "If less than ₴{{amount}} is left to reach the goal, that amount comes back to your balance in USDT at the sale rate and the sale completes successfully right away.",
     "remainder_mode": "Remainder",
@@ -453,6 +453,7 @@
     "language": "Language",
     "rate_unavailable": "The USDT/UAH rate is unavailable right now, so the amount cannot be worked out. Try again in a minute.",
     "in_development": "In development",
+    "recommended": "Recommended",
     "back": "Back"
   },
   "income": {

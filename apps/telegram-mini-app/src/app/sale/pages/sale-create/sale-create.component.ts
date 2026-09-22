@@ -11,6 +11,7 @@ import {
   matchesMaskedCard,
   CENTS_PER_USDT,
   priceSale,
+  SaleMethod,
   SaleRemainderPolicy,
 } from '@transacto/contracts'
 import { TranslatePipe } from '@ngx-translate/core'
@@ -81,6 +82,8 @@ export class SaleCreateComponent implements OnInit {
   protected readonly banks = SALE_BANKS
   /** Exposed so the template can compare against enum members, not literals. */
   protected readonly BankProvider = BankProvider
+  /** Which sale this form creates — the remainder picker asks. */
+  protected readonly SaleMethod = SaleMethod
   protected readonly PixelTapEvent = PixelTapEvent
   /** The floor, named on screen rather than only enforced. */
   protected readonly minOrderUsdt = MIN_ORDER_USDT

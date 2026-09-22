@@ -11,11 +11,12 @@ import {
   DEFAULT_MIN_ORDER_KOPECKS,
   isSaleBankEnabled,
   MIN_USDT_AMOUNT,
+  SaleMethod,
   SaleRemainderPolicy,
 } from '@transacto/contracts';
 import {
   DEFAULT_REMAINDER_POLICY,
-  REMAINDER_POLICY_OPTIONS,
+  remainderPolicyOptions,
   SALE_BANKS,
 } from '../../constants/sale-create.const';
 
@@ -295,8 +296,9 @@ describe('SaleCreateComponent validation', () => {
   describe('the remainder picker', () => {
     /**
      * The screen names the policy on every order it creates, so this is the
-     * figure the server stores for anyone who never opens the section — not the
-     * server's own fallback, which stays on WAIT_FOR_TOP_UP for older clients.
+     * figure the server stores for anyone who never opens the section. It now
+     * agrees with the server's own fallback, which it did not before —
+     * `POST /tma/sales` used to default to WAIT_FOR_TOP_UP.
      */
     it('starts on refunding the remainder to the balance', () => {
       expect(component.remainderPolicy()).toBe(SaleRemainderPolicy.REFUND_TO_BALANCE);
@@ -305,34 +307,44 @@ describe('SaleCreateComponent validation', () => {
     /**
      * Pre-selecting a row the picker greys out would leave the screen with no
      * readable answer to what happens on submit — the radio would sit on an
-     * option the click handler refuses.
+     * option the click handler refuses. On this form that is not hypothetical:
+     * waiting for the tail is the greyed row here.
      */
     it('starts on the first policy the picker offers', () => {
       expect(component.remainderPolicy()).toBe(DEFAULT_REMAINDER_POLICY);
     });
 
     /**
-     * Both are real choices now, and both sale variants ask the question.
-     *
-     * Waiting for the tail was greyed out and badged while it was not something
-     * a user could ask for. It is: on a card sale it means an operator
-     * transferring the last few hryvnia, which some sellers prefer to USDT back.
+     * **A jar sale cannot be given the waiting ending**, so this form lists it
+     * greyed. Which of the two is which lives in the contract — the same rule
+     * the server refuses by — and the picker's own spec covers the rendering;
+     * what this pins is that a jar form asks for the jar's options and not the
+     * card's.
      */
-    it('offers every policy the contract defines, and none of them greyed', () => {
-      expect(new Set(REMAINDER_POLICY_OPTIONS.map((option) => option.policy))).toEqual(
+    it('offers every policy the contract defines, waiting among them greyed', () => {
+      const options = remainderPolicyOptions(SaleMethod.JAR);
+
+      expect(new Set(options.map((option) => option.policy))).toEqual(
         new Set(Object.values(SaleRemainderPolicy)),
       );
+      expect(
+        options.find((option) => option.policy === SaleRemainderPolicy.WAIT_FOR_TOP_UP)?.comingSoon,
+      ).toBe(true);
+      expect(
+        options.find((option) => option.policy === SaleRemainderPolicy.REFUND_TO_BALANCE)
+          ?.comingSoon,
+      ).toBeFalsy();
     });
 
     it('carries whichever policy is chosen into the order it creates', async () => {
-      component.remainderPolicy.set(SaleRemainderPolicy.WAIT_FOR_TOP_UP);
+      component.remainderPolicy.set(SaleRemainderPolicy.REFUND_TO_BALANCE);
       fillForm();
       component.pricing.usdtAmount.set(10);
 
       await component.onSubmit();
 
       expect(create).toHaveBeenCalledWith(
-        expect.objectContaining({ remainderPolicy: SaleRemainderPolicy.WAIT_FOR_TOP_UP }),
+        expect.objectContaining({ remainderPolicy: SaleRemainderPolicy.REFUND_TO_BALANCE }),
       );
     });
 

@@ -1095,6 +1095,82 @@ describe('SaleFacadeService', () => {
     })
   })
 
+  /**
+   * **What a tail may be ended with, and who decides.**
+   *
+   * `isRemainderPolicyAvailable` is one function in the contract, read both by
+   * the create form — which greys the row out — and here. The two would drift
+   * the moment either kept its own list, and the shape that drift takes is a
+   * picker offering an ending this refuses, which reads to a user as the app
+   * being broken rather than as a choice not being available.
+   */
+  describe('the ending chosen for a tail', () => {
+    beforeEach(() => {
+      users.findByTelegramId.mockResolvedValue({
+        balance: 1_000_000,
+        frozenBalance: 0,
+        totalTurnover: 0,
+        firstName: 'Роман',
+        lastName: 'Петренко',
+        username: 'roman'
+      })
+      ledger.freeze.mockResolvedValue({ balance: 900_000, frozenBalance: 100_000 })
+      db.create.mockResolvedValue({ _id: { toString: () => 'order-3' }, publicId: 'BBBB2222' })
+    })
+
+    const createWith = (remainderPolicy?: SaleRemainderPolicy) =>
+      facade.createSale(TELEGRAM_ID, {
+        fiatAmount: 100_000,
+        bankType: 'PRIVAT' as never,
+        dropLink: PRIVAT_LINK,
+        cardNumber: DROP_CARD,
+        quotedRate: RATE,
+        remainderPolicy
+      })
+
+    /**
+     * Nothing watches a seller's jar-less card, so waiting for a tail to be paid
+     * in by hand is an ending only a card sale can be given. A jar sale asking
+     * for it is a client old enough to still offer the row.
+     */
+    it('refuses a jar sale that asks to wait for the tail', async () => {
+      await expect(createWith(SaleRemainderPolicy.WAIT_FOR_TOP_UP)).rejects.toMatchObject({
+        response: ERROR.SALE.REMAINDER_POLICY_UNAVAILABLE
+      })
+    })
+
+    /** Refused before a single cent is frozen. */
+    it('freezes nothing when the ending is refused', async () => {
+      await createWith(SaleRemainderPolicy.WAIT_FOR_TOP_UP).catch(() => undefined)
+
+      expect(ledger.freeze).not.toHaveBeenCalled()
+      expect(db.create).not.toHaveBeenCalled()
+    })
+
+    it('takes the ending every method can give', async () => {
+      await createWith(SaleRemainderPolicy.REFUND_TO_BALANCE)
+
+      expect(db.create).toHaveBeenCalledWith(
+        expect.objectContaining({ remainderPolicy: SaleRemainderPolicy.REFUND_TO_BALANCE })
+      )
+    })
+
+    /**
+     * **A named nothing is no longer read as "wait".** The old fallback was
+     * `WAIT_FOR_TOP_UP` for every method — the behaviour from before the choice
+     * existed. It cannot be that any more: on a jar it is the one ending this
+     * service refuses, so defaulting to it would refuse every client that names
+     * no policy at all.
+     */
+    it('reads an unstated ending as the recommended one', async () => {
+      await createWith(undefined)
+
+      expect(db.create).toHaveBeenCalledWith(
+        expect.objectContaining({ remainderPolicy: SaleRemainderPolicy.REFUND_TO_BALANCE })
+      )
+    })
+  })
+
   describe('the minimum order', () => {
     beforeEach(() => {
       users.findByTelegramId.mockResolvedValue({

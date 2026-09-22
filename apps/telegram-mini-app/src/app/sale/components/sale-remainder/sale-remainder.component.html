@@ -2,15 +2,28 @@
   <label class="input-label">{{ 'sale.remainder_label' | translate }}</label>
 
   <div class="remainder-options">
-    @for (option of options; track option.policy) {
+    @for (option of options(); track option.policy) {
       <div
         class="remainder-option"
         [class.active]="policy() === option.policy"
-        (click)="select(option.policy)"
+        [class.coming-soon]="option.comingSoon"
+        (click)="select(option)"
       >
         <span class="remainder-radio" aria-hidden="true"></span>
         <div class="remainder-copy">
-          <span class="remainder-title">{{ option.titleKey | translate }}</span>
+          <!--
+            The badge sits inside the title, which is why that line is a wrapping
+            flex row. Only one of the two can ever be drawn: an ending nobody can
+            pick is not one to recommend.
+          -->
+          <span class="remainder-title">
+            {{ option.titleKey | translate }}
+            @if (option.comingSoon) {
+              <span class="soon-badge">{{ 'common.in_development' | translate }}</span>
+            } @else if (option.recommended) {
+              <span class="recommended-badge">{{ 'common.recommended' | translate }}</span>
+            }
+          </span>
           <span class="remainder-desc">
             {{ option.descriptionKey | translate: { amount: pricing.minOrderKopecks() / 100 } }}
           </span>
