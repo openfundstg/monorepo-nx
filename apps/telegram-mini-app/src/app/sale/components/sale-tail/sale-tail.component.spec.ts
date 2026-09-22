@@ -5,10 +5,14 @@ import { SaleMethod, type SaleTailProgress } from '@transacto/contracts'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { SaleTailComponent } from './sale-tail.component'
 
-/** ₴60 left, an operator already asked, and the wait not yet up. */
+/**
+ * ₴60 left, an operator asked and having taken it on, and the wait not yet up —
+ * the state the block is drawn in while a transfer is actually on its way.
+ */
 const tail = (overrides: Partial<SaleTailProgress> = {}): SaleTailProgress => ({
   amount: 6_000,
   announced: true,
+  claimed: true,
   releasableAt: Date.now() + 60_000,
   releasable: false,
   ...overrides
@@ -37,10 +41,11 @@ class HostComponent {
 /**
  * The block that explains why a nearly-full sale has stopped.
  *
- * Two things it must never get wrong, and both are about offering a button the
- * endpoint would refuse: a jar seller has nothing to confirm, because their
- * tail is seen rather than reported; and nobody may finish without the
- * transfer before the wait has run out.
+ * Three things it must never get wrong, and all three are about offering a
+ * button the endpoint would refuse: a jar seller has nothing to confirm,
+ * because their tail is seen rather than reported; nobody may confirm a
+ * transfer no operator has taken on, because nothing was ever started; and
+ * nobody may finish without one before the wait has run out.
  */
 describe('SaleTailComponent', () => {
   let fixture: ComponentFixture<HostComponent>
@@ -74,10 +79,21 @@ describe('SaleTailComponent', () => {
     expect(el().querySelector('.tail-why')?.textContent?.trim()).toBe('sale.tail_why')
   })
 
-  describe('when an operator has been asked', () => {
-    it('says so, and offers the seller the confirmation', () => {
-      expect(el().querySelector('.tail-state')?.textContent?.trim()).toBe('sale.tail_announced')
+  describe('when an operator has taken the transfer on', () => {
+    it('reads as an order, and offers the seller the confirmation', () => {
+      expect(el().querySelector('.tail-state')?.textContent?.trim()).toBe('sale.tail_taken')
+      expect(el().querySelector('.tail-title')?.textContent?.trim()).toBe(
+        'sale.tail_order_title',
+      )
       expect(button('sale.tail_confirm')).toBeDefined()
+    })
+
+    /**
+     * The sale is no longer the seller's to end, and that is said here rather
+     * than left to be discovered by a stop button that has quietly gone.
+     */
+    it('says why the sale can no longer be stopped', () => {
+      expect(el().textContent).toContain('sale.tail_hold')
     })
 
     it('emits the confirmation when it is tapped', () => {
@@ -88,15 +104,38 @@ describe('SaleTailComponent', () => {
   })
 
   /**
+   * Asked is not taken on. Nobody has gone to their banking app yet, so there is
+   * nothing that could have landed — and the endpoint refuses the confirmation
+   * with `TAIL_NOT_CLAIMED` for exactly that reason.
+   */
+  describe('while the alert is unanswered', () => {
+    beforeEach(() => set({ claimed: false }))
+
+    it('says somebody has been asked, and offers nothing to confirm', async () => {
+      await set({ claimed: false })
+
+      expect(el().querySelector('.tail-state')?.textContent?.trim()).toBe('sale.tail_announced')
+      expect(button('sale.tail_confirm')).toBeUndefined()
+    })
+
+    /** The sale is still theirs to end, so nothing may claim otherwise. */
+    it('does not say the sale is held', async () => {
+      await set({ claimed: false })
+
+      expect(el().textContent).not.toContain('sale.tail_hold')
+    })
+  })
+
+  /**
    * The one branch where the delay is the seller's to clear: the statement they
    * owe is about to correct the very figure an operator would be told to
    * transfer, so nobody has been asked and there is nothing to confirm.
    */
   describe('while it is still held for a statement', () => {
-    beforeEach(() => set({ announced: false }))
+    beforeEach(() => set({ announced: false, claimed: false }))
 
     it('asks for the statement instead', async () => {
-      await set({ announced: false })
+      await set({ announced: false, claimed: false })
 
       expect(el().querySelector('.tail-state')?.textContent?.trim()).toBe(
         'sale.tail_awaiting_statement'
@@ -104,7 +143,7 @@ describe('SaleTailComponent', () => {
     })
 
     it('offers nothing to confirm', async () => {
-      await set({ announced: false })
+      await set({ announced: false, claimed: false })
 
       expect(button('sale.tail_confirm')).toBeUndefined()
     })
@@ -151,7 +190,7 @@ describe('SaleTailComponent', () => {
 
     /** Nobody has been asked, so no clock is running and there is nothing to say. */
     it('promises no date while nobody has been asked', async () => {
-      await set({ announced: false, releasableAt: null })
+      await set({ announced: false, claimed: false, releasableAt: null })
 
       expect(el().textContent).not.toContain('sale.tail_release_at')
       expect(button('sale.tail_release')).toBeUndefined()

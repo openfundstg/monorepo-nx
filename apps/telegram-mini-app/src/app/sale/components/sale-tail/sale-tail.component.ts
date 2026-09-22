@@ -15,8 +15,11 @@ import { UahPipe } from '../../../shared/pipes/uah.pipe';
  * in this product, and the only one with no clock a payer is running.
  *
  * So the block says three things in the order they matter: how much is left,
- * that one more transfer is coming and has no deadline, and which of the two
- * things standing between the seller and their money is theirs to do.
+ * why, and where the transfer has got to — which is the part that moves. It has
+ * three states and they are not decorations: nobody has been asked yet (a
+ * statement of the seller's own is still outstanding), somebody has been asked,
+ * and somebody has **taken it on**. Only the last is an order on its way, and
+ * only the last is why the stop button has gone.
  *
  * Its own component rather than more of `sale-status`, which is already 800
  * lines — and because the page renders the stop card twice, so a block placed
@@ -53,12 +56,13 @@ export class SaleTailComponent {
   /**
    * Whether the seller has a button to say the transfer landed.
    *
-   * Card sales only, and not before an operator has been asked: a tail still
-   * held for a statement of the seller's own has nobody transferring anything
-   * yet, so a "it arrived" button would be asking them to confirm a payment
-   * nobody has been asked to make.
+   * Card sales only, and not before an operator has **taken it on** — which is
+   * stricter than having been asked, and deliberately so. An alert nobody has
+   * answered has nobody going to their banking app, so an "it arrived" button
+   * there would ask the seller to confirm a payment that was never started;
+   * the endpoint refuses it with `TAIL_NOT_CLAIMED` for the same reason.
    */
   protected readonly canConfirm = computed(
-    () => this.method() === SaleMethod.CARD && this.tail().announced,
+    () => this.method() === SaleMethod.CARD && this.tail().claimed,
   );
 }

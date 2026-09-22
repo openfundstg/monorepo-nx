@@ -1,6 +1,8 @@
-<div class="tail-card glass-card">
+<div class="tail-card glass-card" [class.taken]="tail().claimed">
   <div class="tail-head">
-    <span class="tail-title">{{ 'sale.tail_title' | translate }}</span>
+    <span class="tail-title">
+      {{ (tail().claimed ? 'sale.tail_order_title' : 'sale.tail_title') | translate }}
+    </span>
     <span class="tail-amount">{{ tail().amount | uah }} ₴</span>
   </div>
 
@@ -10,7 +12,15 @@
   -->
   <p class="tail-why">{{ 'sale.tail_why' | translate }}</p>
 
-  @if (tail().announced) {
+  @if (tail().claimed) {
+    <!--
+      The only state that is an order on its way — and the only one in which the
+      sale is no longer the seller's to end, which is said here rather than left
+      to be discovered by a stop button that has quietly gone.
+    -->
+    <p class="tail-state taken">{{ 'sale.tail_taken' | translate }}</p>
+    <p class="tail-hint">{{ 'sale.tail_hold' | translate }}</p>
+  } @else if (tail().announced) {
     <p class="tail-state">{{ 'sale.tail_announced' | translate }}</p>
   } @else {
     <!--

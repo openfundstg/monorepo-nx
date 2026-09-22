@@ -449,18 +449,17 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
    * Why stopping will not settle on the spot, if it will not.
    *
    * **The button stays and what changes is the promise.** `sale.stop_hint`
-   * quotes a refund, and under any of these three that figure is either wrong
-   * or premature — a payer mid-transfer can still reduce it, a statement can
-   * still correct it, and a tail can still arrive as hryvnia. So the hint names
-   * what is being waited on instead.
+   * quotes a refund, and under either of these that figure is wrong or
+   * premature — a payer mid-transfer can still reduce it, and a statement can
+   * still correct it. So the hint names what is being waited on instead.
    *
-   * Ordered most-final first: a tail is the end of the sale, a statement is a
-   * document the seller owes, an outstanding order is somebody else's clock.
+   * **A tail has no case here**, and that is the point rather than an omission:
+   * while an operator is transferring one the snapshot's `canCancel` is false
+   * and this whole card is gone, and while nobody has taken it on, stopping
+   * settles on the spot exactly as the ordinary hint says. The state in between
+   * was the one the removed `stop_hint_tail` described, and it no longer exists.
    */
   readonly stopHintKey = computed(() => {
-    const tail = this.tail()
-
-    if (tail !== null && !tail.releasable) return 'sale.stop_hint_tail'
     if (this.statementRequired()) return 'sale.stop_hint_statement'
     if ((this.progress()?.pendingAmount ?? 0) > 0) return 'sale.stop_hint_winding_down'
 

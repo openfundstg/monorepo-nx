@@ -55,6 +55,21 @@
   color: var(--c-warning);
 }
 
+/*
+  …and the one branch where something is actually on its way. Coloured for the
+  opposite reason: the seller has been looking at a stalled bar, and this is the
+  line that says it has started moving again.
+*/
+.tail-state.taken {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+/* The card itself picks the state up, so the block reads before it is read. */
+.tail-card.taken {
+  border-color: var(--border-strong);
+}
+
 .tail-hint {
   font-size: 12px;
   line-height: 1.45;

@@ -274,10 +274,14 @@ describe('SaleStatusComponent payment order', () => {
  * What the stop card promises, and why it cannot always promise a refund.
  *
  * **The button stays and the promise changes.** `sale.stop_hint` quotes a
- * refund, and under any of these three that figure is either wrong or
- * premature: a payer mid-transfer can still reduce it, a statement can still
- * correct it, and a tail can still arrive as hryvnia. So the hint names what is
- * being waited on rather than a number nobody can stand behind yet.
+ * refund, and under either of these that figure is wrong or premature: a payer
+ * mid-transfer can still reduce it, and a statement can still correct it. So
+ * the hint names what is being waited on rather than a number nobody can stand
+ * behind yet.
+ *
+ * A tail is not one of them, deliberately — while one is being transferred the
+ * whole card is gone, and while nobody has taken it on, stopping settles on the
+ * spot exactly as the ordinary hint says.
  */
 describe('SaleStatusComponent stop hint', () => {
   let component: SaleStatusComponent;
@@ -335,27 +339,20 @@ describe('SaleStatusComponent stop hint', () => {
   });
 
   /**
-   * Ordered most-final first: a tail is the end of the sale, a statement is a
-   * document the seller owes, an outstanding order is somebody else's clock.
+   * A card the seller can still see is a card whose stop settles on the spot:
+   * the snapshot takes the button away for the one state that does not, so this
+   * must not start describing it again.
    */
-  it('says the tail is, ahead of either of those', () => {
-    on({
-      pendingAmount: 30_000,
-      statementRequired: true,
-      tail: { amount: 6_000, announced: true, releasableAt: Date.now() + 60_000, releasable: false },
-    });
-
-    expect(component.stopHintKey()).toBe('sale.stop_hint_tail');
-  });
-
-  /**
-   * Once the wait is up the seller has a button of their own, so the stop card
-   * goes back to quoting what stopping actually does.
-   */
-  it('stops naming the tail once the seller may finish without it', () => {
+  it('still quotes the refund while a tail is waiting to be taken on', () => {
     on({
       pendingAmount: 0,
-      tail: { amount: 6_000, announced: true, releasableAt: Date.now() - 1, releasable: true },
+      tail: {
+        amount: 6_000,
+        announced: true,
+        claimed: false,
+        releasableAt: Date.now() + 60_000,
+        releasable: false,
+      },
     });
 
     expect(component.stopHintKey()).toBe('sale.stop_hint');
