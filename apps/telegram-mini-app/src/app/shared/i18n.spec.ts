@@ -243,6 +243,15 @@ describe('i18n dictionaries', () => {
       'sale.live',
       'sale.offline',
 
+      // The block that says why a card sale has stopped, whose sentence is
+      // `'sale.card_statement_blocked_' + reason` off `StatementBlockReason`.
+      // Concatenated, so a grep for either name finds this list and nothing
+      // else — and it is drawn only on a sale that is genuinely stuck, which is
+      // the one moment a missing string costs a support message.
+      'sale.card_statement_blocked_title',
+      'sale.card_statement_blocked_routing_stopped',
+      'sale.card_statement_blocked_tail_held',
+
       'SALE_EVENT.TERMINAL_CREATED',
       'SALE_EVENT.ORDER_RECEIVED',
       'SALE_EVENT.PAYMENT_MATCHED',

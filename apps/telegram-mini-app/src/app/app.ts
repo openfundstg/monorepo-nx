@@ -24,6 +24,7 @@ import { SessionExpiryService } from './auth/services/session-expiry.service'
 import { TourOverlayComponent } from './onboarding/components/tour-overlay/tour-overlay.component'
 import { LanguageService } from './shared/services/language.service'
 import { ZoomLockService } from './shared/services/zoom-lock.service'
+import { FocusReleaseService } from './shared/services/focus-release.service'
 import { AppVersionService } from './shared/services/app-version.service'
 import { MetaPixelService } from './shared/services/meta-pixel.service'
 import { APP_LANGUAGES } from './shared/enums/app-language.enum'
@@ -59,6 +60,7 @@ export class AppComponent implements OnInit {
   private readonly translate = inject(TranslateService)
   private readonly language = inject(LanguageService)
   private readonly zoomLock = inject(ZoomLockService)
+  private readonly focusRelease = inject(FocusReleaseService)
   /** Public: the shell's own template asks it whether the app is still current. */
   readonly version = inject(AppVersionService)
   /** Likewise — whether this launch's credential is still worth anything. */
@@ -129,6 +131,12 @@ export class AppComponent implements OnInit {
     // Registered by the shell so it covers every route, and once: a page that
     // did it for itself would leave the gesture unguarded on every other screen.
     this.zoomLock.lock()
+
+    // The same reasoning, for the other gesture the WebView does not handle on
+    // its own: an iOS keyboard has nothing that dismisses it, so a tap on empty
+    // space has to. Every screen with a field in it needs this and none of them
+    // should have to ask.
+    this.focusRelease.start()
 
     // Likewise once, and here rather than in an app initializer: it records
     // which build is running and then watches for it to be superseded, and

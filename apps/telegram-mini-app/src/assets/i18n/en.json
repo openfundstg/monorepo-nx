@@ -371,7 +371,10 @@
     "card_order_deny": "Nothing arrived",
     "card_order_confirm_hint": "Only confirm once you can see the money on your card. One payment can arrive as several transfers — wait for all of them.",
     "card_order_deadline": "Confirm by",
-    "card_statement_title": "Send your statement",
+    "card_statement_blocked_title": "Payments are paused — a statement is needed",
+    "card_statement_blocked_routing_stopped": "You reported that a payment did not fully arrive. Until that is settled no new payers are sent to your card — which is why nothing new is coming in. Send a PDF statement for the card: if the bank shows the transfer, the payment is credited and payers resume.",
+    "card_statement_blocked_tail_held": "What is left is too small for another payment to be created for it, so nothing more will arrive. You said one of the payments came up short — send a PDF statement for the card, we will check the figures and close the sale. Until then the remainder stays frozen.",
+    "card_order_disputed_hint": "If the money did arrive after all, confirm it and we will credit the payment without a statement.",
     "card_statement_hint": "A PDF statement from the bank covering this payment. A screenshot will not do — we verify the bank’s signature.",
     "card_statement_upload": "Choose a file",
     "card_statement_uploading": "Checking…",
@@ -398,9 +401,7 @@
     "card_order_amend_hint": "Add up every transfer for this payment and enter the total. If it is far short we will stop further payments and ask for a statement. We will ask for one at the end either way, to check the figures; until then the remainder stays frozen.",
     "card_order_amend_submit": "Confirm this amount",
     "card_order_declared": "You stated: {{amount}} UAH",
-    "card_order_proven": "The statement proved: {{amount}} UAH",
-    "card_checkpoint_title": "A statement is needed",
-    "card_checkpoint_hint": "You said one of the payments arrived short. Send a PDF statement for the card — we will check the amounts and release the remainder to your balance. Until then it stays frozen."
+    "card_order_proven": "The statement proved: {{amount}} UAH"
   },
   "SALE_EVENT": {
     "TERMINAL_CREATED": "Terminal created and ready to receive funds",

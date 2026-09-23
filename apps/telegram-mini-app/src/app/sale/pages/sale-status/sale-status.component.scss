@@ -572,10 +572,60 @@
   }
 }
 
-.card-order-subtitle {
-  margin: 4px 0 0;
-  font-size: 14px;
-  color: var(--text);
+/*
+  "The money arrived" — the accent back, on the one page that took it away.
+  `.primary-btn` is overridden at the top of this stylesheet to a neutral grey,
+  which is right for the button that goes back to the dashboard and wrong for
+  this: it is the answer every seller on this screen has come to give, and in
+  grey it did not read as a button at all. People tapped the row.
+
+  Full-height like a primary button everywhere else, so the pair below reads as
+  one control and one alternative rather than two links.
+*/
+.card-order-yes {
+  padding: 15px 16px;
+  font-size: 15px;
+  background: var(--accent);
+  color: var(--on-accent);
+
+  &:active:not(:disabled) {
+    background: var(--c-accent-press);
+  }
+
+  /*
+    Still the shared grey when refused, and deliberately: a faded gold button
+    invites the tap it is there to turn down. Repeated here only because the
+    rule above it is more specific than the primitive's.
+  */
+  &:disabled {
+    background: var(--surface-nested);
+    color: var(--text-faint);
+  }
+}
+
+/*
+  …and its opposite. Denying stops this seller's own sale until a bank document
+  settles it, which is the most expensive thing on the screen — so it is drawn
+  in the colour of what it costs rather than in the accent, which is what a
+  `.ghost-btn` otherwise wears here.
+
+  Armed is the same colour filled in: the second tap is the one that does it,
+  and a button that changes only its words between the two taps is a button
+  people press twice without noticing they were asked.
+*/
+.card-order-no {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+
+  &:active {
+    background: var(--c-danger-soft);
+  }
+
+  &.armed {
+    color: var(--on-accent);
+    background: var(--c-danger);
+    border-color: var(--c-danger);
+  }
 }
 
 /* The one file input in this flow; the native control is hidden behind it. */
@@ -651,6 +701,13 @@
   align-self: flex-start;
   margin-top: 8px;
   font-size: 12px;
+  /*
+    Coloured like the denial, because it is a smaller version of one: declaring
+    less than the order was for holds the remainder back and, far enough short,
+    stops routing outright. A link in ordinary text read as a neutral second
+    option beside "the money arrived", which is exactly what it is not.
+  */
+  color: var(--c-danger);
 }
 
 /*
@@ -666,7 +723,10 @@
   margin-top: 4px;
   margin-left: 0;
   font-size: 12px;
-  color: var(--text-muted);
+  /* The same reading as `.amend-open`: this is the "it did not arrive" answer
+     for the one payment that has no button for it, and it belongs to the same
+     family of answers rather than to the page's muted furniture. */
+  color: var(--c-danger);
 }
 
 .amend {
@@ -725,8 +785,70 @@
   color: var(--accent-text);
 }
 
+/* --- The sale has stopped, and a document is what restarts it ------------ */
+
+/*
+  The one loud thing on a screen whose whole job is otherwise to be watched.
+  Every other card here reports; this one asks, and it is the only card on the
+  page that is ever in the way of the money.
+
+  It earns the volume by being rare — see `statementBlock`, which draws it only
+  where something really is held up. While it was shown for the ordinary
+  shortfall too, being loud would have meant shouting at people whose sale was
+  filling perfectly well.
+
+  Danger rather than warning, and the two are different claims: warning is the
+  colour of a countdown running out, which is a thing that is happening to you.
+  This is a thing that has already happened and stays happened until you act.
+*/
 .statement-required {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  border-color: var(--c-danger);
+  background: var(--c-danger-soft);
+}
+
+/*
+  Named rather than `.section-title`, because it is not one: a section title
+  labels what follows, and this states a fact — the payments have stopped. It
+  carries the colour so the first line a scrolling eye lands on is the one that
+  says something is wrong.
+*/
+.statement-required-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-danger);
+}
+
+/*
+  Why, in the seller's own terms. Full contrast rather than the muted grey the
+  hints below it use: this is the sentence the whole card exists to deliver,
+  and the one people were writing to support to be told.
+*/
+.statement-required-reason {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/*
+  The picker inside the red card, in the card's own colour.
+
+  A dashed grey box on a red ground reads as disabled — which is the opposite
+  of what this card is for — so the border and the label follow the alarm, and
+  the fill goes solid enough to look like something you press.
+*/
+.statement-required .statement-upload {
+  font-weight: 600;
+  color: var(--c-danger);
+  background: var(--surface-nested);
+  border-color: var(--c-danger);
+
+  &:active {
+    border-color: var(--c-danger);
+    background: var(--surface-active);
+  }
 }

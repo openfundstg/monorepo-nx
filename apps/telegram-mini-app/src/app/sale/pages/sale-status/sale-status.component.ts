@@ -39,6 +39,7 @@ import { UahPipe } from '../../../shared/pipes/uah.pipe'
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
 import { DateTimePipe } from '../../../shared/pipes/date-time.pipe'
 import { SaleStep } from '../../enums/sale-step.enum'
+import { StatementBlockReason } from '../../enums/statement-block-reason.enum'
 import type { SaleTimelineEntry } from '../../interfaces/sale-timeline-entry.interface'
 import {
   COPIED_RESET_MS,
@@ -663,6 +664,38 @@ export class SaleStatusComponent implements OnInit, OnDestroy {
         .reverse()
         .find((order) => typeof order.declaredAmount === 'number') ?? null
   )
+
+  /**
+   * The document this sale has stopped on, or `null` while nothing has stopped.
+   *
+   * **Asked because an upload box is a demand whether or not it was meant as
+   * one.** A statement is wanted in three situations, and only two of them hold
+   * anything up; the third — a small shortfall on a payment that executed
+   * anyway — keeps filling the sale while the box sits there looking like the
+   * reason it is not. So the box is drawn for the two that are, and says which.
+   *
+   * **Composed from facts the server publishes, not from a rule restated
+   * here.** That a payment is `DISPUTED` and that the sale is in its tail are
+   * both on the snapshot; `statementRequired` is the server's own answer about
+   * the claim. What this adds is which of them is the reason, and that is a
+   * sentence rather than an arithmetic.
+   *
+   * A dispute outranks a held tail because it is the earlier stoppage and the
+   * one with a payment attached: settling it may well fill the sale outright,
+   * at which point there is no tail left to explain.
+   */
+  readonly statementBlock = computed<{
+    order: SaleCardOrder
+    reason: StatementBlockReason
+  } | null>(() => {
+    const disputed = this.disputedCardOrder()
+    if (disputed) return { order: disputed, reason: StatementBlockReason.ROUTING_STOPPED }
+
+    const held = this.shortfallOrder()
+    if (!this.statementRequired() || this.tail() === null || held === null) return null
+
+    return { order: held, reason: StatementBlockReason.TAIL_HELD }
+  })
 
   readonly answeringOrderId = signal<number | null>(null)
   /** Which order, if any, has its "a different amount arrived" field open. */

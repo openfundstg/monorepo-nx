@@ -18,6 +18,7 @@ import type {
   TmaSale,
 } from '@transacto/contracts';
 import { SaleStatusComponent } from './sale-status.component';
+import { StatementBlockReason } from '../../enums/statement-block-reason.enum';
 import { SaleService } from '../../services/sale.service';
 import { TmaService } from '../../../auth/services/tma.service';
 import { WsService } from '../../../realtime/services/ws.service';
@@ -499,5 +500,167 @@ describe('SaleStatusComponent stop hint', () => {
     });
 
     expect(component.stopHintKey()).toBe('sale.stop_hint');
+  });
+});
+
+/**
+ * When the page tells a seller their sale has stopped, and why.
+ *
+ * **An upload box is a demand whether or not it was meant as one**, and a
+ * statement is wanted in three situations of which only two hold anything up.
+ * The third — a small shortfall on a payment that executed anyway — keeps
+ * filling the sale, and the box sat there looking like the reason it was not.
+ * So the block is drawn for the two that stop something, and each says which.
+ */
+describe('SaleStatusComponent statement block', () => {
+  let component: SaleStatusComponent;
+
+  const cardOrder = (over: Partial<SaleCardOrder> = {}): SaleCardOrder =>
+    ({
+      orderId: 1,
+      amount: 30_000,
+      state: SaleCardOrderState.CONFIRMED,
+      arrivedAt: '2026-09-23T10:00:30.000Z',
+      confirmDeadlineAt: '2026-09-23T10:05:30.000Z',
+      answeredAt: '2026-09-23T10:02:48.000Z',
+      statements: [],
+      ...over,
+    }) as SaleCardOrder;
+
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'sale-1' } } } },
+        { provide: SaleService, useValue: {} },
+        {
+          provide: WsService,
+          useValue: {
+            connected: signal(true),
+            saleProgress: () => null,
+            connectionEpoch: () => 0,
+            connect: vi.fn(),
+          },
+        },
+        {
+          provide: TmaService,
+          useValue: { hapticFeedback: vi.fn(), showBackButton: vi.fn(), hideBackButton: vi.fn() },
+        },
+        { provide: ClockService, useValue: { now: () => Date.now() } },
+        { provide: MetaPixelService, useValue: { trackConversion: vi.fn() } },
+      ],
+    });
+
+    component = TestBed.runInInjectionContext(() => new SaleStatusComponent());
+  });
+
+  const on = (progress: Partial<SaleProgress>): void => {
+    component.progress.set({ saleMethod: SaleMethod.CARD, ...progress } as SaleProgress);
+  };
+
+  /**
+   * **The case this was built for.** ₴5 declared short on a payment that was
+   * executed anyway: payers keep coming, the bar keeps moving, and the document
+   * is wanted at the end. Nothing is stopped, so nothing is asked for.
+   */
+  it('asks for nothing while the sale is still filling', () => {
+    on({
+      statementRequired: true,
+      tail: null,
+      cardOrders: [cardOrder({ declaredAmount: 29_500 })],
+    });
+
+    expect(component.statementBlock()).toBeNull();
+  });
+
+  /** A disputed payment stops routing, so there is nothing else to wait for. */
+  it('says routing has stopped while a payment is disputed', () => {
+    const disputed = cardOrder({ orderId: 2, state: SaleCardOrderState.DISPUTED });
+
+    on({ statementRequired: false, tail: null, cardOrders: [disputed] });
+
+    expect(component.statementBlock()).toEqual({
+      order: disputed,
+      reason: StatementBlockReason.ROUTING_STOPPED,
+    });
+  });
+
+  /**
+   * A plain denial carries no declared figure, so `statementRequired` is false
+   * and the sale is nonetheless completely stuck. Gating the block on that flag
+   * alone would leave the one seller who most needs the explanation without it.
+   */
+  it('says so on a denial that declared no figure at all', () => {
+    on({
+      statementRequired: false,
+      cardOrders: [cardOrder({ state: SaleCardOrderState.DISPUTED })],
+    });
+
+    expect(component.statementBlock()?.reason).toBe(StatementBlockReason.ROUTING_STOPPED);
+  });
+
+  /**
+   * The quietest stoppage there is: the gap is under the order floor, so
+   * nothing more can be routed, and the remainder waits on the document.
+   */
+  it('says the remainder is held once the sale is in its tail', () => {
+    const claimed = cardOrder({ declaredAmount: 29_500 });
+
+    on({
+      statementRequired: true,
+      tail: { amount: 15_900, claimed: false },
+      cardOrders: [claimed],
+    });
+
+    expect(component.statementBlock()).toEqual({
+      order: claimed,
+      reason: StatementBlockReason.TAIL_HELD,
+    });
+  });
+
+  /**
+   * A dispute outranks a held tail: it is the earlier stoppage and the one with
+   * a payment attached, and settling it may fill the sale outright — at which
+   * point there is no tail left to explain.
+   */
+  it('names the dispute when a sale is in both states at once', () => {
+    on({
+      statementRequired: true,
+      tail: { amount: 15_900, claimed: false },
+      cardOrders: [
+        cardOrder({ declaredAmount: 29_500 }),
+        cardOrder({ orderId: 2, state: SaleCardOrderState.DISPUTED }),
+      ],
+    });
+
+    expect(component.statementBlock()?.reason).toBe(StatementBlockReason.ROUTING_STOPPED);
+  });
+
+  /** A tail nobody has claimed against is not a reason to ask for anything. */
+  it('asks for nothing in a tail with no claim behind it', () => {
+    on({
+      statementRequired: false,
+      tail: { amount: 15_900, claimed: false },
+      cardOrders: [cardOrder()],
+    });
+
+    expect(component.statementBlock()).toBeNull();
+  });
+
+  /** The document is filed against the newest claim — see `shortfallOrder`. */
+  it('files a held tail against the most recent claim', () => {
+    on({
+      statementRequired: true,
+      tail: { amount: 15_900, claimed: false },
+      cardOrders: [
+        cardOrder({ orderId: 1, declaredAmount: 29_500 }),
+        cardOrder({ orderId: 2, declaredAmount: 10_100 }),
+      ],
+    });
+
+    expect(component.statementBlock()?.order.orderId).toBe(2);
   });
 });

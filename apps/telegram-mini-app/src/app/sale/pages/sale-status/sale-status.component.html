@@ -191,18 +191,42 @@
       Empty on a jar sale, whose orders the scraper settles without asking.
     -->
     <!--
-      The tail is being held until a statement says what really landed.
+      The sale has stopped, and this is the one thing that restarts it.
 
-      Not a punishment and not an accusation: the seller declared that a payment
-      came up short, which is a claim only they can make and only they gain by
-      making, so the remainder waits for the bank's own record. Telling the truth
-      costs one upload. What it is worth saying plainly is that the money is
-      theirs either way — it is the figure that is in question, not the refund.
+      **Drawn only when something really is stopped** — see `statementBlock`.
+      An upload box reads as a demand whether or not it was meant as one, and
+      the commonest case by far is the one where nothing is held up at all: a
+      small shortfall on a payment that executed anyway, where the sale keeps
+      filling and the document is wanted at the end. That case now shows
+      nothing, so the two that remain can say what they are without competing
+      with it.
+
+      Loud on purpose, and this is the whole of the reason. From the seller's
+      side both stoppages look identical to a sale that has simply gone quiet:
+      the bar stops moving, no payer arrives, and the screen that could say why
+      was saying it in grey, below the fold, in the voice of an optional extra.
+      People wrote to support instead — which is the measure of how well a quiet
+      block explains itself.
+
+      Not an accusation either. The money is theirs whichever way the document
+      comes out; it is the figure that is in question, not the refund.
     -->
-    @if (statementRequired() && shortfallOrder(); as pending) {
+    @if (statementBlock(); as blocked) {
       <div class="statement-required glass-card">
-        <h3 class="section-title">{{ 'sale.card_checkpoint_title' | translate }}</h3>
-        <p class="card-order-hint">{{ 'sale.card_checkpoint_hint' | translate }}</p>
+        <h3 class="statement-required-title">
+          {{ 'sale.card_statement_blocked_title' | translate }}
+        </h3>
+
+        <!--
+          The two stoppages have nothing in common from the seller's side, so
+          each brings its own sentence. Keyed off the enum member rather than
+          chosen by a `switch` the next reason would have to be added to.
+        -->
+        <p class="statement-required-reason">
+          {{ 'sale.card_statement_blocked_' + blocked.reason | translate }}
+        </p>
+
+        <p class="card-order-hint">{{ 'sale.card_statement_hint' | translate }}</p>
 
         <label class="statement-upload">
           @if (uploadingStatement()) {
@@ -211,13 +235,29 @@
           } @else {
             <span>{{ 'sale.card_statement_upload' | translate }}</span>
           }
+          <!--
+            PDF only, and the server refuses anything else. A statement proves a
+            negative, which a screenshot cannot do: what makes it evidence is
+            the bank's signature over its exact bytes.
+          -->
           <input
             type="file"
             accept=".pdf,application/pdf"
             [disabled]="uploadingStatement()"
-            (change)="onStatementPicked($event, pending.orderId)"
+            (change)="onStatementPicked($event, blocked.order.orderId)"
           />
         </label>
+
+        <!--
+          Why the last attempt was refused, beside the control that will take
+          the next one. It is also rendered on the payment's own row, where it
+          is a record; here it is the instruction for what to send instead.
+        -->
+        @if (latestRejection(blocked.order); as rejection) {
+          <p class="card-order-rejection">
+            {{ 'SALE_STATEMENT.' + rejection | translate }}
+          </p>
+        }
       </div>
     }
 
@@ -250,7 +290,11 @@
             <p class="card-order-hint">{{ 'sale.card_order_confirm_hint' | translate }}</p>
 
             <div class="card-order-actions">
-              <button class="primary-btn" [disabled]="tailBusy()" (click)="onConfirmTail()">
+              <button
+                class="primary-btn card-order-yes"
+                [disabled]="tailBusy()"
+                (click)="onConfirmTail()"
+              >
                 {{ 'sale.card_order_confirm' | translate }}
               </button>
             </div>
@@ -301,9 +345,18 @@
 
               <p class="card-order-hint">{{ 'sale.card_order_confirm_hint' | translate }}</p>
 
+              <!--
+                **The two answers are drawn as opposites**, because they are.
+                Confirming is the ordinary path and carries the page's accent;
+                denying stops the seller's own sale until a document settles it,
+                and wears the colour of the thing it costs. They used to be a
+                neutral grey pair — `.primary-btn` is overridden on this page to
+                stop shouting, which is right for the button that goes back and
+                wrong for the one answer everybody is here to give.
+              -->
               <div class="card-order-actions">
                 <button
-                  class="primary-btn"
+                  class="primary-btn card-order-yes"
                   [disabled]="answeringOrderId() !== null"
                   (click)="onConfirmCardOrder(cardOrder.orderId)"
                 >
@@ -311,7 +364,7 @@
                 </button>
                 @if (isOverdue(cardOrder)) {
                   <button
-                    class="ghost-btn"
+                    class="ghost-btn card-order-no"
                     [class.armed]="denyArmed() === cardOrder.orderId"
                     [disabled]="answeringOrderId() !== null"
                     (click)="onDenyCardOrder(cardOrder.orderId)"
@@ -367,8 +420,7 @@
 
                   <div class="card-order-actions">
                     <button
-                      class="primary-btn"
-                      disabled
+                      class="primary-btn card-order-yes"
                       [disabled]="answeringOrderId() !== null || !amendedValidFor(cardOrder)"
                       (click)="onConfirmCardOrder(cardOrder.orderId, amendedKopecks() ?? undefined)"
                     >
@@ -395,41 +447,27 @@
               A disputed order can still be confirmed: a late payer's money is
               still money, and so is a late answer.
             -->
+            <!--
+              **The upload is not here any more**, and the row is the better for
+              it. A disputed payment is exactly the case the block at the top of
+              this page is drawn for, and two file pickers for one document made
+              the page look as though it wanted two.
+
+              What stays is the answer only this row can give: a late payer's
+              money is still money, and so is a late answer.
+            -->
             @if (cardOrder.state === 'DISPUTED') {
-              <h4 class="card-order-subtitle">{{ 'sale.card_statement_title' | translate }}</h4>
-              <p class="card-order-hint">{{ 'sale.card_statement_hint' | translate }}</p>
+              <p class="card-order-hint">{{ 'sale.card_order_disputed_hint' | translate }}</p>
 
-              <label class="statement-upload">
-                @if (uploadingStatement()) {
-                  <span class="spinner"></span>
-                  <span>{{ 'sale.card_statement_uploading' | translate }}</span>
-                } @else {
-                  <span>{{ 'sale.card_statement_upload' | translate }}</span>
-                }
-                <!--
-                  PDF only, and the server refuses anything else. A statement
-                  proves a negative, which a screenshot cannot do: what makes it
-                  evidence is the bank's signature over its exact bytes.
-                -->
-                <input
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  [disabled]="uploadingStatement()"
-                  (change)="onStatementPicked($event, cardOrder.orderId)"
-                />
-              </label>
-
-              <!--
-                Still confirmable: a late payer's money is still money, and so
-                is a late answer.
-              -->
-              <button
-                class="ghost-btn"
-                [disabled]="answeringOrderId() !== null || uploadingStatement()"
-                (click)="onConfirmCardOrder(cardOrder.orderId)"
-              >
-                {{ 'sale.card_order_confirm' | translate }}
-              </button>
+              <div class="card-order-actions">
+                <button
+                  class="primary-btn card-order-yes"
+                  [disabled]="answeringOrderId() !== null || uploadingStatement()"
+                  (click)="onConfirmCardOrder(cardOrder.orderId)"
+                >
+                  {{ 'sale.card_order_confirm' | translate }}
+                </button>
+              </div>
             }
 
             <!--
