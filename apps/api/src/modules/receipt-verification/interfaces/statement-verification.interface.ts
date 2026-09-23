@@ -1,4 +1,5 @@
 import type { BankProvider, SaleStatementRejection } from '@transacto/contracts'
+import { StatementSubject } from 'src/shared/interfaces'
 import type { ParsedStatement } from 'src/shared/interfaces'
 import type { ReceiptFile } from 'src/shared/interfaces'
 
@@ -91,6 +92,26 @@ export interface StatementExpectation {
   readonly cardTail: string
   /** The credit that is supposed to be missing, in UAH kopecks. */
   readonly amountKopecks: number
+  /**
+   * What the document is being asked to establish.
+   *
+   * **It decides how much of the window the document has to cover**, and the
+   * two answers are genuinely different questions. A denial says "nothing
+   * arrived", and nothing is only provable by a document that looked
+   * everywhere the money could be. A shortfall says "less arrived than was
+   * routed", and what settles it is the checkpoint reading whatever credits
+   * the document does hold — an arithmetic that is a lower bound by
+   * construction and capped at the order, so a partial document can only
+   * under-correct.
+   *
+   * Demanding full coverage of both is what stranded sale 9CTBSY7W. A bank
+   * issues whole days; a seller uploading a shortfall statement at 00:06 hands
+   * over one that ends at midnight while the window runs half a minute past
+   * it; the document was refused entire, and with it went the correction it
+   * was carrying. The same file had been accepted nine minutes earlier — the
+   * only thing that changed was the clock.
+   */
+  readonly subject: StatementSubject
   /** The window the credit would have landed in — where the rows are searched. */
   readonly from: Date
   readonly to: Date

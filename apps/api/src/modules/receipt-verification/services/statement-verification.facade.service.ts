@@ -1,3 +1,4 @@
+import { StatementSubject } from 'src/shared/interfaces'
 import { Inject, Injectable, Logger } from '@nestjs/common'
 import { BankProvider, SaleStatementRejection } from '@transacto/contracts'
 import { STATEMENT_VERIFICATION_PROVIDERS } from 'src/modules/receipt-verification/receipt-verification.tokens'
@@ -129,7 +130,18 @@ export class StatementVerificationFacadeService {
     //    document covering it. A bank issues whole days, so where that grace
     //    crossed midnight no same-day statement could ever pass, however
     //    complete it was.
-    if (statement.periodFrom > expectation.from || statement.periodTo < expectation.mustCoverTo)
+    //
+    //    **And only a denial is held to it.** Covering the window is what makes
+    //    an *absence* provable, and an absence is the only thing a denial can
+    //    be settled by. A shortfall asks a different question — how much
+    //    arrived — which the checkpoint answers from whatever credits the
+    //    document does hold, a sum that is a lower bound by construction and
+    //    capped at the order, so a partial document can only under-correct.
+    //    Refusing both alike stranded sale 9CTBSY7W: the seller's statement
+    //    ended at midnight, the window ran thirty seconds past it, and the
+    //    correction it carried was thrown away with the document. The same file
+    //    had been accepted nine minutes earlier, before the day turned over.
+    if (!this.reachesFarEnough(statement, expectation))
       return { rejection: SaleStatementRejection.PERIOD_TOO_SHORT, statement }
 
     // 3. Was every row read? A row that looked like a row and did not parse is
@@ -199,6 +211,30 @@ export class StatementVerificationFacadeService {
    * and an operator sorts it out; too loose spends a seller's stake for money
    * they never got.
    */
+  /**
+   * Whether this document reaches far enough to answer what it was sent for.
+   *
+   * A denial needs the whole window: the credit it denies could be anywhere in
+   * it, so a document that stops early has not looked where the rest of it
+   * would be, and reading that as "no credit found" is the one failure this
+   * design exists to make impossible.
+   *
+   * A shortfall needs only to overlap it. What settles that claim is the
+   * checkpoint's arithmetic over the credits the document holds — never its
+   * silence — so the honest requirement is that it holds some of this window at
+   * all. A document from another month says nothing about this order, and the
+   * seller is better told that than left to wonder why nothing moved.
+   */
+  private reachesFarEnough(
+    statement: ParsedStatement,
+    expectation: StatementExpectation
+  ): boolean {
+    if (expectation.subject === StatementSubject.DENIAL)
+      return statement.periodFrom <= expectation.from && statement.periodTo >= expectation.mustCoverTo
+
+    return statement.periodTo >= expectation.from && statement.periodFrom <= expectation.to
+  }
+
   private arrivedInWindow(
     statement: ParsedStatement,
     expectation: StatementExpectation

@@ -6,6 +6,7 @@ import {
   type StatementExpectation,
   type StatementVerificationProvider
 } from 'src/modules/receipt-verification/interfaces'
+import { StatementSubject } from 'src/shared/interfaces'
 import type { ParsedStatement } from 'src/shared/interfaces'
 import type { ReceiptCheckerApiService } from './receipt-checker.api.service'
 import { parseStatement } from 'src/shared/utils'
@@ -31,6 +32,10 @@ const WINDOW_TO = new Date('2026-09-14T12:00:00.000Z')
 const expectation: StatementExpectation = {
   cardTail: CARD_TAIL,
   amountKopecks: AMOUNT,
+  // The stricter of the two, so the coverage cases below say what they mean.
+  // Only a denial has to cover the window; a shortfall needs to overlap it, and
+  // has its own cases further down.
+  subject: StatementSubject.DENIAL,
   from: WINDOW_FROM,
   to: WINDOW_TO,
   // The ordinary case: by the time a statement is read the window has closed,
@@ -362,4 +367,85 @@ describe('StatementVerificationFacadeService', () => {
       expect(service.supports(bank)).toBe(false)
     })
   })
+
+  /**
+   * **What a document has to reach depends on what it was sent to answer**, and
+   * the two are genuinely different questions.
+   *
+   * A denial says "nothing arrived", and nothing is provable only by a document
+   * that looked everywhere the money could be. A shortfall says "less arrived
+   * than was routed", and what settles that is the checkpoint reading the
+   * credits the document *does* hold — a sum that is a lower bound by
+   * construction and capped at the order, so a partial document can only
+   * under-correct.
+   *
+   * Holding both to full coverage stranded sale 9CTBSY7W. A bank issues whole
+   * days; the seller uploaded at 00:06 a statement ending at midnight while the
+   * window ran thirty seconds past it; the document was refused entire and the
+   * ₴4 correction it carried went with it. The same file had been accepted nine
+   * minutes earlier — the only thing that changed was the clock.
+   */
+  describe('how far a document has to reach for a shortfall', () => {
+    const shortfall = (over: Partial<StatementExpectation> = {}) =>
+      verify({ subject: StatementSubject.SHORTFALL, ...over })
+
+    it('accepts one that stops inside the window', async () => {
+      parsed = statement({ periodTo: new Date('2026-09-14T11:00:00.000Z') })
+
+      await expect(shortfall()).resolves.toMatchObject({ finding: expect.anything() })
+    })
+
+    /** Including one that has been overtaken by the clock, which is the case. */
+    it('accepts one that stops short of the present', async () => {
+      parsed = statement({ periodTo: new Date('2026-09-14T11:00:00.000Z') })
+
+      await expect(
+        shortfall({ mustCoverTo: new Date('2026-09-14T11:30:00.000Z') })
+      ).resolves.toMatchObject({ finding: expect.anything() })
+    })
+
+    it('accepts one that starts inside the window', async () => {
+      parsed = statement({ periodFrom: new Date('2026-09-14T11:00:00.000Z') })
+
+      await expect(shortfall()).resolves.toMatchObject({ finding: expect.anything() })
+    })
+
+    /**
+     * Overlap is still required. A document from another month holds no credit
+     * of this order's, so the checkpoint would read nothing out of it — and the
+     * seller is better told that than left wondering why nothing moved.
+     */
+    it.each([
+      [
+        'ending before the window opens',
+        {
+          periodFrom: new Date('2026-09-01T00:00:00.000Z'),
+          periodTo: new Date('2026-09-14T09:59:59.999Z')
+        }
+      ],
+      [
+        'starting after the window closes',
+        {
+          periodFrom: new Date('2026-09-14T12:00:00.001Z'),
+          periodTo: new Date('2026-09-30T23:59:59.999Z')
+        }
+      ]
+    ])('refuses one %s', async (_, over) => {
+      parsed = statement(over)
+
+      await expect(shortfall()).resolves.toMatchObject({
+        rejection: SaleStatementRejection.PERIOD_TOO_SHORT
+      })
+    })
+
+    /** And a denial is held to the whole window exactly as before. */
+    it('still refuses a denial answered by a document that stops early', async () => {
+      parsed = statement({ periodTo: new Date('2026-09-14T11:00:00.000Z') })
+
+      await expect(verify({ subject: StatementSubject.DENIAL })).resolves.toMatchObject({
+        rejection: SaleStatementRejection.PERIOD_TOO_SHORT
+      })
+    })
+  })
+
 })

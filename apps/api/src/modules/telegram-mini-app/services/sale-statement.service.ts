@@ -136,7 +136,7 @@ export class SaleStatementService {
       statementId
     })
 
-    return this.judge(stored, cardOrder, statementId, { bank, uploaded: file })
+    return this.judge(stored, cardOrder, statementId, { bank, uploaded: file }, answers)
   }
 
   /** Runs the check and applies whatever it concluded. */
@@ -144,13 +144,14 @@ export class SaleStatementService {
     sale: StoredSale,
     cardOrder: TmaSaleCardOrder,
     statementId: Types.ObjectId,
-    submission: { bank: BankProvider; uploaded: ReceiptFile }
+    submission: { bank: BankProvider; uploaded: ReceiptFile },
+    answers: StatementSubject
   ): Promise<StoredSale> {
     const saleId = sale._id.toString()
 
     const verification = await this.verification.verify(
       submission,
-      this.expectationFor(sale, cardOrder)
+      this.expectationFor(sale, cardOrder, answers)
     )
     const statement = verification.statement
 
@@ -452,7 +453,11 @@ export class SaleStatementService {
    * The grace past the deadline is for a bank posting a transfer late, which is
    * the one honest reason this order's own money arrives after its window.
    */
-  private expectationFor(sale: StoredSale, cardOrder: TmaSaleCardOrder): StatementExpectation {
+  private expectationFor(
+    sale: StoredSale,
+    cardOrder: TmaSaleCardOrder,
+    answers: StatementSubject
+  ): StatementExpectation {
     const graceMs = SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS
     // The same bounds the checkpoint uses, from the same function. Two orders of
     // one sale are routinely the same size, so a window overlapping its
@@ -469,6 +474,11 @@ export class SaleStatementService {
       // other account is refused before a row of it is read.
       cardTail: sale.payoutCardTail ?? '',
       amountKopecks: cardOrder.amount,
+      // Threaded from `load`, which decided it, rather than re-derived from the
+      // order's state here. How much of the window the document has to cover
+      // follows from what it was sent to answer, and two places deciding that
+      // is two places to get it wrong.
+      subject: answers,
       ...window,
       // How far the document has to reach is **not** where the search ends —
       // the window's edge is normally still in the future when a seller is
