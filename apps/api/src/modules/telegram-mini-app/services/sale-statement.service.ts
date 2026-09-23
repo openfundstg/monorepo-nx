@@ -297,16 +297,24 @@ export class SaleStatementService {
       correction
     )
 
+    // **Reported after the write and on its outcome, never before it.** This
+    // line used to be unconditional, so the log announced a correction the
+    // database had just refused — the one place an operator would look to find
+    // out whether the ₴4 moved said that it had.
+    if (updated === null) {
+      this.logger.error(
+        `Sale ${sale.publicId}: statement ${statementId} was accepted and could not be applied ` +
+          `— the sale was not there to write to. Nothing moved` +
+          `${correctionKopecks > 0 ? `, including a ${correctionKopecks} kopeck correction` : ''}.`
+      )
+
+      return
+    }
+
     if (correctionKopecks > 0) {
       this.logger.warn(
         `Sale ${sale.publicId}: a statement shows ${correctionKopecks} kopecks more than its ` +
           `seller declared. Corrected against the target.`
-      )
-    }
-
-    if (updated === null) {
-      this.logger.debug(
-        `Sale ${sale.publicId}: a later statement already reaches past this one; nothing moved.`
       )
     }
   }

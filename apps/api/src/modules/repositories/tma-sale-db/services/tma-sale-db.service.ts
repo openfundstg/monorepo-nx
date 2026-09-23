@@ -974,10 +974,21 @@ export class TmaSaleDbService {
    * a seller who told the truth — and still writes the checkpoint, because
    * having been checked is the fact that matters.
    *
-   * Not guarded on the checkpoint moving forward. A statement covering an
-   * earlier period cannot produce a correction for orders it does not reach, so
-   * the correction is zero by construction; letting the date go backwards would
-   * only re-open claims that have already been settled by a later document.
+   * **The checkpoint only ever moves forward, and nothing else waits on it.**
+   * It was once a filter — refuse the write unless the new date is strictly
+   * later — and that made a second statement covering the same day a no-op:
+   * sale 9CTBSY7W had one accepted for a denial at 20:56 and another at 20:57
+   * carrying a ₴4 correction, both ending at the same midnight, and the second
+   * was refused in full. The correction, the `provenAmount` and the timeline
+   * entry all went with it, the claim stayed unproven, the sale's tail stayed
+   * parked — and every further statement that day would have been refused
+   * identically, because they all end at the same moment.
+   *
+   * `$max` keeps the one property that filter was for: an older document cannot
+   * rewind the date past what a later one has already settled. Applying the
+   * correction twice is prevented where it belongs — in the arithmetic, which
+   * measures from `provenAmount` rather than from the seller's word, so a
+   * document read a second time adds nothing.
    *
    * **Three things in the one update, for the same reason the first two are.**
    * The per-order `provenAmount` is what the seller's screen draws the
@@ -1029,9 +1040,12 @@ export class TmaSaleDbService {
 
     return this.saleModel
       .findOneAndUpdate(
-        { _id: id, statementCheckpointAt: { $not: { $gte: checkpointAt } } },
+        { _id: id },
         {
-          $set: { statementCheckpointAt: checkpointAt, ...provenAmounts },
+          // Forward or not at all — see the note above.
+          $max: { statementCheckpointAt: checkpointAt },
+          // Mongo refuses an empty `$set`, and a truthful seller produces one.
+          ...(Object.keys(provenAmounts).length > 0 ? { $set: provenAmounts } : {}),
           ...(correctionKopecks > 0 ? { $inc: { receivedAmount: correctionKopecks } } : {}),
           ...(events.length > 0 ? { $push: { events: { $each: events } } } : {})
         },

@@ -170,10 +170,39 @@ describe('TmaSaleDbService', () => {
     }
 
     it('credits the difference and stamps the checkpoint', async () => {
-      const [, update] = await apply([])
+      const [filter, update] = await apply([])
 
       expect(update.$inc).toEqual({ receivedAmount: 400 })
-      expect(update.$set.statementCheckpointAt).toEqual(new Date('2026-09-20T23:59:59Z'))
+      expect(update.$max).toEqual({ statementCheckpointAt: new Date('2026-09-20T23:59:59Z') })
+      // Nothing to `$set` for a seller who told the truth, and Mongo refuses an
+      // empty one.
+      expect(update.$set).toBeUndefined()
+      expect(filter).toEqual({ _id: ORDER_ID })
+    })
+
+    /**
+     * **The checkpoint moves the sale forward; it does not decide whether the
+     * write happens.**
+     *
+     * It was a filter once — refuse unless the new date is strictly later — and
+     * that made a second statement covering the same day a no-op. Sale 9CTBSY7W
+     * had one accepted for a denial at 20:56 and another at 20:57 carrying a ₴4
+     * correction; both ended at the same midnight, so the second was refused
+     * whole. The correction, the proven figure and the timeline entry went with
+     * it, and every further statement that day would have been refused the same
+     * way, because they all end at the same moment.
+     *
+     * Applying a correction twice is prevented in the arithmetic instead, which
+     * measures from `provenAmount` rather than from what the seller said.
+     */
+    it('applies a statement that only reaches as far as the last one', async () => {
+      const [filter, update] = await apply([
+        { orderId: 7, declaredKopecks: 29_600, provenKopecks: 30_000 }
+      ])
+
+      expect(filter.statementCheckpointAt).toBeUndefined()
+      expect(update.$max).toEqual({ statementCheckpointAt: new Date('2026-09-20T23:59:59Z') })
+      expect(update.$inc).toEqual({ receivedAmount: 400 })
     })
 
     /** The row the seller reads, so it cannot disagree with the total above. */
