@@ -859,6 +859,8 @@ export class TmaSaleDbService {
       type: SaleEventType
       amount?: number
       orderId?: number
+      /** Only `STATEMENT_CORRECTED` carries it — the seller's own figure. */
+      declaredAmount?: number
       at: number
       evidence?: SaleEvidence
       statementId?: Types.ObjectId
@@ -874,6 +876,7 @@ export class TmaSaleDbService {
               type: event.type,
               amount: event.amount ?? null,
               orderId: event.orderId ?? null,
+              declaredAmount: event.declaredAmount ?? null,
               at: event.at,
               evidence: event.evidence ?? SALE_EVENT_EVIDENCE[event.type],
               statementId: event.statementId ?? null,
@@ -1113,7 +1116,11 @@ export class TmaSaleDbService {
     orderId: number,
     from: readonly SaleCardOrderState[],
     to: SaleCardOrderState,
-    options: { readonly answered?: boolean; readonly declaredAmount?: number } = {}
+    options: {
+      readonly answered?: boolean
+      readonly declaredAmount?: number
+      readonly provenAmount?: number
+    } = {}
   ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
     return this.saleModel
       .findOneAndUpdate(
@@ -1131,6 +1138,14 @@ export class TmaSaleDbService {
             // a different claim from "the seller declared the whole amount".
             ...(typeof options.declaredAmount === 'number'
               ? { 'cardOrders.$.declaredAmount': options.declaredAmount }
+              : {}),
+            // Written in the same update as the state, so an order can never be
+            // settled on a document without the figure that document proved.
+            // The checkpoint writes this one for orders already inside
+            // `receivedAmount`; this is the other half, for the disputed order
+            // the same statement settles outright.
+            ...(typeof options.provenAmount === 'number'
+              ? { 'cardOrders.$.provenAmount': options.provenAmount }
               : {})
           }
         },

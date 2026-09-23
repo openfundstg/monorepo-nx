@@ -177,6 +177,11 @@ export interface StatementCorrection {
    * their USDT was released against it, and the bank's own record of the window
    * holds no credit whatsoever. Nothing is deducted here — a correction moves a
    * figure, and this needs a person.
+   *
+   * **Credited orders only**, for exactly that reason. A disputed order the
+   * document is silent about is the ordinary way a denial is upheld — nobody's
+   * USDT went out against it — and reporting that as an unsettled claim raised
+   * an operator alarm about an order working precisely as designed.
    */
   readonly unsettled: readonly UnsettledClaim[]
 }
@@ -189,9 +194,13 @@ export interface StatementCorrection {
  * against the bank's own record — so all of them are settled by one document,
  * including the ones it was not uploaded for.
  *
- * Only a *claim* can be corrected, and only upwards:
+ * Only a *credited* claim can be corrected, and only upwards:
  *
  * - A seller who declared the whole order claimed nothing to check.
+ * - A seller whose claim was never credited has nothing here to correct. Their
+ *   order was disputed rather than executed, `receivedAmount` holds none of it,
+ *   and the finding this same document produces is what settles it — see the
+ *   `counted` check below, which is the whole of the fix for sale 13D4L8YJ.
  * - A seller who declared less than the bank shows kept the difference, and it
  *   goes back onto the target. This is the one claim on a card sale they gain by
  *   making — ₴5 understated leaves ₴5 more outstanding, which brings another
@@ -217,10 +226,20 @@ export interface StatementCorrection {
 export const statementCorrection = (
   cardOrders: readonly TmaSaleCardOrder[],
   statement: ParsedStatement,
-  graceMs: number
+  graceMs: number,
+  /**
+   * The orders already inside `receivedAmount` — the sale's own
+   * `creditedOrderIds`.
+   *
+   * **Required, and not defaulted to "all of them".** A default would make
+   * every existing call site keep the behaviour this parameter exists to end,
+   * which is the one thing worse than not having it.
+   */
+  creditedOrderIds: readonly number[]
 ): StatementCorrection => {
   const unsettled: UnsettledClaim[] = []
   const corrected: OrderCorrection[] = []
+  const counted = new Set(creditedOrderIds)
   // Oldest first, so each order's window can be cut at the next one's arrival.
   const ordered = [...cardOrders].toSorted(
     (left, right) => left.arrivedAt.getTime() - right.arrivedAt.getTime()
@@ -229,6 +248,23 @@ export const statementCorrection = (
   const correctionKopecks = ordered.reduce((total, order, index) => {
     const declared = order.declaredAmount
     if (typeof declared !== 'number') return total
+
+    // **A correction moves a figure that is already in the total, and an order
+    // nothing has credited has no such figure.** A seller who declares far
+    // enough short is not executed at all — `SaleCardOrderService.confirm`
+    // disputes the order and credits nothing — yet the claim is still written
+    // down, so this reduce used to read `declared` as though `receivedAmount`
+    // held it. It did not, and the finding then credited the order in full a
+    // moment later: on sale 13D4L8YJ a ₴301 order the seller had declared at
+    // ₴101 went in as ₴501, the sale read ₴801 of ₴960 against ₴601 really
+    // received, and it closed on a ₴159 tail an operator transferred by hand
+    // where ₴359 was still routable.
+    //
+    // Such an order is left entirely alone here — no correction, no
+    // `provenAmount`, no unsettled claim. It is not this document's to settle:
+    // `confirmFromStatement` or `upholdDenial` answers it on the same
+    // statement, and whichever wins writes the whole of the figure.
+    if (!counted.has(order.orderId)) return total
 
     const { from, to } = attributionWindow(
       ordered[index - 1],

@@ -541,6 +541,7 @@ export class SaleCardOrderService {
   ): Promise<StoredSale> {
     const saleId = sale._id.toString()
     const declaredAmount = creditedKopecks === cardOrder.amount ? undefined : creditedKopecks
+    const overruled = this.overruledClaim(cardOrder, reason, creditedKopecks)
 
     await this.orderDbService.markCompleted(
       cardOrder.orderId,
@@ -554,11 +555,30 @@ export class SaleCardOrderService {
       cardOrder.orderId,
       ANSWERABLE,
       state,
-      { answered: true, declaredAmount }
+      { answered: true, declaredAmount, provenAmount: overruled }
     )
     // Somebody else answered between the read and the write. Their call is
     // doing the crediting; this one returns what is there.
     if (!moved) return (await this.saleDbService.findById(saleId)) ?? sale
+
+    // Before the confirmation, in the order the checkpoint writes them: the
+    // document corrected the figure, and the order is then settled on the
+    // corrected one.
+    if (overruled !== undefined) {
+      this.logger.warn(
+        `Sale ${sale.publicId}: order ${cardOrder.orderId} was declared at ` +
+          `${cardOrder.declaredAmount} kopecks and the statement shows ${overruled}. ` +
+          `Settling on the document.`
+      )
+
+      await this.saleDbService.appendEvent(saleId, {
+        type: SaleEventType.STATEMENT_CORRECTED,
+        amount: overruled,
+        declaredAmount: cardOrder.declaredAmount,
+        orderId: cardOrder.orderId,
+        at: Date.now()
+      })
+    }
 
     const withEvent =
       (await this.saleDbService.appendEvent(saleId, {
@@ -588,6 +608,42 @@ export class SaleCardOrderService {
     await this.resumeIfSettled(credited)
 
     return this.reconsiderFunding(credited)
+  }
+
+  /**
+   * What a document proved for an order whose seller had declared less, or
+   * `undefined` when nothing was overruled.
+   *
+   * **The other half of the statement checkpoint, and it lives here because
+   * this is where the money moves.** `statementCorrection` corrects the orders
+   * that are already inside `receivedAmount`; it cannot touch this one, because
+   * a claim short enough to be disputed was never credited and a delta against
+   * it would be booking the same hryvnia twice — which is what it did.
+   *
+   * So the figure is written by the call that credits the order in full. The
+   * seller declared ₴101, the bank showed ₴301, and without this their row
+   * would keep the ₴101 standing unstruck beside a payment we had just settled
+   * at three times that: a sale whose total adds up and whose payment does not,
+   * which is the exact failure `STATEMENT_CORRECTED` was added to end.
+   *
+   * Only ever a statement's doing. A seller confirming cannot overrule their
+   * own claim — that figure *is* the claim.
+   */
+  private overruledClaim(
+    cardOrder: TmaSaleCardOrder,
+    reason: SettlingReason,
+    creditedKopecks: number
+  ): number | undefined {
+    if (reason !== OrderExecutionReason.STATEMENT_PROVEN) return undefined
+
+    const declared = cardOrder.declaredAmount
+
+    // Never downwards, in the manner of the checkpoint: understating what you
+    // received costs only yourself, and this product does not correct a user's
+    // figures in its own favour.
+    return typeof declared === 'number' && declared < creditedKopecks
+      ? creditedKopecks
+      : undefined
   }
 
   /**

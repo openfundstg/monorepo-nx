@@ -224,12 +224,17 @@ export class SaleStatementService {
    * inside that period has now been read against the bank's own record, so all
    * of them are settled here — including the ones that were never in dispute.
    *
-   * Only a claim can be corrected, and only upwards. A seller who declared the
-   * whole order has claimed nothing to check; a seller who declared less than
-   * the bank shows kept the difference, and it goes back onto the target. The
-   * reverse — the bank showing less than they claimed — needs no correction at
-   * all, because understating their own receipts is the direction that costs
-   * them and nobody else.
+   * Only a **credited** claim can be corrected, and only upwards. A seller who
+   * declared the whole order has claimed nothing to check; a seller who
+   * declared less than the bank shows kept the difference, and it goes back
+   * onto the target. The reverse — the bank showing less than they claimed —
+   * needs no correction at all, because understating their own receipts is the
+   * direction that costs them and nobody else.
+   *
+   * And a claim so short that the order was disputed instead of executed is not
+   * corrected here at all: nothing of it is in `receivedAmount` to correct, and
+   * the finding below credits the whole of it. Counting both booked ₴200 twice
+   * on sale 13D4L8YJ — see `statementCorrection`.
    *
    * **A window holding more than one credit is left alone.** Two transfers of
    * unknown provenance inside six minutes cannot be told apart by amount, and
@@ -265,7 +270,12 @@ export class SaleStatementService {
     const correction = statementCorrection(
       sale.cardOrders ?? [],
       statement,
-      SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS
+      SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS,
+      // **What `receivedAmount` already holds**, so a correction is a delta
+      // against a real figure rather than against the seller's word. An order
+      // that was disputed rather than executed is in neither, and the branch
+      // below is what settles it.
+      sale.creditedOrderIds ?? []
     )
     const { correctionKopecks, unsettled } = correction
 

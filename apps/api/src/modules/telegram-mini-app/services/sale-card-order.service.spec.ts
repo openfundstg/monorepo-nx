@@ -713,6 +713,111 @@ describe('SaleCardOrderService', () => {
   })
 
   /**
+   * **The other half of the statement checkpoint.**
+   *
+   * `statementCorrection` corrects the orders already inside `receivedAmount`,
+   * and a disputed one is not among them — a claim short enough to be disputed
+   * was never credited, so a delta against it books the same hryvnia twice.
+   * What that leaves for this path is the whole of the figure: the credit, and
+   * the record that a document overruled what the seller had said.
+   */
+  describe('confirmFromStatement', () => {
+    const short = () =>
+      cardOrder({ state: SaleCardOrderState.DISPUTED, declaredAmount: 10_100, amount: 30_100 })
+
+    beforeEach(() => {
+      db.moveCardOrder.mockResolvedValue(
+        sale({ cardOrders: [cardOrder({ state: SaleCardOrderState.PROVEN_PAID })] })
+      )
+    })
+
+    it('credits the whole order, not the difference from what was claimed', async () => {
+      await service.confirmFromStatement(sale({ cardOrders: [short()] }), short())
+
+      expect(settlement.creditSettledOrder).toHaveBeenCalledWith(SALE_ID, {
+        orderId: ORDER_ID,
+        amount: 30_100
+      })
+    })
+
+    /**
+     * Without this the row keeps the seller's ₴101 standing unstruck beside a
+     * payment just settled at ₴301 — a sale whose total adds up and whose
+     * payment does not.
+     */
+    it('records what the document proved against the claim it overruled', async () => {
+      await service.confirmFromStatement(sale({ cardOrders: [short()] }), short())
+
+      expect(db.moveCardOrder).toHaveBeenCalledWith(
+        SALE_ID,
+        ORDER_ID,
+        [SaleCardOrderState.AWAITING_CONFIRMATION, SaleCardOrderState.DISPUTED],
+        SaleCardOrderState.PROVEN_PAID,
+        { answered: true, declaredAmount: undefined, provenAmount: 30_100 }
+      )
+
+      expect(db.appendEvent).toHaveBeenCalledWith(
+        SALE_ID,
+        expect.objectContaining({
+          type: SaleEventType.STATEMENT_CORRECTED,
+          amount: 30_100,
+          declaredAmount: 10_100,
+          orderId: ORDER_ID
+        })
+      )
+    })
+
+    /** A denial with no figure behind it overrules nothing; there is no claim. */
+    it('writes no correction for an order whose seller declared nothing', async () => {
+      const denied = () => cardOrder({ state: SaleCardOrderState.DISPUTED })
+
+      await service.confirmFromStatement(sale({ cardOrders: [denied()] }), denied())
+
+      expect(db.moveCardOrder).toHaveBeenCalledWith(
+        SALE_ID,
+        ORDER_ID,
+        expect.anything(),
+        SaleCardOrderState.PROVEN_PAID,
+        { answered: true, declaredAmount: undefined, provenAmount: undefined }
+      )
+
+      expect(db.appendEvent).not.toHaveBeenCalledWith(
+        SALE_ID,
+        expect.objectContaining({ type: SaleEventType.STATEMENT_CORRECTED })
+      )
+    })
+
+    /**
+     * Never downwards, in the manner of the checkpoint: understating what you
+     * received costs only yourself.
+     */
+    it('writes no correction where the seller declared the whole order', async () => {
+      const whole = () => cardOrder({ state: SaleCardOrderState.DISPUTED, declaredAmount: AMOUNT })
+
+      await service.confirmFromStatement(sale({ cardOrders: [whole()] }), whole())
+
+      expect(db.appendEvent).not.toHaveBeenCalledWith(
+        SALE_ID,
+        expect.objectContaining({ type: SaleEventType.STATEMENT_CORRECTED })
+      )
+    })
+
+    /** A seller confirming cannot overrule their own claim — it *is* the claim. */
+    it('writes no correction when the seller is the one confirming', async () => {
+      db.findById.mockResolvedValue(
+        sale({ cardOrders: [cardOrder({ state: SaleCardOrderState.AWAITING_CONFIRMATION })] })
+      )
+
+      await service.confirm(TELEGRAM_ID, SALE_ID, ORDER_ID, 100_000)
+
+      expect(db.appendEvent).not.toHaveBeenCalledWith(
+        SALE_ID,
+        expect.objectContaining({ type: SaleEventType.STATEMENT_CORRECTED })
+      )
+    })
+  })
+
+  /**
    * A statement covered the window and showed no such credit.
    *
    * **The transition that used to live somewhere else and forgot to switch the

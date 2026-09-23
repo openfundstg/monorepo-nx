@@ -35,12 +35,26 @@ const statement = (movements: { at: string; amountKopecks: number }[]) => ({
   }))
 }) as never
 
+/**
+ * The correction, with the orders already inside `receivedAmount` named.
+ *
+ * **Defaults to all of them, and the default is the point of the helper.**
+ * Nearly every case here is about a claim that *was* credited — the seller
+ * declared a figure, the order executed on it, and the document then corrects
+ * it. Saying so once keeps those cases reading as they did, and leaves the
+ * uncredited ones to pass `[]` and state their difference out loud.
+ */
+const correct = (
+  orders: readonly unknown[],
+  stmt: unknown,
+  credited: readonly number[] = (orders as { orderId: number }[]).map((o) => o.orderId)
+) => statementCorrection(orders as never, stmt as never, GRACE, credited)
+
 describe('statementCorrection', () => {
   it('finds nothing to correct when nobody claimed a shortfall', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order()],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 100_000 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 100_000 }])
     )
 
     expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
@@ -48,10 +62,9 @@ describe('statementCorrection', () => {
 
   /** The seller told the truth: ₴995 claimed, ₴995 on the statement. */
   it('confirms an honest shortfall and changes nothing', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 99_500 })],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 99_500 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 99_500 }])
     )
 
     expect(result.correctionKopecks).toBe(0)
@@ -62,10 +75,9 @@ describe('statementCorrection', () => {
    * The ₴5 goes back onto the target and comes out of the held remainder.
    */
   it('corrects a shortfall the bank does not show', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 99_500 })],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 100_000 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 100_000 }])
     )
 
     expect(result.correctionKopecks).toBe(500)
@@ -77,11 +89,135 @@ describe('statementCorrection', () => {
   })
 
   /**
+   * **The claim is checked against the order's own figure, not against
+   * itself.** A seller who wants to keep ₴5 declares ₴295 of a ₴300 order and
+   * sends themselves ₴295 from another card, so the window holds a credit that
+   * corroborates their claim exactly. Searching for what they said would find
+   * it and agree.
+   *
+   * Summing and capping is what makes that useless: the payer's ₴300 is in the
+   * same window, the total is ₴595, and an order can be brought up to what
+   * Transacto routed and no further. The seller's own money buys them nothing.
+   */
+  it('still finds the order’s own payment behind a self-transfer that matches the claim', () => {
+    const result = correct(
+      [
+        order({
+          amount: 30_000,
+          declaredAmount: 29_500,
+          arrivedAt: new Date('2026-09-17T12:03:00Z'),
+          answeredAt: new Date('2026-09-17T12:07:00Z'),
+          confirmDeadlineAt: new Date('2026-09-17T12:08:00Z')
+        })
+      ],
+      statement([
+        // Their own ₴295, timed to corroborate the figure they gave.
+        { at: '2026-09-17T12:04:00Z', amountKopecks: 29_500 },
+        // …and the payer's ₴300, which is what actually landed for the order.
+        { at: '2026-09-17T12:05:00Z', amountKopecks: 30_000 }
+      ])
+    )
+
+    expect(result.correctionKopecks).toBe(500)
+    expect(result.corrected).toEqual([
+      { orderId: 1, declaredKopecks: 29_500, provenKopecks: 30_000 }
+    ])
+  })
+
+  /**
+   * **A claim nothing credited is not this document's to correct.**
+   *
+   * A shortfall past the allowance is not executed at all: the order is
+   * disputed and `receivedAmount` holds none of it. Correcting it here would
+   * add the difference to a figure that was never there, and the finding this
+   * same statement produces then credits the whole order a moment later.
+   *
+   * Sale 13D4L8YJ, 2026-09-23: ₴101 declared of a ₴301 order, ₴200 added here
+   * and ₴301 added by the settlement. The sale read ₴801 of ₴960 against ₴601
+   * really received, closed on a ₴159 tail an operator transferred by hand, and
+   * left its seller ₴200 short for a full stake of USDT.
+   */
+  it('leaves a disputed order alone, however much the document shows', () => {
+    const result = correct(
+      [
+        order({
+          amount: 30_100,
+          state: SaleCardOrderState.DISPUTED,
+          declaredAmount: 10_100
+        })
+      ],
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_100 }]),
+      []
+    )
+
+    expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
+  })
+
+  /**
+   * …and it is not an unsettled claim either. A document silent about a
+   * disputed order is the ordinary way a denial is upheld — nobody's USDT went
+   * out against it — and reporting it raised an operator alarm about an order
+   * working exactly as designed.
+   */
+  it('does not report a disputed order the document is silent about', () => {
+    const result = correct(
+      [order({ state: SaleCardOrderState.DISPUTED, declaredAmount: 10_100 })],
+      statement([]),
+      []
+    )
+
+    expect(result.unsettled).toEqual([])
+  })
+
+  /**
+   * The two halves together, on the shape that produced the incident: one order
+   * credited on the seller's short figure, one disputed and credited by
+   * nothing. Only the first is this function's.
+   */
+  it('corrects the credited order and passes over the disputed one', () => {
+    const result = correct(
+      [
+        order({
+          orderId: 1,
+          amount: 30_000,
+          declaredAmount: 29_500,
+          arrivedAt: new Date('2026-09-17T10:00:30Z'),
+          answeredAt: new Date('2026-09-17T10:02:48Z'),
+          confirmDeadlineAt: new Date('2026-09-17T10:05:30Z')
+        }),
+        order({
+          orderId: 2,
+          amount: 30_100,
+          state: SaleCardOrderState.DISPUTED,
+          declaredAmount: 10_100,
+          arrivedAt: new Date('2026-09-17T10:05:00Z'),
+          answeredAt: new Date('2026-09-17T10:09:42Z'),
+          confirmDeadlineAt: new Date('2026-09-17T10:10:00Z')
+        })
+      ],
+      statement([
+        { at: '2026-09-17T10:00:44Z', amountKopecks: 30_000 },
+        { at: '2026-09-17T10:05:09Z', amountKopecks: 30_100 }
+      ]),
+      // Order 2 executed on nobody's word, so it is in neither.
+      [1]
+    )
+
+    // ₴295 already credited plus this ₴5 is ₴300; the ₴301 the settlement adds
+    // brings the sale to ₴601 rather than ₴801.
+    expect(result.correctionKopecks).toBe(500)
+    expect(result.corrected).toEqual([
+      { orderId: 1, declaredKopecks: 29_500, provenKopecks: 30_000 }
+    ])
+    expect(result.unsettled).toEqual([])
+  })
+
+  /**
    * One document settles every claim inside its period, including orders it was
    * never uploaded for — that is what makes it a checkpoint.
    */
   it('settles every claim in the period, not only the newest', () => {
-    const result = statementCorrection(
+    const result = correct(
       [
         order({ orderId: 1, declaredAmount: 99_500 }),
         order({
@@ -94,8 +230,7 @@ describe('statementCorrection', () => {
       statement([
         { at: '2026-09-17T10:03:00Z', amountKopecks: 100_000 },
         { at: '2026-09-17T12:02:00Z', amountKopecks: 99_000 }
-      ]),
-      GRACE
+      ])
     )
 
     expect(result.correctionKopecks).toBe(500 + 1_000)
@@ -108,14 +243,13 @@ describe('statementCorrection', () => {
    * what Transacto routed and no further.
    */
   it('never corrects an order past what it was for', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 99_500 })],
       statement([
         { at: '2026-09-17T10:02:00Z', amountKopecks: 100_000 },
         // Somebody else's money, on the same card, in the same six minutes.
         { at: '2026-09-17T10:04:00Z', amountKopecks: 500_000 }
-      ]),
-      GRACE
+      ])
     )
 
     // Up to the order's ₴1 000, and not a kopeck of the stranger's ₴5 000.
@@ -133,7 +267,7 @@ describe('statementCorrection', () => {
    * and the order recorded at 18:14:31.
    */
   it('finds a credit that landed before the order was recorded', () => {
-    const result = statementCorrection(
+    const result = correct(
       [
         order({
           declaredAmount: 29_900,
@@ -141,8 +275,7 @@ describe('statementCorrection', () => {
           confirmDeadlineAt: new Date('2026-09-18T15:20:31Z')
         })
       ],
-      statement([{ at: '2026-09-18T15:14:20Z', amountKopecks: 30_000 }]),
-      GRACE
+      statement([{ at: '2026-09-18T15:14:20Z', amountKopecks: 30_000 }])
     )
 
     expect(result.correctionKopecks).toBe(100)
@@ -151,7 +284,7 @@ describe('statementCorrection', () => {
 
   /** …but not one from long enough before to belong to something else. */
   it('still ignores a credit from well before the order existed', () => {
-    const result = statementCorrection(
+    const result = correct(
       [
         order({
           declaredAmount: 29_900,
@@ -159,8 +292,7 @@ describe('statementCorrection', () => {
           confirmDeadlineAt: new Date('2026-09-18T15:20:31Z')
         })
       ],
-      statement([{ at: '2026-09-18T15:05:00Z', amountKopecks: 30_000 }]),
-      GRACE
+      statement([{ at: '2026-09-18T15:05:00Z', amountKopecks: 30_000 }])
     )
 
     expect(result.unsettled).toEqual([{ orderId: 1, declaredKopecks: 29_900 }])
@@ -175,10 +307,9 @@ describe('statementCorrection', () => {
    * the same ₴2 would go onto the target once per statement.
    */
   it('does not correct an order a statement already corrected', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 29_800, provenAmount: 30_000 })],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }])
     )
 
     expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
@@ -186,10 +317,9 @@ describe('statementCorrection', () => {
 
   /** …and a stronger document adds only what it proves beyond the last one. */
   it('adds only the difference when a later statement shows more', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 29_800, provenAmount: 29_900 })],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }])
     )
 
     expect(result.correctionKopecks).toBe(100)
@@ -202,10 +332,9 @@ describe('statementCorrection', () => {
 
   /** Understating your own receipts costs only yourself; nothing is taken back. */
   it('never corrects downwards', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 100_000 })],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 90_000 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: 90_000 }])
     )
 
     expect(result.correctionKopecks).toBe(0)
@@ -217,13 +346,12 @@ describe('statementCorrection', () => {
    * order is an ordinary way for it to arrive.
    */
   it('sums several transfers against one order', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 99_500 })],
       statement([
         { at: '2026-09-17T10:02:00Z', amountKopecks: 40_000 },
         { at: '2026-09-17T10:04:00Z', amountKopecks: 60_000 }
-      ]),
-      GRACE
+      ])
     )
 
     // ₴1 000 arrived in two parts; the seller claimed ₴995.
@@ -231,13 +359,12 @@ describe('statementCorrection', () => {
   })
 
   it('finds an honest split payment honest', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 99_500 })],
       statement([
         { at: '2026-09-17T10:02:00Z', amountKopecks: 40_000 },
         { at: '2026-09-17T10:04:00Z', amountKopecks: 59_500 }
-      ]),
-      GRACE
+      ])
     )
 
     expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
@@ -248,7 +375,7 @@ describe('statementCorrection', () => {
    * their USDT went out against it, and the bank shows nothing in the window.
    */
   it('reports a claim with no credit at all rather than correcting it', () => {
-    const result = statementCorrection([order({ declaredAmount: 99_500 })], statement([]), GRACE)
+    const result = correct([order({ declaredAmount: 99_500 })], statement([]))
 
     expect(result).toEqual({
       correctionKopecks: 0,
@@ -259,10 +386,9 @@ describe('statementCorrection', () => {
 
   /** Debits are not credits, however well the amount lines up. */
   it('ignores money leaving the account', () => {
-    const result = statementCorrection(
+    const result = correct(
       [order({ declaredAmount: 99_500 })],
-      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: -100_000 }]),
-      GRACE
+      statement([{ at: '2026-09-17T10:03:00Z', amountKopecks: -100_000 }])
     )
 
     expect(result.unsettled).toEqual([{ orderId: 1, declaredKopecks: 99_500 }])
@@ -273,7 +399,7 @@ describe('statementCorrection', () => {
    * this statement, and a later one may cover it.
    */
   it('passes over a claim outside the period without complaint', () => {
-    const result = statementCorrection(
+    const result = correct(
       [
         order({
           declaredAmount: 99_500,
@@ -281,8 +407,7 @@ describe('statementCorrection', () => {
           confirmDeadlineAt: new Date('2026-10-05T10:06:00Z')
         })
       ],
-      statement([]),
-      GRACE
+      statement([])
     )
 
     expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
@@ -334,14 +459,13 @@ describe('statementCorrection', () => {
 
     // PrivatBank prints `HH:MM` and nothing finer, so every credit is on a
     // whole minute — which is what made the old bounds miss by so little.
-    const result = statementCorrection(
+    const result = correct(
       orders,
       statement([
         { at: '2026-09-17T10:00:00Z', amountKopecks: 30_000 },
         { at: '2026-09-17T10:02:00Z', amountKopecks: 30_000 },
         { at: '2026-09-17T10:03:00Z', amountKopecks: 30_000 }
-      ]),
-      GRACE
+      ])
     )
 
     // ₴4 owed on each of the three, and nothing for a person to look at.

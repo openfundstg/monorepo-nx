@@ -450,5 +450,67 @@ describe('SaleStatementService', () => {
         service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
       ).resolves.toBeDefined()
     })
+
+    /**
+     * **Sale 13D4L8YJ, 2026-09-23.** The disputed order carried a declared
+     * figure, so the checkpoint corrected it as though `receivedAmount` held
+     * that figure — and `confirmFromStatement` then credited the order in full.
+     * ₴200 went in twice, the sale read ₴801 of ₴960 against ₴601 really
+     * received, and it closed on a ₴159 tail an operator transferred by hand
+     * where ₴359 was still routable.
+     *
+     * The correction has to be *zero* here, not merely smaller: the settlement
+     * that follows is what credits this order, and it credits all of it.
+     */
+    it('corrects nothing for the disputed order the same document settles', async () => {
+      const disputed = cardOrder({ declaredAmount: 10_100, amount: 30_100 })
+
+      withOrder(
+        { declaredAmount: 10_100, amount: 30_100 },
+        // The claim was too short to execute, so the order is credited by
+        // nothing — which is exactly what the arithmetic used to assume away.
+        { creditedOrderIds: [], cardOrders: [disputed] }
+      )
+      verification.verify.mockResolvedValue({
+        finding: StatementFinding.CREDITED,
+        statement: parsed({
+          movements: [
+            { at: new Date('2026-09-20T14:52:00Z'), amountKopecks: 30_100, currencyCode: '980' }
+          ]
+        })
+      })
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(db.applyStatementCheckpoint).toHaveBeenCalledWith(
+        SALE_ID,
+        expect.any(Date),
+        expect.objectContaining({ correctionKopecks: 0, corrected: [], unsettled: [] })
+      )
+    })
+
+    /** …while an order the sale really did credit is still corrected. */
+    it('still corrects a claim that is inside the total', async () => {
+      const confirmed = cardOrder({
+        state: SaleCardOrderState.CONFIRMED,
+        declaredAmount: 29_500
+      })
+
+      withOrder(
+        { state: SaleCardOrderState.CONFIRMED, declaredAmount: 29_500 },
+        { creditedOrderIds: [ORDER_ID], cardOrders: [confirmed] }
+      )
+
+      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
+
+      expect(db.applyStatementCheckpoint).toHaveBeenCalledWith(
+        SALE_ID,
+        expect.any(Date),
+        expect.objectContaining({
+          correctionKopecks: 500,
+          corrected: [{ orderId: ORDER_ID, declaredKopecks: 29_500, provenKopecks: AMOUNT }]
+        })
+      )
+    })
   })
 })
