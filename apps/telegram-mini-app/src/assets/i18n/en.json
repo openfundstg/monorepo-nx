@@ -334,7 +334,7 @@
     "remainder_label": "What to do with the remainder",
     "remainder_wait_title": "Wait for the full amount",
     "remainder_wait_desc": "The sale finishes only once the jar reaches its full goal.",
-    "remainder_wait_desc_card": "The sale finishes only once you have received the full amount down to the last hryvnia. An operator sends the last transfer, and you confirm it on the sale screen.",
+    "remainder_wait_desc_card": "The sale finishes only once you have received the full amount down to the last hryvnia.",
     "remainder_refund_title": "Return the remainder to my balance",
     "remainder_refund_desc": "If less than ₴{{amount}} is left to reach the goal, that amount comes back to your balance in USDT at the sale rate and the sale completes successfully right away.",
     "remainder_mode": "Remainder",
