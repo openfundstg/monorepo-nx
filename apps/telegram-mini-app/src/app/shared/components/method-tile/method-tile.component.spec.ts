@@ -9,19 +9,17 @@ import { MethodTileComponent } from './method-tile.component'
   imports: [MethodTileComponent],
   template: `
     <app-method-tile link="/sale/jar" titleKey="built" hintKey="built_hint">B</app-method-tile>
-    <app-method-tile comingSoon link="/sale/card" titleKey="soon" hintKey="soon_hint">
-      S
-    </app-method-tile>
   `
 })
 class HostComponent {}
 
 /**
- * The grey on a tile that is coming soon is a promise that a tap does nothing.
+ * A tile is a link to a screen, and there is nothing else it can be.
  *
- * The coming-soon tile below is handed a link on purpose: the promise has to
- * hold even for a caller that passes a destination it should not have, which
- * is the easiest way for a screen that does not exist yet to become reachable.
+ * It used to have a second mode — greyed, badged "in development" and handed no
+ * `href` — for a method that was listed before it was built. The card sale was
+ * the last one that needed it; the pattern still lives on the sale form's
+ * remainder picker, for a policy that really is unbuilt.
  */
 describe('MethodTileComponent', () => {
   let fixture: ComponentFixture<HostComponent>
@@ -36,42 +34,22 @@ describe('MethodTileComponent', () => {
     await fixture.whenStable()
   })
 
-  const tiles = () => {
-    const [built, soon] = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('a'))
+  const tile = () => (fixture.nativeElement as HTMLElement).querySelector('a') as HTMLAnchorElement
 
-    return { built, soon }
-  }
-
-  it('links a built method to its screen', () => {
-    expect(tiles().built.getAttribute('href')).toBe('/sale/jar')
+  it('links a method to its screen', () => {
+    expect(tile().getAttribute('href')).toBe('/sale/jar')
   })
 
-  /** The pair to the test below — without it, a tile that navigated nowhere would pass both. */
-  it('follows the link when a built method is tapped', () => {
+  /** The pair to the test above — without it, a tile that navigated nowhere would pass. */
+  it('follows the link when the tile is tapped', () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true)
 
-    tiles().built.click()
+    tile().click()
 
     expect(String(navigate.mock.calls[0]?.[0])).toBe('/sale/jar')
   })
 
-  it('leaves a method that is coming soon nothing to follow', () => {
-    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true)
-
-    tiles().soon.click()
-
-    expect(tiles().soon.hasAttribute('href')).toBe(false)
-    expect(navigate).not.toHaveBeenCalled()
-  })
-
-  it('badges only the method that is coming soon', () => {
-    expect(tiles().built.querySelector('.soon-badge')).toBeNull()
-    expect(tiles().soon.querySelector('.soon-badge')?.textContent?.trim()).toBe(
-      'common.in_development'
-    )
-  })
-
   it('shows the icon it is given', () => {
-    expect(tiles().built.querySelector('.method-icon')?.textContent?.trim()).toBe('B')
+    expect(tile().querySelector('.method-icon')?.textContent?.trim()).toBe('B')
   })
 })

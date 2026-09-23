@@ -53,57 +53,31 @@ describe('SaleMethodComponent', () => {
     await opens(jar.getAttribute('href'), SaleCreateComponent)
   })
 
-  /**
-   * ⚠️ TEMPORARY — these three go when the card variant goes public, leaving
-   * the plain "opens the card form" assertion the jar tile has.
-   *
-   * The variant is built and its route is live; the tile is curtained off while
-   * it is tested against production, and five taps pull the curtain.
-   */
-  const tapCard = async (times: number) => {
-    for (let tap = 0; tap < times; tap += 1) {
-      const [, card] = anchors()
-      card.click()
-      await fixture.whenStable()
-    }
-  }
-
-  it('offers the card as unbuilt until it is tapped open', () => {
+  it('opens the card form from the card tile', async () => {
     const [, card] = anchors()
 
-    expect(card.hasAttribute('href')).toBe(false)
-    expect(card.querySelector('.soon-badge')).not.toBeNull()
-  })
-
-  it('stays shut on four taps', async () => {
-    await tapCard(4)
-
-    const [, card] = anchors()
-
-    expect(card.hasAttribute('href')).toBe(false)
-  })
-
-  it('opens the card form once it has been tapped five times', async () => {
-    await tapCard(5)
-
-    const [, card] = anchors()
-
-    expect(card.querySelector('.soon-badge')).toBeNull()
     await opens(card.getAttribute('href'), SaleCardCreateComponent)
   })
 
   /**
-   * The screen asks the server nothing, and that is the assertion.
+   * **Both tiles, live on the first frame, with no request behind either.**
    *
-   * It used to read a kill switch before deciding whether the card tile led
-   * anywhere, so the tile changed after it was drawn: greyed on the first frame,
-   * live on the next. Whatever the curtain above does, it does on a tap — not
-   * on an answer that arrives late.
+   * The card tile has been withheld twice, by two different mechanisms, and
+   * each left its own mark. First a kill switch read from the server, so the
+   * tile changed after it was drawn — greyed and badged "in development" on the
+   * first frame, live on the next. Then a tap-to-reveal curtain, which kept a
+   * finished variant out of ordinary users' way but asked five taps of the
+   * people who were meant to find it.
+   *
+   * Nothing is withheld now, and this is what says so: an `href` on both
+   * anchors before anything has had a chance to answer, and no badge on either.
    */
-  it('draws the jar tile live on the first frame, with no request behind it', () => {
-    const [jar] = anchors()
+  it('draws both tiles live on the first frame, with no request behind them', () => {
+    const [jar, card] = anchors()
 
     expect(jar.getAttribute('href')).toBe('/sale/jar')
+    expect(card.getAttribute('href')).toBe('/sale/card')
+    expect(anchors().some((tile) => tile.querySelector('.soon-badge'))).toBe(false)
   })
 
   it('goes back to the dashboard', () => {

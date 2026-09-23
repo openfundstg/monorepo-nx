@@ -16,8 +16,6 @@ import {
 } from '@transacto/contracts'
 import { TranslatePipe } from '@ngx-translate/core'
 import { TmaService } from '../../../auth/services/tma.service'
-import { UahPipe } from '../../../shared/pipes/uah.pipe'
-import { UsdtPipe } from '../../../shared/pipes/usdt.pipe'
 import { CARD_SALE_BANKS, DEFAULT_CARD_SALE_BANK } from '../../constants/sale-card-create.const'
 import { DEFAULT_REMAINDER_POLICY } from '../../constants/sale-create.const'
 import { CardInstructionsComponent } from '../../components/card-instructions/card-instructions.component'
@@ -45,10 +43,10 @@ import { SaleSubmitService } from '../../services/sale-submit.service'
   imports: [
     FormsModule,
     TranslatePipe,
-    UahPipe,
-    UsdtPipe,
     CardInstructionsComponent,
-    SaleAmountComponent, SaleRemainderComponent],
+    SaleAmountComponent,
+    SaleRemainderComponent
+  ],
   templateUrl: './sale-card-create.component.html',
   styleUrl: './sale-card-create.component.scss',
   // Route-scoped state: two sale forms must not inherit each other's amount.

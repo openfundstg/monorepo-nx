@@ -12,17 +12,7 @@
     <app-sale-method-icon [method]="SaleMethod.JAR" />
   </app-method-tile>
 
-  <!--
-    ⚠️ TEMPORARY — `comingSoon` and `blockedTap` come out together when the card
-    variant goes public, leaving an ordinary tile. See `TAPS_TO_REVEAL_CARD`.
-  -->
-  <app-method-tile
-    link="/sale/card"
-    [comingSoon]="!cardRevealed()"
-    (blockedTap)="onCardTap()"
-    titleKey="sale.method_card"
-    hintKey="sale.method_card_hint"
-  >
+  <app-method-tile link="/sale/card" titleKey="sale.method_card" hintKey="sale.method_card_hint">
     <app-sale-method-icon [method]="SaleMethod.CARD" />
   </app-method-tile>
 </div>

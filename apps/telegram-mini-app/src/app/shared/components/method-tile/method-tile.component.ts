@@ -1,11 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  booleanAttribute,
-  computed,
-  input,
-  output
-} from '@angular/core'
+import { ChangeDetectionStrategy, Component, input } from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { TranslatePipe } from '@ngx-translate/core'
 
@@ -19,6 +12,12 @@ import { TranslatePipe } from '@ngx-translate/core'
  * The icon is projected rather than passed in: the top-up tiles show a currency
  * sign and the sale tiles a drawn icon, and both are just content that takes
  * its colour from the tile.
+ *
+ * **Every tile leads somewhere.** It used to carry a `comingSoon` input that
+ * greyed a tile, badged it "in development" and withheld its `href`; the card
+ * sale was the last method to need it and no longer does. The sale form's
+ * remainder picker still has its own — a policy that is genuinely not built —
+ * and that is where the pattern lives if a method ever needs it again.
  */
 @Component({
   selector: 'app-method-tile',
@@ -33,34 +32,4 @@ export class MethodTileComponent {
 
   /** Where a tap goes. */
   readonly link = input<string | null>(null)
-
-  /**
-   * Listed, and not built yet: greyed, badged "in development", and going
-   * nowhere — what the sale form's remainder picker already does for the
-   * policy it does not have yet.
-   */
-  readonly comingSoon = input(false, { transform: booleanAttribute })
-
-  /**
-   * Somebody tapped a tile that is going nowhere.
-   *
-   * Emitted only while {@link comingSoon} is set, because a live tile's tap is
-   * the router's business and not this component's. A screen can do whatever it
-   * likes with it — say something, or count.
-   */
-  readonly blockedTap = output<void>()
-
-
-  /**
-   * `null` for a method that is coming soon, whatever link it was handed.
-   *
-   * `routerLink` bound to `null` removes the `href`, so the grey is not the
-   * only thing standing between a tap and a screen that does not exist: there
-   * is nothing left to follow.
-   */
-  protected readonly target = computed(() => (this.comingSoon() ? null : this.link()))
-
-  protected onTap(): void {
-    if (this.comingSoon()) this.blockedTap.emit()
-  }
 }
