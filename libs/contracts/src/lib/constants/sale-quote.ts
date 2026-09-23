@@ -1,7 +1,9 @@
 import {
   floorToWholeUah,
+  goalToleranceKopecks,
   isGoalWithinTolerance,
   KOPECKS_PER_UAH,
+  MIN_USDT_AMOUNT,
   roundToWholeUah,
 } from './money.js';
 
@@ -82,6 +84,67 @@ export const targetForStake = (
   usdtAmount: number,
   sellRateKopecksPerUsdt: number,
 ): number => floorToWholeUah(usdtAmount * sellRateKopecksPerUsdt);
+
+/**
+ * What {@link targetForStake}'s own floor can take off a target, in kopecks.
+ *
+ * One hryvnia, and not a tolerance anybody picked: the function floors to a
+ * whole hryvnia so the derived stake never lands above the amount the user
+ * typed, and a whole hryvnia is therefore exactly the most it can shave.
+ */
+export const TARGET_FLOOR_SLACK_KOPECKS = KOPECKS_PER_UAH;
+
+/**
+ * The smallest target a sale may carry, in kopecks, at this rate.
+ *
+ * **The bug this exists to end: a user could not sell the minimum amount.**
+ * They type ten USDT; {@link targetForStake} floors the total to a whole
+ * hryvnia; {@link priceSale} recovers the stake from that floored total. The
+ * round trip is lossy by construction, so ten came back as 9.99 — and both the
+ * form and the server refused it for being under ten, beside a line reading
+ * "minimum 10 USDT". Not an edge case: it happened on every rate that is not a
+ * multiple of ten kopecks, which is most of them.
+ *
+ * **Measured in hryvnia, not in cents, and that is the fix as much as the slack
+ * is.** The old check compared a *recovered stake* against a flat
+ * `MIN_USDT_CENTS`, which put the floor in different units from every rounding
+ * step that had already touched it — so each step's hryvnia of slop arrived as
+ * an unpredictable number of cents, and the two tolerances in the chain could
+ * not be reasoned about together. Here the threshold is a target, the drift is
+ * a target, and {@link isQuoteStillValid} speaks the same units.
+ *
+ * **This is not the old "check the stake, never the total" mistake.** That rule
+ * is about comparing a target against a *fixed hryvnia figure*, which would let
+ * a sale staking under the minimum qualify by totalling more once the markup is
+ * counted. The threshold here is derived from the rate, so both sides carry the
+ * same markup and the objection does not apply — `target >= minSaleTargetKopecks(rate)`
+ * says "this sale is at least the minimum amount at today's rate" and nothing else.
+ *
+ * **Two allowances, and each is somebody else's number rather than one picked
+ * here:**
+ *
+ * - {@link TARGET_FLOOR_SLACK_KOPECKS}, for the floor described above.
+ * - {@link goalToleranceKopecks}, for the drift {@link isQuoteStillValid}
+ *   already declares acceptable. The server prices the *submitted* target at
+ *   the *current* rate, so a rate that ticks up while the form is open leaves
+ *   the same target worth slightly less USDT — and a floor that did not allow
+ *   it would refuse a sale for becoming cheaper, after the quote check had
+ *   already waved the move through. Anything larger is refused there, with a
+ *   message that names the rate.
+ *
+ * Together they put the effective floor around 9.84 USDT at the worst rate,
+ * which is the price of the two roundings and is immaterial to what the minimum
+ * is for: below it the fixed cost of a transfer outweighs the amount moved.
+ *
+ * A rate of zero yields a floor of zero, which is the same "nothing is priced
+ * yet" answer {@link priceSale} gives: a screen renders this before the market
+ * has answered, and a floor invented without a rate is not a floor.
+ */
+export const minSaleTargetKopecks = (sellRateKopecksPerUsdt: number): number => {
+  const nominal = targetForStake(MIN_USDT_AMOUNT, sellRateKopecksPerUsdt);
+
+  return Math.max(0, nominal - TARGET_FLOOR_SLACK_KOPECKS - goalToleranceKopecks(nominal));
+};
 
 /**
  * Whether a target quoted at one rate still stands at another.

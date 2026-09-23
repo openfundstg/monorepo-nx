@@ -1,7 +1,12 @@
 import {
   CentRounding,
   DEFAULT_MIN_ORDER_KOPECKS,
+  goalToleranceKopecks,
   isQuoteStillValid,
+  TARGET_FLOOR_SLACK_KOPECKS,
+  MIN_USDT_AMOUNT,
+  MIN_USDT_CENTS,
+  minSaleTargetKopecks,
   priceSale,
   SALE_CARD_MAX_ORDERS,
   saleCardMaxOrders,
@@ -67,6 +72,117 @@ describe('targetForStake', () => {
     const target = targetForStake(10.02, 4000, 1)
 
     expect(target % 100).toBe(0)
+  })
+})
+
+/**
+ * **The bug: a user could not sell the minimum amount.**
+ *
+ * They type ten USDT. `targetForStake` floors the total to a whole hryvnia so
+ * the stake never lands above what they typed, and `priceSale` then recovers
+ * the stake from that floored total — a round trip that is lossy by
+ * construction. Ten came back as 9.99 and was refused, by the form and by the
+ * server, beside a line reading "minimum 10 USDT".
+ *
+ * Not an edge case: it happened on every rate where `10 × rate` does not land
+ * on a whole hryvnia, which is every rate that is not a multiple of ten
+ * kopecks — 210 of the 300 whole-kopeck rates between ₴46 and ₴49 alone.
+ *
+ * The rates below are swept rather than sampled, because the failure was a
+ * property of the arithmetic at particular rates and any single fixture would
+ * have passed.
+ */
+describe('minSaleTargetKopecks', () => {
+  /** Every whole-kopeck rate from ₴30 to ₴60, which is the plausible band. */
+  const RATES = Array.from({ length: 3_001 }, (_, index) => 3_000 + index)
+
+  /**
+   * The whole point, with the trap it walks past stated in the same test.
+   *
+   * The first assertion is the bug: on most rates the stake this target
+   * recovers is a cent or two under ten USDT, which is exactly what the old
+   * cents-based floor compared and refused. The second is the fix — measured as
+   * a target, the same sale is admitted at every rate.
+   */
+  it('admits the minimum amount at every rate, where measuring in cents did not', () => {
+    const quotes = RATES.map((rate) => ({
+      rate,
+      target: targetForStake(MIN_USDT_AMOUNT, rate),
+      stake: priceSale(targetForStake(MIN_USDT_AMOUNT, rate), rate).requiredUsdtCents
+    }))
+
+    const shortInCents = quotes.filter(({ stake }) => stake < MIN_USDT_CENTS)
+
+    // Most of them, not a handful: this is what "not an edge case" means.
+    expect(shortInCents.length).toBeGreaterThan(quotes.length / 2)
+
+    expect(quotes.filter(({ rate, target }) => target < minSaleTargetKopecks(rate))).toEqual([])
+  })
+
+  /** …and the rate the bug was found on, named so a regression says which. */
+  it('admits ten USDT at a rate that does not divide into whole hryvnia', () => {
+    const target = targetForStake(MIN_USDT_AMOUNT, 4_804)
+
+    // ₴480 rather than ₴480.40 — the floor, and the whole of the problem.
+    expect(target).toBe(48_000)
+    expect(priceSale(target, 4_804).requiredUsdtCents).toBe(999)
+    expect(target).toBeGreaterThanOrEqual(minSaleTargetKopecks(4_804))
+  })
+
+  /**
+   * The allowance is for our own rounding, not a discount. Anything a user
+   * could actually ask for below the minimum is still refused.
+   */
+  it('refuses an amount under the minimum at every rate', () => {
+    const admitted = RATES.filter(
+      (rate) => targetForStake(MIN_USDT_AMOUNT - 1, rate) >= minSaleTargetKopecks(rate)
+    )
+
+    expect(admitted).toEqual([])
+  })
+
+  /**
+   * **The second hryvnia of the allowance, earning its place.**
+   *
+   * The server prices the *submitted* target at the *current* rate, so a rate
+   * that ticks up while the form is open leaves the same target worth slightly
+   * less USDT — and a floor pinned to ten flat refused a sale for becoming
+   * cheaper. Anything `isQuoteStillValid` lets through must reach the floor
+   * intact; a larger move is refused there, with a message that names the rate.
+   */
+  it('admits every quoted minimum that the quote check still accepts', () => {
+    const refused = RATES.flatMap((quoted) => {
+      const target = targetForStake(MIN_USDT_AMOUNT, quoted)
+
+      return RATES.filter(
+        (now) =>
+          Math.abs(now - quoted) <= 400 &&
+          isQuoteStillValid(target, quoted, now) &&
+          target < minSaleTargetKopecks(now)
+      ).map((now) => ({ quoted, now }))
+    })
+
+    expect(refused).toEqual([])
+  })
+
+  /** It lowers the floor by exactly its slack and not a kopeck more. */
+  it('allows the floor its hryvnia and the quote check its drift, and no more', () => {
+    for (const rate of [3_000, 4_000, 4_804, 5_500, 6_000]) {
+      const nominal = targetForStake(MIN_USDT_AMOUNT, rate)
+
+      expect(minSaleTargetKopecks(rate)).toBe(
+        nominal - TARGET_FLOOR_SLACK_KOPECKS - goalToleranceKopecks(nominal)
+      )
+    }
+  })
+
+  /**
+   * Screens render this before the market has answered. A floor invented
+   * without a rate is not a floor — and the target is zero there too, so
+   * nothing is refused for being under it.
+   */
+  it.each([0, -1])('yields no floor at a rate of %p', (rate) => {
+    expect(minSaleTargetKopecks(rate)).toBe(0)
   })
 })
 

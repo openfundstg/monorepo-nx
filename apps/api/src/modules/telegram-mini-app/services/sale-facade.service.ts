@@ -6,7 +6,7 @@ import {
   isQuoteStillValid,
   isRemainderPolicyAvailable,
   MIN_USDT_AMOUNT,
-  MIN_USDT_CENTS,
+  minSaleTargetKopecks,
   priceSale,
   SaleEventType,
   SaleMethod,
@@ -258,12 +258,20 @@ export class SaleFacadeService {
       })
     }
 
-    // 2b. Enforce the floor on the USDT actually being staked.
+    // 2b. Enforce the floor on how much is actually being sold.
     //
-    // Measured on `requiredUsdtCents`, not on the hryvnia target: the target
-    // includes the profit, so a check against it would let through an order
-    // that stakes less than the minimum and merely *totals* more.
-    if (requiredUsdtCents < MIN_USDT_CENTS) {
+    // **It used to compare `requiredUsdtCents` against a flat `MIN_USDT_CENTS`,
+    // and that refused the minimum itself.** A user types whole USDT, the
+    // target is floored to a whole hryvnia so their stake never lands above
+    // what they typed, and the stake is then recovered from that floored
+    // target — so ten USDT arrived here as 9.99 and was turned away for being
+    // under ten, on every rate that is not a multiple of ten kopecks.
+    //
+    // `minSaleTargetKopecks` is the same floor in the units the drift happens
+    // in, and the same call the create form makes. It is **not** the old "check
+    // the stake, never the total" mistake: the threshold is derived from the
+    // rate, so both sides carry the same markup — see the helper.
+    if (target < minSaleTargetKopecks(sellRateKopecks)) {
       throw new BadRequestException({
         ...ERROR.SALE.BELOW_MINIMUM,
         details: `Minimum is ${MIN_USDT_AMOUNT} USDT, this order stakes ${requiredUsdtCents / 100}`

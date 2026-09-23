@@ -1,8 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
-  CENTS_PER_USDT,
   DEFAULT_MIN_ORDER_KOPECKS,
-  MIN_USDT_AMOUNT,
+  minSaleTargetKopecks,
   priceSale,
   targetForStake,
   type SaleAwaitingJar,
@@ -60,14 +59,22 @@ export class SalePricingService {
   );
 
   /**
-   * Measured on the **stake**, never on the total.
+   * Whether this sale is under the minimum amount, as the server decides it.
    *
-   * The total carries the profit, so a check against it would admit an order
-   * staking under the minimum that merely adds up to more — which is the rule
-   * the server enforces, in those units.
+   * **It used to compare the recovered stake against ten USDT flat, and that
+   * refused the minimum itself.** The stake here is not what the user typed: it
+   * is what came back through `targetForStake` → `priceSale`, and that round
+   * trip floors the target to a whole hryvnia. Typing exactly ten produced 9.99
+   * on most rates, so the form disabled its own button beside a line reading
+   * "minimum 10 USDT".
+   *
+   * `minSaleTargetKopecks` is the same call the server makes, in the same
+   * units — see it for why the floor is a target rather than a stake.
    */
   readonly belowMinimum = computed(
-    () => this.stakeCents() > 0 && this.stakeCents() < MIN_USDT_AMOUNT * CENTS_PER_USDT,
+    () =>
+      this.targetKopecks() > 0 &&
+      this.targetKopecks() < minSaleTargetKopecks(this.sellRateKopecks()),
   );
 
   readonly hasSufficientBalance = computed(() => this.stakeCents() <= this.balanceCents());

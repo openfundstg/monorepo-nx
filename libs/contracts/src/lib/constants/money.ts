@@ -135,10 +135,27 @@ export const GOAL_TOLERANCE_PERCENT = 1;
  */
 export const isGoalWithinTolerance = (observedKopecks: number, targetKopecks: number): boolean => {
   const target = roundToWholeUah(targetKopecks);
-  const allowed = Math.max(
-    GOAL_TOLERANCE_KOPECKS,
-    Math.round((Math.abs(target) * GOAL_TOLERANCE_PERCENT) / 100),
-  );
 
-  return Math.abs(roundToWholeUah(observedKopecks) - target) <= allowed;
+  return Math.abs(roundToWholeUah(observedKopecks) - target) <= goalToleranceKopecks(target);
 };
+
+/**
+ * How far a target of this size may drift before anything treats it as a
+ * different figure, in kopecks.
+ *
+ * Lifted out of {@link isGoalWithinTolerance} because a second rule needs the
+ * same number rather than the same verdict: a sale's minimum has to admit
+ * everything the quote check lets through, and it can only do that by asking
+ * how much that check tolerates. Written out twice, the two would be one
+ * percentage change away from disagreeing — and the shape of that disagreement
+ * is a user being refused the minimum order for a rate move already declared
+ * acceptable.
+ *
+ * The argument is snapped to whole hryvnia first, exactly as the caller above
+ * does it, so both ends of the comparison are measured on the same figure.
+ */
+export const goalToleranceKopecks = (targetKopecks: number): number =>
+  Math.max(
+    GOAL_TOLERANCE_KOPECKS,
+    Math.round((Math.abs(roundToWholeUah(targetKopecks)) * GOAL_TOLERANCE_PERCENT) / 100),
+  );
