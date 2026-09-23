@@ -273,21 +273,45 @@ export const statementCorrection = (
       graceMs
     )
 
-    // Outside what this document can speak for. Not an unsettled claim: the
-    // statement simply does not reach it, and a later one may.
-    if (from < statement.periodFrom || to > statement.periodTo) return total
+    // **What this document can speak for, which is rarely the whole window.**
+    // A window runs to the payment deadline plus three hours of grace, and a
+    // bank issues whole days — so a statement pulled minutes after confirming
+    // an evening order stops hours before the window does. This used to skip
+    // such an order outright, and the skip was silent in the worst possible
+    // way: sale 73GFZ7F9 held a ₴447 order the seller had declared at ₴443,
+    // the bank showed all ₴447 two minutes before they answered, the statement
+    // was accepted — and it corrected nothing, while the checkpoint it stamped
+    // released the hold that was the only other thing watching that ₴4.
+    //
+    // Reading the overlap instead is safe in the one direction that matters. A
+    // sum over part of a window is a **lower bound** on what arrived, and the
+    // figure is capped at the order's own amount below, so a partial document
+    // can only ever under-correct. It can never invent hryvnia.
+    const searchFrom = from > statement.periodFrom ? from : statement.periodFrom
+    const searchTo = to < statement.periodTo ? to : statement.periodTo
+
+    // The document reaches none of this window at all.
+    if (searchTo < searchFrom) return total
+
+    // …and whether it reached the whole of it, which is a different question
+    // and the one that decides whether the claim is *settled*. See `settled`.
+    const wholeWindow = from >= statement.periodFrom && to <= statement.periodTo
 
     // Summed, because one order can be paid by several transfers.
     const shown = statement.movements.reduce(
       (sum, movement) =>
-        movement.amountKopecks > 0 && movement.at >= from && movement.at <= to
+        movement.amountKopecks > 0 && movement.at >= searchFrom && movement.at <= searchTo
           ? sum + movement.amountKopecks
           : sum,
       0
     )
 
     if (shown === 0) {
-      unsettled.push({ orderId: order.orderId, declaredKopecks: declared })
+      // Only a document covering the whole window may say a payment is missing.
+      // One that stops early has not looked where the rest of it would be, and
+      // reporting that as "no credit at all" is the failure this design exists
+      // to make impossible.
+      if (wholeWindow) unsettled.push({ orderId: order.orderId, declaredKopecks: declared })
 
       return total
     }

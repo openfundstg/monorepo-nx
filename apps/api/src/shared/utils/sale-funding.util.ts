@@ -439,8 +439,13 @@ export const saleDisposal = (
 export interface SaleClaims {
   readonly statementCheckpointAt?: Date | null
   readonly cardOrders?: readonly {
+    /** What Transacto routed here, in UAH kopecks. */
+    readonly amount: number
     readonly declaredAmount?: number
-    readonly answeredAt?: Date | null
+    /** What a statement has since proved arrived, where one has. */
+    readonly provenAmount?: number
+    /** The end of the payer's window; the claim's own window runs past it. */
+    readonly confirmDeadlineAt: Date
   }[]
 }
 
@@ -465,15 +470,36 @@ export interface SaleClaims {
  * Empty on every jar sale: they have no card orders, so nothing is ever
  * claimed and nothing is ever held.
  */
-export const awaitsStatementCheckpoint = (sale: SaleClaims): boolean => {
+export const awaitsStatementCheckpoint = (sale: SaleClaims, graceMs: number): boolean => {
   const checkpoint = sale.statementCheckpointAt ?? null
 
   return (sale.cardOrders ?? []).some((order) => {
     if (typeof order.declaredAmount !== 'number') return false
+
+    // **Proven in full, so nothing later can move it.** A correction is capped
+    // at the order's own amount, which means once a document has shown the
+    // whole of it there is no figure left for a second document to change.
+    // Without this a seller who uploaded a perfectly good statement would be
+    // asked for another one covering hours in which, by construction, nothing
+    // could matter.
+    if (typeof order.provenAmount === 'number' && order.provenAmount >= order.amount) return false
+
     if (checkpoint === null) return true
 
-    // An order answered before the checkpoint has been read; one answered after
-    // it — or with no answer time at all — has not.
-    return !order.answeredAt || order.answeredAt > checkpoint
+    // **Against the end of the claim's window, not against when it was made.**
+    // This used to read `answeredAt`, which is a minute after the order arrives
+    // — so any statement at all settled the claim, including one that stopped
+    // hours before the window did and had therefore skipped the order entirely
+    // in `statementCorrection`. The two halves asked different questions and
+    // the answer to the easy one released the hold: on sale 73GFZ7F9 a ₴4
+    // understatement was neither corrected nor held, and the door to a second
+    // statement was shut behind it.
+    //
+    // The uncut deadline plus the grace, rather than the window
+    // `attributionWindow` would cut against the next order: a longer window
+    // demands more of the document, which errs towards holding the claim. The
+    // exact bound lives in a module this one may not import, and being
+    // conservative here costs an upload and never a release.
+    return order.confirmDeadlineAt.getTime() + graceMs > checkpoint.getTime()
   })
 }

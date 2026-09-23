@@ -11,6 +11,7 @@ import {
   transactoOrderFloorKopecks,
   type SaleClaims
 } from 'src/shared/utils'
+import { MINUTE_MS, SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES } from 'src/shared/constants'
 import { OrderDbService } from 'src/modules/repositories/order-db'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
 import { SaleFacadeService } from 'src/modules/telegram-mini-app/services/sale-facade.service'
@@ -169,7 +170,7 @@ export class SaleSettlementService {
     // who understated within the allowance keeps it. That leak is bounded by
     // the allowance times seven orders, which is why the allowance is a figure
     // an operator sets and ships at zero.
-    if (awaitsStatementCheckpoint(latest)) {
+    if (awaitsStatementCheckpoint(latest, SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS)) {
       this.logger.log(
         `Sale ${saleId} has an unfillable tail but a declared shortfall no statement ` +
           `has settled; holding the refund until one arrives`
@@ -288,7 +289,7 @@ export class SaleSettlementService {
     // again. Cheap pre-check; the writes below are what actually decide.
     if (latest.tailAnnouncedAt && latest.tailAlertMessageId != null) return
 
-    if (awaitsStatementCheckpoint(latest)) {
+    if (awaitsStatementCheckpoint(latest, SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS)) {
       this.logger.log(
         `Sale ${latest.publicId} is in its tail and a declared shortfall has not been through ` +
           `a statement; not asking anyone to transfer a figure that document may correct`

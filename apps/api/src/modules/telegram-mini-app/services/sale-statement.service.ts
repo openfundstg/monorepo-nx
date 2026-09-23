@@ -493,10 +493,13 @@ export class SaleStatementService {
     // "₴995 arrived of ₴1 000" — which is the claim they gain by making, and the
     // reason their remainder is being held.
     const answersDenial = resolved.cardOrder.state === SaleCardOrderState.DISPUTED
-    const answersShortfall = awaitsStatementCheckpoint({
-      statementCheckpointAt: resolved.sale.statementCheckpointAt,
-      cardOrders: [resolved.cardOrder]
-    })
+    const answersShortfall = awaitsStatementCheckpoint(
+      {
+        statementCheckpointAt: resolved.sale.statementCheckpointAt,
+        cardOrders: [resolved.cardOrder]
+      },
+      SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS
+    )
 
     if (!answersDenial && !answersShortfall)
       throw new ConflictException(ERROR.SALE_CARD.STATEMENT_NOT_REQUIRED)

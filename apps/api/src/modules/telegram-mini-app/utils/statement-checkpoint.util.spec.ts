@@ -619,3 +619,89 @@ describe('coverageRequiredTo', () => {
     expect(coverageRequiredTo(WINDOW, now).getTime()).toBeLessThanOrEqual(now.getTime())
   })
 })
+
+/**
+ * A statement that stops inside a claim's window.
+ *
+ * **The everyday case, and it used to be the broken one.** A window runs to the
+ * payment deadline plus three hours of grace; a bank issues whole days; so a
+ * seller who confirms an evening order and pulls a statement minutes later
+ * hands over a document that stops hours before the window does. Every such
+ * order was skipped outright — and, because the sale stamped a checkpoint
+ * anyway, the hold that was the only other thing watching the claim was
+ * dropped with it. Sale 73GFZ7F9: ₴447 shown by the bank, ₴443 declared, ₴4
+ * neither corrected nor held.
+ */
+describe('statementCorrection over a window the document only partly covers', () => {
+  /** Ends 17:00; the order's window runs to 13:06 the day it opened. */
+  const stopsEarly = (movements: { at: string; amountKopecks: number }[]) =>
+    ({
+      ...(statement(movements) as unknown as Record<string, unknown>),
+      periodFrom: new Date('2026-09-17T00:00:00Z'),
+      periodTo: new Date('2026-09-17T11:00:00Z')
+    }) as never
+
+  it('corrects from the part it can see', () => {
+    const result = correct(
+      [order({ declaredAmount: 99_600 })],
+      stopsEarly([{ at: '2026-09-17T10:01:00Z', amountKopecks: 100_000 }])
+    )
+
+    expect(result.correctionKopecks).toBe(400)
+    expect(result.corrected).toEqual([
+      { orderId: 1, declaredKopecks: 99_600, provenKopecks: 100_000 }
+    ])
+  })
+
+  /**
+   * **A sum over part of a window is a lower bound**, and the figure is capped
+   * at the order's own amount — so a partial document can only under-correct.
+   * It can never invent hryvnia, which is the only direction that would matter.
+   */
+  it('never corrects past the order, whatever else landed on the card', () => {
+    const result = correct(
+      [order({ declaredAmount: 99_600 })],
+      stopsEarly([
+        { at: '2026-09-17T10:01:00Z', amountKopecks: 100_000 },
+        { at: '2026-09-17T10:02:00Z', amountKopecks: 500_000 }
+      ])
+    )
+
+    expect(result.correctionKopecks).toBe(400)
+  })
+
+  /**
+   * It may correct upward and it may **not** declare a payment missing: it has
+   * not looked where the rest of the window would be, and reading that as "no
+   * credit at all" is the failure the whole design exists to make impossible.
+   */
+  it('reports nothing unsettled when it saw only part of the window', () => {
+    const result = correct([order({ declaredAmount: 99_600 })], stopsEarly([]))
+
+    expect(result.unsettled).toEqual([])
+    expect(result.correctionKopecks).toBe(0)
+  })
+
+  /** …and a document covering the whole window still says so. */
+  it('still reports an unsettled claim when it covered everything', () => {
+    const result = correct([order({ declaredAmount: 99_600 })], statement([]))
+
+    expect(result.unsettled).toEqual([{ orderId: 1, declaredKopecks: 99_600 }])
+  })
+
+  /** A document from another day reaches none of it and says nothing at all. */
+  it('leaves an order it cannot reach entirely alone', () => {
+    const elsewhere = {
+      ...(statement([{ at: '2026-09-20T10:01:00Z', amountKopecks: 100_000 }]) as unknown as Record<
+        string,
+        unknown
+      >),
+      periodFrom: new Date('2026-09-20T00:00:00Z'),
+      periodTo: new Date('2026-09-20T23:59:59Z')
+    } as never
+
+    const result = correct([order({ declaredAmount: 99_600 })], elsewhere)
+
+    expect(result).toEqual({ correctionKopecks: 0, corrected: [], unsettled: [] })
+  })
+})

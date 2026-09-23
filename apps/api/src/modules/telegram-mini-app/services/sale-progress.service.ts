@@ -15,6 +15,7 @@ import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { awaitsStatementCheckpoint, parseMinOrderKopecks,
   transactoOrderFloorKopecks, saleDeliveredFiat, saleHasJar, saleTailStanding,
   tailHoldsTheSale } from 'src/shared/utils'
+import { MINUTE_MS, SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES } from 'src/shared/constants'
 
 /** What every read path here works with: a lean order document plus its id. */
 
@@ -225,7 +226,7 @@ export class SaleProgressService {
       })),
       cardMinOrderKopecks: saleCardMinOrderKopecks(order.fiatAmount, floorKopecks),
       cardMaxOrders: saleCardMaxOrders(order.fiatAmount, floorKopecks),
-      statementRequired: awaitsStatementCheckpoint(order)
+      statementRequired: awaitsStatementCheckpoint(order, SALE_STATEMENT_LATE_CREDIT_GRACE_MINUTES * MINUTE_MS)
     }
   }
 
