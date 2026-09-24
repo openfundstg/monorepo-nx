@@ -2,16 +2,16 @@ import {
   CentRounding,
   DEFAULT_MIN_ORDER_KOPECKS,
   goalToleranceKopecks,
-  isQuoteStillValid,
-  TARGET_FLOOR_SLACK_KOPECKS,
+  isGoalWithinTolerance,
   MIN_USDT_AMOUNT,
   MIN_USDT_CENTS,
   minSaleTargetKopecks,
   priceSale,
+  priceStake,
   SALE_CARD_MAX_ORDERS,
   saleCardMaxOrders,
   saleCardMinOrderKopecks,
-  targetForStake,
+  TARGET_ROUNDING_SLACK_KOPECKS,
   usdtCentsForKopecks,
   saleCardOrderFloorKopecks
 } from '@transacto/contracts'
@@ -52,45 +52,73 @@ describe('priceSale', () => {
   })
 })
 
-describe('targetForStake', () => {
-  /**
-   * The two are inverse by construction — that is the whole point of them
-   * living together. A stake put through both must never come back larger than
-   * it went in, or a user holding exactly their balance is told they cannot
-   * afford to spend it.
-   */
-  it('never quotes a stake above the amount typed', () => {
+/**
+ * **What the seller asked for: "if I type 10 USDT, it is 10 USDT".**
+ *
+ * The stake used to be recovered from a total floored to a whole hryvnia, and
+ * sold a different amount from the one typed more often than not — ten at
+ * ₴48.19 was ₴481 and 9.98. The stake is the fixed point now, and the total,
+ * which has to be a whole hryvnia, is what gives way.
+ */
+describe('priceStake', () => {
+  it('stakes exactly the cents it is given', () => {
     for (let cents = 1_000; cents <= 50_000; cents += 7) {
-      const usdt = cents / 100
-      const target = targetForStake(usdt, RATE)
-
-      expect(priceSale(target, RATE).requiredUsdtCents).toBeLessThanOrEqual(cents)
+      expect(priceStake(cents, RATE).requiredUsdtCents).toBe(cents)
     }
   })
 
-  it('rounds the target down to a whole hryvnia', () => {
-    const target = targetForStake(10.02, 4000, 1)
+  /** Nearest, so the total is never more than half a hryvnia from the stake's price. */
+  it('prices the stake to the nearest whole hryvnia', () => {
+    for (let cents = 1_000; cents <= 50_000; cents += 7) {
+      const { targetKopecks } = priceStake(cents, RATE)
 
-    expect(target % 100).toBe(0)
+      expect(targetKopecks % 100).toBe(0)
+      expect(Math.abs(targetKopecks - (cents * RATE) / 100)).toBeLessThanOrEqual(50)
+    }
+  })
+
+  /** The case the direction of a half is decided on: ₴481.50 is ₴482. */
+  it('rounds half a hryvnia up, and less than half down', () => {
+    expect(priceStake(1_000, 4_815).targetKopecks).toBe(48_200)
+    expect(priceStake(1_000, 4_814).targetKopecks).toBe(48_100)
+  })
+
+  /**
+   * The reverse trip lands on the same total. It is what lets the stake
+   * `priceSale` derives from a jar's goal pass the check the server makes on a
+   * typed one — one rule for both, rather than a second for held totals.
+   */
+  it('prices a stake derived from a total back to that total', () => {
+    for (const rate of [3_000, RATE, 6_000]) {
+      for (let target = 30_000; target <= 1_000_000; target += 7_300) {
+        const held = priceSale(target, rate)
+
+        expect(priceStake(held.requiredUsdtCents, rate).targetKopecks).toBe(held.targetKopecks)
+      }
+    }
+  })
+
+  /** Screens render this before the market has answered. */
+  it.each([0, -1])('yields a zero total at a rate of %p', (rate) => {
+    expect(priceStake(1_000, rate).targetKopecks).toBe(0)
   })
 })
 
 /**
  * **The bug: a user could not sell the minimum amount.**
  *
- * They type ten USDT. `targetForStake` floors the total to a whole hryvnia so
- * the stake never lands above what they typed, and `priceSale` then recovers
- * the stake from that floored total — a round trip that is lossy by
- * construction. Ten came back as 9.99 and was refused, by the form and by the
- * server, beside a line reading "minimum 10 USDT".
+ * They typed ten USDT. The total was floored to a whole hryvnia and the stake
+ * recovered from it — a round trip that is lossy by construction — so ten came
+ * back as 9.99 and was refused, by the form and by the server, beside a line
+ * reading "minimum 10 USDT". Not an edge case: it happened on every rate where
+ * `10 × rate` does not land on a whole hryvnia, which is every rate that is not
+ * a multiple of ten kopecks — 210 of the 300 whole-kopeck rates between ₴46
+ * and ₴49 alone.
  *
- * Not an edge case: it happened on every rate where `10 × rate` does not land
- * on a whole hryvnia, which is every rate that is not a multiple of ten
- * kopecks — 210 of the 300 whole-kopeck rates between ₴46 and ₴49 alone.
- *
- * The rates below are swept rather than sampled, because the failure was a
- * property of the arithmetic at particular rates and any single fixture would
- * have passed.
+ * A typed stake is exact now, but a total held at a jar's goal still has its
+ * stake recovered from it, which is why the floor stays a target. The rates
+ * below are swept rather than sampled, because the failure was a property of
+ * the arithmetic at particular rates and any single fixture would have passed.
  */
 describe('minSaleTargetKopecks', () => {
   /** Every whole-kopeck rate from ₴30 to ₴60, which is the plausible band. */
@@ -99,79 +127,95 @@ describe('minSaleTargetKopecks', () => {
   /**
    * The whole point, with the trap it walks past stated in the same test.
    *
-   * The first assertion is the bug: on most rates the stake this target
-   * recovers is a cent or two under ten USDT, which is exactly what the old
-   * cents-based floor compared and refused. The second is the fix — measured as
-   * a target, the same sale is admitted at every rate.
+   * The first assertion is the trap, still there for a total held at a jar's
+   * goal: the stake recovered from ten USDT's total is not ten on most rates,
+   * which is exactly what a cents-based floor would compare and refuse. The
+   * second is the fix — measured as a target, the sale is admitted at every
+   * rate, typed or held.
    */
-  it('admits the minimum amount at every rate, where measuring in cents did not', () => {
-    const quotes = RATES.map((rate) => ({
-      rate,
-      target: targetForStake(MIN_USDT_AMOUNT, rate),
-      stake: priceSale(targetForStake(MIN_USDT_AMOUNT, rate), rate).requiredUsdtCents
-    }))
-
-    const shortInCents = quotes.filter(({ stake }) => stake < MIN_USDT_CENTS)
+  it('admits the minimum amount at every rate, where measuring in cents would not', () => {
+    const quotes = RATES.map((rate) => ({ rate, ...priceStake(MIN_USDT_CENTS, rate) }))
+    const recovered = quotes.filter(
+      ({ rate, targetKopecks }) => priceSale(targetKopecks, rate).requiredUsdtCents !== MIN_USDT_CENTS
+    )
 
     // Most of them, not a handful: this is what "not an edge case" means.
-    expect(shortInCents.length).toBeGreaterThan(quotes.length / 2)
+    expect(recovered.length).toBeGreaterThan(quotes.length / 2)
 
-    expect(quotes.filter(({ rate, target }) => target < minSaleTargetKopecks(rate))).toEqual([])
+    expect(
+      quotes.filter(({ rate, targetKopecks }) => targetKopecks < minSaleTargetKopecks(rate))
+    ).toEqual([])
   })
 
   /** …and the rate the bug was found on, named so a regression says which. */
   it('admits ten USDT at a rate that does not divide into whole hryvnia', () => {
-    const target = targetForStake(MIN_USDT_AMOUNT, 4_804)
+    const { targetKopecks, requiredUsdtCents } = priceStake(MIN_USDT_CENTS, 4_804)
 
-    // ₴480 rather than ₴480.40 — the floor, and the whole of the problem.
-    expect(target).toBe(48_000)
-    expect(priceSale(target, 4_804).requiredUsdtCents).toBe(999)
-    expect(target).toBeGreaterThanOrEqual(minSaleTargetKopecks(4_804))
+    // ₴480 rather than ₴480.40, and the ten typed rather than the 9.99 it was.
+    expect(targetKopecks).toBe(48_000)
+    expect(requiredUsdtCents).toBe(MIN_USDT_CENTS)
+    expect(targetKopecks).toBeGreaterThanOrEqual(minSaleTargetKopecks(4_804))
   })
 
   /**
-   * The allowance is for our own rounding, not a discount. Anything a user
-   * could actually ask for below the minimum is still refused.
+   * The allowances are for rounding, not a discount. Anything a user could
+   * actually ask for below the minimum is still refused.
    */
   it('refuses an amount under the minimum at every rate', () => {
     const admitted = RATES.filter(
-      (rate) => targetForStake(MIN_USDT_AMOUNT - 1, rate) >= minSaleTargetKopecks(rate)
+      (rate) =>
+        priceStake((MIN_USDT_AMOUNT - 1) * 100, rate).targetKopecks >= minSaleTargetKopecks(rate)
     )
 
     expect(admitted).toEqual([])
   })
 
   /**
-   * **The second hryvnia of the allowance, earning its place.**
-   *
-   * The server prices the *submitted* target at the *current* rate, so a rate
-   * that ticks up while the form is open leaves the same target worth slightly
-   * less USDT — and a floor pinned to ten flat refused a sale for becoming
-   * cheaper. Anything `isQuoteStillValid` lets through must reach the floor
-   * intact; a larger move is refused there, with a message that names the rate.
+   * **The first allowance, earning its place.** A total floored rather than
+   * rounded — by every client before 2026-09-24, and by a jar owner who types
+   * the round figure down — sits up to a hryvnia under the minimum's nominal
+   * total, and is still ten USDT at today's rate.
    */
-  it('admits every quoted minimum that the quote check still accepts', () => {
-    const refused = RATES.flatMap((quoted) => {
-      const target = targetForStake(MIN_USDT_AMOUNT, quoted)
+  it('admits ten USDT whose total was floored rather than rounded', () => {
+    const refused = RATES.filter(
+      (rate) => Math.floor((MIN_USDT_AMOUNT * rate) / 100) * 100 < minSaleTargetKopecks(rate)
+    )
+
+    expect(refused).toEqual([])
+  })
+
+  /**
+   * **The second allowance, earning its place.**
+   *
+   * A jar sale is held at its jar's goal while the form is open, and the stake
+   * is re-derived when the rate moves — so a rise leaves a jar set to the
+   * minimum worth slightly less USDT, and a floor pinned to ten flat refused a
+   * sale for becoming cheaper. A jar the goal check would still call the
+   * minimum target must clear the floor; a larger move is refused, as below
+   * the minimum it now is.
+   */
+  it('admits a jar set to the minimum while the rate stays within its goal tolerance', () => {
+    const refused = RATES.flatMap((setAt) => {
+      const goal = priceStake(MIN_USDT_CENTS, setAt).targetKopecks
 
       return RATES.filter(
         (now) =>
-          Math.abs(now - quoted) <= 400 &&
-          isQuoteStillValid(target, quoted, now) &&
-          target < minSaleTargetKopecks(now)
-      ).map((now) => ({ quoted, now }))
+          Math.abs(now - setAt) <= 400 &&
+          isGoalWithinTolerance(goal, priceStake(MIN_USDT_CENTS, now).targetKopecks) &&
+          goal < minSaleTargetKopecks(now)
+      ).map((now) => ({ setAt, now }))
     })
 
     expect(refused).toEqual([])
   })
 
-  /** It lowers the floor by exactly its slack and not a kopeck more. */
-  it('allows the floor its hryvnia and the quote check its drift, and no more', () => {
+  /** It lowers the floor by exactly its two allowances and not a kopeck more. */
+  it('allows the rounding its hryvnia and a held goal its tolerance, and no more', () => {
     for (const rate of [3_000, 4_000, 4_804, 5_500, 6_000]) {
-      const nominal = targetForStake(MIN_USDT_AMOUNT, rate)
+      const nominal = priceStake(MIN_USDT_CENTS, rate).targetKopecks
 
       expect(minSaleTargetKopecks(rate)).toBe(
-        nominal - TARGET_FLOOR_SLACK_KOPECKS - goalToleranceKopecks(nominal)
+        nominal - TARGET_ROUNDING_SLACK_KOPECKS - goalToleranceKopecks(nominal)
       )
     }
   })
@@ -183,37 +227,6 @@ describe('minSaleTargetKopecks', () => {
    */
   it.each([0, -1])('yields no floor at a rate of %p', (rate) => {
     expect(minSaleTargetKopecks(rate)).toBe(0)
-  })
-})
-
-describe('isQuoteStillValid', () => {
-  const TARGET = targetForStake(50, RATE)
-
-  it('holds when the rate has not moved', () => {
-    expect(isQuoteStillValid(TARGET, RATE, RATE)).toBe(true)
-  })
-
-  /**
-   * Compared on targets, not on rates. The rate always changes — it is re-read
-   * every five minutes — and refusing on that alone would reject most
-   * submissions for nothing a user could act on.
-   */
-  it('holds through a drift too small to move the target', () => {
-    expect(isQuoteStillValid(TARGET, RATE, RATE + 1)).toBe(true)
-    expect(isQuoteStillValid(TARGET, RATE, RATE - 1)).toBe(true)
-  })
-
-  /** Past a hryvnia the jar's goal no longer matches, and it can never fill. */
-  it.each([
-    ['a rise', RATE + 200],
-    ['a fall', RATE - 200],
-  ])('fails on %s that moves the target', (_label, now) => {
-    expect(isQuoteStillValid(TARGET, RATE, now)).toBe(false)
-  })
-
-  it.each([0, -1])('fails rather than dividing by a rate of %p', (rate) => {
-    expect(isQuoteStillValid(TARGET, rate, RATE)).toBe(false)
-    expect(isQuoteStillValid(TARGET, RATE, rate)).toBe(false)
   })
 })
 

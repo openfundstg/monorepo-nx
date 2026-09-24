@@ -6,7 +6,6 @@ import { ExchangeRateComponent } from '../../../shared/components/exchange-rate/
 import { UahPipe } from '../../../shared/pipes/uah.pipe';
 import { UsdtPipe } from '../../../shared/pipes/usdt.pipe';
 import { SalePricingService } from '../../services/sale-pricing.service';
-import { SaleSubmitService } from '../../services/sale-submit.service';
 
 /**
  * How much USDT is being sold, and the four figures that decide whether it can be.
@@ -18,10 +17,10 @@ import { SaleSubmitService } from '../../services/sale-submit.service';
  * sold. Keeping two copies is how the two screens came to state the same rule in
  * different units once already.
  *
- * It reads {@link SalePricingService} and {@link SaleSubmitService} from the
- * route rather than taking inputs: both forms provide them, both provide the
- * same instance to this component, and threading a dozen signals through inputs
- * would be the duplication moved rather than removed.
+ * It reads {@link SalePricingService} from the route rather than taking inputs:
+ * both forms provide it, both provide the same instance to this component, and
+ * threading a dozen signals through inputs would be the duplication moved
+ * rather than removed.
  *
  * What each form still owns is the *sentence* it says when a figure refuses the
  * order — the jar has to explain a slot held by an open jar, which the card has
@@ -37,7 +36,6 @@ import { SaleSubmitService } from '../../services/sale-submit.service';
 })
 export class SaleAmountComponent {
   readonly pricing = inject(SalePricingService);
-  readonly submit = inject(SaleSubmitService);
 
   /** Named on screen rather than only enforced — see the pricing service. */
   protected readonly minOrderUsdt = MIN_USDT_AMOUNT;

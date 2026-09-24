@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import type {
   ConfirmCardOrderReq,
@@ -14,6 +14,7 @@ import type {
   CreateSaleReq,
 } from '@transacto/contracts';
 import { environment } from '../../../environments/environment';
+import { SKIP_LOADING } from '../../shared/constants/loading.const';
 
 /** Payload for `POST /sales`, mirroring the backend DTO. */
 export type { CreateSaleReq };
@@ -27,8 +28,15 @@ export class SaleApiService {
     return `${environment.apiUrl}/sales`;
   }
 
-  getConfig(): Observable<SaleConfigResponse> {
-    return this.http.get<SaleConfigResponse>(`${this.base}/config`);
+  /**
+   * @param background `true` for a re-read the user did not ask for — the rate
+   * moving under an open form — so it does not raise the loading overlay over
+   * the form they are filling in.
+   */
+  getConfig(background = false): Observable<SaleConfigResponse> {
+    return this.http.get<SaleConfigResponse>(`${this.base}/config`, {
+      context: new HttpContext().set(SKIP_LOADING, background),
+    });
   }
 
   create(req: CreateSaleReq): Observable<CreateSaleResponse> {

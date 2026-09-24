@@ -43,34 +43,43 @@ export class SaleSubmitService {
   readonly errorMsg = signal('');
 
   /**
-   * The market moved between the quote and the submit.
-   *
-   * Its own flag rather than part of {@link errorMsg} because the screen does
-   * more than say so: the jar form offers the recomputed amount as a tap.
-   */
-  readonly rateMoved = signal(false);
-
-  /**
    * Creates the sale the form describes, and goes to its status page.
    *
    * `build` is called only once the submission is going ahead, so a form need
    * not assemble a request it may not send. Returns nothing: everything a
-   * screen has to react to is on the three signals above.
+   * screen has to react to is on the two signals above and on the pricing
+   * service's `rateChange`.
+   *
+   * **A form says where the money goes; the price is added here.** The total,
+   * the stake and the rate both were worked out at come from
+   * {@link SalePricingService} and nowhere else, so neither form can send a
+   * total priced one way beside a stake priced another — which the server
+   * refuses outright, rather than guessing which of the two was meant.
    */
-  async submit(build: () => CreateSaleReq): Promise<void> {
+  async submit(
+    build: () => Omit<CreateSaleReq, 'fiatAmount' | 'stakeCents' | 'quotedRate'>,
+  ): Promise<void> {
     if (this.submitting()) return;
 
-    const amountKopecks = this.pricing.targetKopecks();
+    const request: CreateSaleReq = {
+      ...build(),
+      fiatAmount: this.pricing.targetKopecks(),
+      stakeCents: this.pricing.stakeCents(),
+      // The rate every figure on the form was worked out at. The server refuses
+      // a quote at any other rather than freezing a stake the screen never
+      // showed.
+      quotedRate: this.pricing.sellRateKopecks(),
+    };
     this.submitting.set(true);
     this.errorMsg.set('');
 
     try {
-      const result = await this.saleService.create(build());
+      const result = await this.saleService.create(request);
 
       // The stake is frozen by the time this resolves, so the step is real
       // rather than an intention. The completion that follows — if it does — is
       // reported separately, from the status page.
-      this.metaPixel.trackConversion(PixelStandardEvent.INITIATE_CHECKOUT, amountKopecks);
+      this.metaPixel.trackConversion(PixelStandardEvent.INITIATE_CHECKOUT, request.fiatAmount);
       this.tma.hapticFeedback('success');
       await this.router.navigate(['/sale', result.saleId, 'status']);
     } catch (error: unknown) {
@@ -78,22 +87,27 @@ export class SaleSubmitService {
       this.errorMsg.set(this.apiError.messageFor(error));
       this.tma.hapticFeedback('error');
 
-      // Refusing a moved quote is right — a jar whose goal no longer matches can
-      // never fill, and a stake must not be frozen against a target the server
-      // never agreed. Leaving the screen holding the refused rate is not: the
-      // form would derive the same stale target and the next tap would fail
-      // identically. So the rate is re-read and the new amount offered.
+      // Refusing a moved quote is right — a stake must not be frozen at a rate
+      // the user was never shown. Leaving the screen holding the refused rate
+      // is not: the form would derive the same stale figures and the next tap
+      // would fail identically. So the rate is re-read, which recomputes every
+      // figure and reports what moved — and that report says more than this
+      // code's sentence can, so the sentence steps aside for it. It stays only
+      // when the re-read found nothing new to report: the rate moved and moved
+      // back between the two requests, or the re-read failed outright.
       if (this.apiError.codeOf(error) === ERROR.SALE.RATE_CHANGED.code) {
         await this.pricing.load();
-        this.rateMoved.set(true);
+
+        // Measured against the rate the refused request quoted rather than the
+        // one the form holds by now: a background re-read may have landed while
+        // the request was out, and its report is the one on screen.
+        const reported =
+          this.pricing.sellRateKopecks() !== request.quotedRate &&
+          this.pricing.rateChange() !== null;
+        if (reported) this.errorMsg.set('');
       }
     } finally {
       this.submitting.set(false);
     }
-  }
-
-  /** Cleared the moment the amount changes, so a stale refusal never outlives it. */
-  clearRateMoved(): void {
-    this.rateMoved.set(false);
   }
 }

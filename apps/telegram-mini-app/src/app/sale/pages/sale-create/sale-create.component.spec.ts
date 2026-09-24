@@ -1,16 +1,23 @@
 import { describe, expect, it, beforeEach, vi, type Mock } from 'vitest';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
+import { Store, provideStore } from '@ngrx/store';
 import { SaleCreateComponent } from './sale-create.component';
 import { SaleService } from '../../services/sale.service';
 import { SALE_CONFIG_KEY } from '../../resolvers/sale-config.resolver';
+import { ratesActions } from '../../../core/store/rates.actions';
+import { ratesReducer } from '../../../core/store/rates.reducer';
+import { RATES_FEATURE } from '../../../core/store/rates.state';
 import {
   BankProvider,
   DEFAULT_MIN_ORDER_KOPECKS,
+  ERROR,
   isSaleBankEnabled,
   MIN_USDT_AMOUNT,
+  priceSale,
+  priceStake,
   SaleMethod,
   SaleRemainderPolicy,
 } from '@transacto/contracts';
@@ -38,6 +45,7 @@ const BALANCE_CENTS = 100_000;
 
 describe('SaleCreateComponent validation', () => {
   let component: SaleCreateComponent;
+  let fixture: ComponentFixture<SaleCreateComponent>;
   /** How many slots the stubbed config reports as taken. */
   let openOrders: number;
   /** Which of those are finished sales whose jars are still open. */
@@ -46,6 +54,8 @@ describe('SaleCreateComponent validation', () => {
   let sellRate: number;
   /** What `create()` does — resolved by default, rejected where that is the point. */
   let create: Mock;
+  /** Answers with {@link config} as it stands when called, so a test can move the market first. */
+  let getConfig: Mock;
 
   /** What the resolver hands the form — and what `getConfig()` re-reads on retry. */
   const config = () => ({
@@ -65,12 +75,12 @@ describe('SaleCreateComponent validation', () => {
         provideZonelessChangeDetection(),
         provideRouter([]),
         provideTranslateService(),
+        // The real rates slice, so the poll reaches the form through the same
+        // selector the app wires up.
+        provideStore({ [RATES_FEATURE]: ratesReducer }),
         {
           provide: SaleService,
-          useValue: {
-            getConfig: () => Promise.resolve(config()),
-            create,
-          },
+          useValue: { getConfig, create },
         },
         // What the route's resolver put there. The form reads its figures from
         // here rather than fetching them, so that the screen is never drawn
@@ -82,7 +92,7 @@ describe('SaleCreateComponent validation', () => {
       ],
     });
 
-    const fixture = TestBed.createComponent(SaleCreateComponent);
+    fixture = TestBed.createComponent(SaleCreateComponent);
     component = fixture.componentInstance;
     component.ngOnInit();
   };
@@ -92,6 +102,7 @@ describe('SaleCreateComponent validation', () => {
     awaitingJar = [];
     sellRate = KOPECKS_PER_USDT;
     create = vi.fn().mockResolvedValue({ saleId: 'order-1' });
+    getConfig = vi.fn(() => Promise.resolve(config()));
     TestBed.resetTestingModule();
     await build();
   });
@@ -501,6 +512,7 @@ describe('SaleCreateComponent validation', () => {
           provideZonelessChangeDetection(),
           provideRouter([]),
           provideTranslateService(),
+          provideStore({ [RATES_FEATURE]: ratesReducer }),
           {
             provide: SaleService,
             useValue: { getConfig: () => Promise.reject(new Error('503')) },
@@ -533,10 +545,17 @@ describe('SaleCreateComponent validation', () => {
       expect(component.isValid()).toBe(false);
     });
 
+    /**
+     * Nothing is priced without a rate: no total, nothing divided by zero, and
+     * nothing to submit. The stake is the figure typed — it needs no rate to be
+     * that — so it stays what was typed rather than becoming an Infinity.
+     */
     it('does not divide by a rate of zero', () => {
       component.pricing.usdtAmount.set(10);
 
-      expect(component.requiredCents()).toBe(0);
+      expect(component.pricing.targetKopecks()).toBe(0);
+      expect(component.requiredCents()).toBe(1_000);
+      expect(component.pricing.isPriced()).toBe(false);
     });
   });
 
@@ -764,13 +783,15 @@ describe('SaleCreateComponent validation', () => {
      * The fix for what reads as a stuck error: the check was always reactive,
      * but nothing on screen told the user which amount would satisfy it.
      */
-    it('offers the stake that lands exactly on the jar’s goal', () => {
+    it('pulls the amount up to land exactly on the jar’s goal', () => {
       component.jarGoal.set(80_000);
 
-      component.useSuggestedAmount();
+      component.pullUpToGoal();
 
-      expect(component.pricing.usdtAmount()).toBe((component.suggestedUsdtCents() ?? 0) / 100);
+      expect(component.pricing.targetKopecks()).toBe(80_000);
+      expect(component.pricing.amountField()).toBe((component.suggestedUsdtCents() ?? 0) / 100);
       expect(component.goalMismatch()).toBe(false);
+      expect(component.goalDiffers()).toBe(false);
     });
 
     /** Nothing to aim at, nothing to offer — Monobank publishes no goal. */
@@ -866,60 +887,279 @@ describe('SaleCreateComponent validation', () => {
   });
 
   /**
-   * The market moves while a form is being filled, and the server refuses a
-   * quote it has moved out from under. Telling the user to change the jar's
-   * goal is the wrong half to change: that is a minute inside a banking app,
-   * and the rate moves again while they are in there. The amount is ours.
+   * **The bug.** The form read the rate once, when the route resolved, and a
+   * form left open for a minute went on quoting it — while the server took the
+   * live one and froze a stake nobody had been shown. The form now follows the
+   * app's rate poll, reads its figures again when the poll sees a rate it is
+   * not priced at, and says what moved.
    */
-  describe('when the market moves under the quote', () => {
-    /** A complete form whose jar goal matches what the amount derives. */
+  describe('when the market moves while the form is open', () => {
+    /** The rate the market moves to in these tests: 1% above the quote. */
+    const MOVED = KOPECKS_PER_USDT + 40;
+
+    /** The poll landing on a new sell rate — and the server now quoting it. */
+    const marketMovesTo = (sell: number) => {
+      sellRate = sell;
+      TestBed.inject(Store).dispatch(ratesActions.loadSuccess({ rates: { buy: sell - 100, sell } }));
+    };
+
+    /** Lets the background re-read the poll started run to its end. */
+    const settle = () => new Promise((resolve) => setTimeout(resolve));
+
+    /**
+     * The form's own first change detection, before the market moves.
+     *
+     * `build()` calls `ngOnInit` by hand, and the first time a test yields to
+     * the event loop — as these do, for the re-read — zoneless change detection
+     * runs the real first pass and calls it again. That second call re-seeds
+     * the resolver's figures, which here means the rate from before the move:
+     * a test artifact, since the app calls it once, but one that would hide
+     * exactly what these tests are about.
+     */
+    beforeEach(async () => {
+      await fixture.whenStable();
+    });
+
+    it('prices the form at the new rate', async () => {
+      component.pricing.setAmount(10);
+
+      marketMovesTo(MOVED);
+      await settle();
+
+      expect(getConfig).toHaveBeenCalledWith(true);
+      expect(component.pricing.sellRateKopecks()).toBe(MOVED);
+      expect(component.pricing.stakeCents()).toBe(1_000);
+      expect(component.pricing.targetKopecks()).toBe(priceStake(1_000, MOVED).targetKopecks);
+    });
+
+    it('says what the rate was and what the figures were', async () => {
+      component.pricing.setAmount(10);
+
+      marketMovesTo(MOVED);
+      await settle();
+
+      expect(component.pricing.rateChange()).toEqual({
+        rateKopecks: KOPECKS_PER_USDT,
+        targetKopecks: 40_000,
+        stakeCents: 1_000,
+      });
+    });
+
+    /** The seller's own words: the goal is in the bank, the USDT is ours to move. */
+    it('keeps a total held at the jar’s goal and moves the USDT instead', async () => {
+      component.jarGoal.set(40_000);
+      component.pullUpToGoal();
+
+      marketMovesTo(MOVED);
+      await settle();
+
+      expect(component.pricing.targetKopecks()).toBe(40_000);
+      expect(component.pricing.amountField()).toBe(priceSale(40_000, MOVED).requiredUsdtCents / 100);
+      expect(component.goalDiffers()).toBe(false);
+      expect(component.heldAtGoal()).toBe(true);
+    });
+
+    /**
+     * A goal matched by typing is not held — typing is choosing the USDT — so a
+     * move takes the total off it, and the way back is offered as a tap.
+     */
+    it('offers to pull the amount up to a goal the move took the total off', async () => {
+      component.pricing.setAmount(10);
+      component.jarGoal.set(component.pricing.targetKopecks());
+
+      marketMovesTo(MOVED);
+      await settle();
+
+      expect(component.goalDiffers()).toBe(true);
+      expect(component.suggestedUsdtCents()).toBe(priceSale(40_000, MOVED).requiredUsdtCents);
+
+      component.pullUpToGoal();
+
+      expect(component.pricing.targetKopecks()).toBe(40_000);
+      expect(component.goalDiffers()).toBe(false);
+    });
+
+    it('asks nothing when the poll sees the rate the form is priced at', async () => {
+      marketMovesTo(KOPECKS_PER_USDT);
+      await settle();
+
+      expect(getConfig).not.toHaveBeenCalled();
+      expect(component.pricing.rateChange()).toBeNull();
+    });
+  });
+
+  /**
+   * The seconds between a move and the next poll, which the form cannot see.
+   * The server refuses a quote at any rate but the live one, and the refusal
+   * has to leave the form priced at that rate and saying so — not holding the
+   * refused figures, where every further tap would fail the same way.
+   */
+  describe('when the server refuses a quote the market has moved under', () => {
     const readyToSubmit = () => {
       fillForm();
-      component.pricing.usdtAmount.set(10);
+      component.pricing.setAmount(10);
       component.jarGoal.set(component.pricing.targetKopecks());
     };
 
     const refuseWithRateChanged = () =>
-      create.mockRejectedValue({ error: { code: 1316 } });
+      create.mockRejectedValue({ error: { code: ERROR.SALE.RATE_CHANGED.code } });
 
-    it('offers the amount that buys the same goal at the new rate', async () => {
+    /** The form's own first pass first — see the block above for why. */
+    beforeEach(async () => {
+      await fixture.whenStable();
+    });
+
+    it('reads the rate again and reports the move in place of an error', async () => {
       readyToSubmit();
       refuseWithRateChanged();
-      // The rate the reload will find: 5% above what the form was quoted at.
-      sellRate = KOPECKS_PER_USDT * 1.05;
+      sellRate = KOPECKS_PER_USDT + 40;
 
       await component.onSubmit();
 
-      expect(component.submit.rateMoved()).toBe(true);
-      expect(component.suggestedUsdtCents()).toBeGreaterThan(0);
+      expect(component.pricing.sellRateKopecks()).toBe(KOPECKS_PER_USDT + 40);
+      expect(component.pricing.rateChange()?.rateKopecks).toBe(KOPECKS_PER_USDT);
+      expect(component.submit.errorMsg()).toBe('');
     });
 
-    it('takes the new amount without touching the jar’s goal', async () => {
+    /**
+     * The poll can land its own re-read while the refused request is still
+     * out. The move is then on screen before the refusal arrives, and the
+     * sentence must still step aside for it — judged against the rate the
+     * request quoted, not the one the form holds by the time it is refused.
+     */
+    it('lets the report speak when the move landed while the request was out', async () => {
       readyToSubmit();
-      const goal = component.jarGoal();
+      let refuse!: (reason: unknown) => void;
+      create.mockReturnValue(
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+      );
+
+      const submitted = component.onSubmit();
+      sellRate = KOPECKS_PER_USDT + 40;
+      TestBed.inject(Store).dispatch(
+        ratesActions.loadSuccess({ rates: { buy: sellRate - 100, sell: sellRate } }),
+      );
+      await new Promise((resolve) => setTimeout(resolve));
+      refuse({ error: { code: ERROR.SALE.RATE_CHANGED.code } });
+      await submitted;
+
+      expect(component.pricing.rateChange()?.rateKopecks).toBe(KOPECKS_PER_USDT);
+      expect(component.submit.errorMsg()).toBe('');
+    });
+
+    /** The notice is what explains it; with nothing to report, the sentence must. */
+    it('keeps the error when the re-read finds nothing new', async () => {
+      readyToSubmit();
       refuseWithRateChanged();
-      sellRate = KOPECKS_PER_USDT * 1.05;
 
       await component.onSubmit();
-      const offered = component.suggestedUsdtCents();
-      component.useCurrentRate();
 
-      expect(component.pricing.usdtAmount()).toBe((offered as number) / 100);
-      expect(component.jarGoal()).toBe(goal);
-      // And the form is submittable again: the target the new amount derives
-      // matches the goal that never moved.
-      expect(component.goalMismatch()).toBe(false);
-      expect(component.submit.rateMoved()).toBe(false);
+      expect(component.pricing.rateChange()).toBeNull();
+      expect(component.submit.errorMsg()).not.toBe('');
     });
 
-    /** Any other refusal is not a rate problem and gets no rate button. */
-    it('offers nothing of the sort for an unrelated refusal', async () => {
+    /** Any other refusal is not a rate problem and re-reads nothing. */
+    it('reads nothing again for an unrelated refusal', async () => {
       readyToSubmit();
       create.mockRejectedValue({ error: { code: 1303 } });
 
       await component.onSubmit();
 
-      expect(component.submit.rateMoved()).toBe(false);
+      expect(getConfig).not.toHaveBeenCalled();
+      expect(component.pricing.rateChange()).toBeNull();
+    });
+  });
+
+  /**
+   * Pulling the amount up to the jar's goal, and what the form lets through
+   * afterwards.
+   */
+  describe('the pull-up to the jar’s goal', () => {
+    /**
+     * **The bug it had.** The form required the *typed* amount to reach ten on
+     * top of the shared floor, so a goal worth 9.98 at the live rate — which
+     * the floor and the server both accept — sat beside a disabled button.
+     */
+    it('lets a goal worth a little under ten USDT be sold', () => {
+      fillForm();
+      component.jarGoal.set(39_900);
+
+      component.pullUpToGoal();
+
+      expect(component.pricing.amountField()).toBe(9.98);
+      expect(component.pricing.belowMinimum()).toBe(false);
+      expect(component.isValid()).toBe(true);
+    });
+
+    it('holds the total until an amount is typed', () => {
+      component.jarGoal.set(80_000);
+      component.pullUpToGoal();
+
+      component.pricing.setAmount(10);
+
+      expect(component.heldAtGoal()).toBe(false);
+      expect(component.pricing.targetKopecks()).toBe(40_000);
+      expect(component.goalDiffers()).toBe(true);
+    });
+
+    it('does nothing without a goal to pull up to', () => {
+      component.pricing.setAmount(10);
+      component.jarGoal.set(null);
+
+      component.pullUpToGoal();
+
+      expect(component.pricing.heldTargetKopecks()).toBeNull();
+      expect(component.pricing.targetKopecks()).toBe(40_000);
+    });
+
+    /** Sends the goal itself, so the server's stake is the one on screen. */
+    it('submits the goal as the order’s total', async () => {
+      fillForm();
+      component.jarGoal.set(39_900);
+      component.pullUpToGoal();
+
+      await component.onSubmit();
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ fiatAmount: 39_900, stakeCents: 998, quotedRate: KOPECKS_PER_USDT }),
+      );
+    });
+  });
+
+  /**
+   * **What the seller asked for: "if I type 10 USDT, it is 10 USDT".** The
+   * order carries the stake typed, to the cent, beside its price rounded to
+   * the nearest hryvnia — and the server freezes that stake as sent, after
+   * checking the one is the price of the other.
+   */
+  describe('the order it sends', () => {
+    /** ₴48.15: ten USDT is ₴481.50, the rate on which ten used to become 9.99. */
+    const AWKWARD_RATE = 4_815;
+
+    beforeEach(async () => {
+      sellRate = AWKWARD_RATE;
+      TestBed.resetTestingModule();
+      await build();
+    });
+
+    it('sells exactly the USDT typed, for its price to the nearest hryvnia', async () => {
+      fillForm();
+      component.pricing.setAmount(10);
+
+      await component.onSubmit();
+
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ stakeCents: 1_000, fiatAmount: 48_200, quotedRate: AWKWARD_RATE }),
+      );
+    });
+
+    it('names the price where the jar’s goal has to match it', () => {
+      component.pricing.setAmount(10);
+
+      expect(component.pricing.targetKopecks()).toBe(48_200);
+      expect(component.requiredCents()).toBe(1_000);
     });
   });
 });

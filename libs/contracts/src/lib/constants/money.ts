@@ -57,18 +57,18 @@ export const roundToWholeUah = (kopecks: number): number =>
 /**
  * Rounds a kopeck figure **down** to a whole number of hryvnia.
  *
- * The direction is the point, and it is not interchangeable with
- * {@link roundToWholeUah}. That one normalises a figure that already exists —
- * the goal a bank reports — where nearest is right. This one *derives* an
- * order's target from the USDT a user typed, and the derived target is what the
- * stake is then computed back out of. Rounding to nearest there can round
- * **up**, so the stake comes out above the amount the user asked to spend: on
- * roughly a quarter of rate-and-amount combinations, someone holding exactly
- * 100 USDT was quoted 100.01 and could not spend their own balance.
+ * Not interchangeable with {@link roundToWholeUah}, and the direction is the
+ * point wherever this is used: a card sale's equal share of its target is
+ * floored so that the last of its orders still fits under the total — see
+ * `saleCardMinOrderKopecks`.
  *
- * Rounding down cannot do that. The cost is that an order may be up to one
- * hryvnia smaller than the exact conversion — always in the user's favour, and
- * never a reason the order is refused.
+ * It used to derive a typed sale's target as well, floored so that the stake
+ * recovered from that target could never land above the USDT typed — rounding
+ * to nearest there had quoted someone holding exactly 100 USDT a stake of
+ * 100.01. The floor kept every balance spendable at the cost of selling a cent
+ * or two less than typed on most sales, and it went when the stake stopped
+ * being recovered at all: `priceStake` freezes the figure typed and rounds the
+ * total to the nearest hryvnia instead.
  */
 export const floorToWholeUah = (kopecks: number): number =>
   Math.floor(kopecks / KOPECKS_PER_UAH) * KOPECKS_PER_UAH;
@@ -88,10 +88,11 @@ export const isWholeUah = (kopecks: number): boolean =>
  * stake and a support message, and gains nothing: a hryvnia neither breaks the
  * economics nor hides an abuse the rule exists to catch.
  *
- * {@link floorToWholeUah} made the near-miss more common rather than less. The
- * order's target is now rounded *down* from the exact conversion, so a user
- * rounding their own figure up is a hryvnia out far more often than when both
- * sides rounded to nearest.
+ * Rounding the order's target *down* from the exact conversion, as the create
+ * form did for a while, made the near-miss more common: a user rounding their
+ * own figure up was a hryvnia out far more often than when both sides rounded
+ * to nearest. Both round to nearest again now, and the hryvnia stays — people
+ * still type the round figure rather than the one they were given.
  */
 export const GOAL_TOLERANCE_KOPECKS = 100;
 
@@ -144,12 +145,12 @@ export const isGoalWithinTolerance = (observedKopecks: number, targetKopecks: nu
  * different figure, in kopecks.
  *
  * Lifted out of {@link isGoalWithinTolerance} because a second rule needs the
- * same number rather than the same verdict: a sale's minimum has to admit
- * everything the quote check lets through, and it can only do that by asking
- * how much that check tolerates. Written out twice, the two would be one
- * percentage change away from disagreeing — and the shape of that disagreement
- * is a user being refused the minimum order for a rate move already declared
- * acceptable.
+ * same number rather than the same verdict: a sale's minimum has to admit a jar
+ * the goal check still calls the minimum target after the rate has moved under
+ * it, and it can only do that by asking how much that check tolerates. Written
+ * out twice, the two would be one percentage change away from disagreeing — and
+ * the shape of that disagreement is a user being refused the minimum order for
+ * a rate move already declared acceptable.
  *
  * The argument is snapped to whole hryvnia first, exactly as the caller above
  * does it, so both ends of the comparison are measured on the same figure.

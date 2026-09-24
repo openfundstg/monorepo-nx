@@ -70,6 +70,19 @@
   } @else {
     <!-- Public ID -->
     <div class="public-id-card glass-card" (click)="copyPublicId()">
+      <!--
+        Which of the two ways to sell this was, in the mark the method picker
+        offered it under — the tile that started the sale and the page it led
+        to are recognisably the same thing. Named for a screen reader by the
+        picker's own words, since the mark alone says nothing to one.
+      -->
+      <span
+        class="public-id-method"
+        role="img"
+        [attr.aria-label]="'sale.method_' + saleMethod().toLowerCase() | translate"
+      >
+        <app-sale-method-icon [method]="saleMethod()" />
+      </span>
       <span class="public-id-label">{{ 'sale.public_id' | translate }}</span>
       <span class="public-id-value">{{ publicId() }}</span>
       @if (copied()) {

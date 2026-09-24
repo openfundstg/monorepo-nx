@@ -514,6 +514,19 @@ export interface CreateSaleReq {
   saleMethod?: SaleMethod;
   /** The order total in UAH kopecks — the figure the user sets as the jar goal. */
   fiatAmount: number;
+  /**
+   * The USDT to sell, in cents — frozen exactly as sent.
+   *
+   * A typed amount is the stake, and {@link fiatAmount} must then be the total
+   * `priceStake` gives it at {@link quotedRate}: its price rounded to the
+   * nearest hryvnia. A total held at a jar's goal sends the stake `priceSale`
+   * derives from that goal, which satisfies the same rule. A pair that does not
+   * is refused rather than repriced, so what the form showed is what is sold.
+   *
+   * Optional so a client that predates it keeps working: without it the stake is
+   * derived from {@link fiatAmount}, as it always was.
+   */
+  stakeCents?: number;
   bankType: BankProvider;
   /**
    * The jar to pay into.

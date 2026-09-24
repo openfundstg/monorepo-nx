@@ -1,0 +1,32 @@
+@if (pricing.rateChange(); as change) {
+  <div class="rate-notice" role="status">
+    <p class="rate-notice-title">
+      {{
+        'sale.rate_changed'
+          | translate: { from: (change.rateKopecks | uah), to: (pricing.sellRateKopecks() | uah) }
+      }}
+    </p>
+
+    @if (amountsMoved()) {
+      <p class="rate-notice-amounts">
+        {{
+          'sale.rate_changed_amounts'
+            | translate
+              : {
+                  fromUsdt: (change.stakeCents | usdt),
+                  fromUah: (change.targetKopecks | uah: true),
+                  toUsdt: (pricing.stakeCents() | usdt),
+                  toUah: (pricing.targetKopecks() | uah: true)
+                }
+        }}
+      </p>
+    }
+
+    <!-- What this form can do about it, if anything. -->
+    <ng-content />
+
+    <button type="button" class="link-btn rate-notice-dismiss" (click)="pricing.dismissRateChange()">
+      {{ 'sale.rate_changed_dismiss' | translate }}
+    </button>
+  </div>
+}

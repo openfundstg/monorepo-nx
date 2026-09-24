@@ -1,8 +1,9 @@
 import {
   DEFAULT_MIN_ORDER_KOPECKS,
   priceSale,
+  priceStake,
   SaleRemainderPolicy,
-  targetForStake
+  type SaleQuote
 } from '@transacto/contracts'
 import { TmaSaleStatus } from '@transacto/contracts'
 import {
@@ -638,9 +639,30 @@ describe('settleSale', () => {
  * gates the sweep, so no impossible state is ever asserted about.
  */
 describe('the refunded tail never costs the user their rate', () => {
-  const play = (stakeUsdt: number, rate: number, deliveredKopecks: number) => {
-    const fiatAmount = targetForStake(stakeUsdt, rate)
-    const { requiredUsdtCents } = priceSale(fiatAmount, rate)
+  /**
+   * The two shapes a sale's money is created in, and the promise has to hold
+   * for both.
+   *
+   * - **typed** — the stake is the USDT typed, to the cent, and the total its
+   *   price rounded to the nearest hryvnia (`priceStake`). The total can sit up
+   *   to half a hryvnia either side of the stake's exact price.
+   * - **held** — the total is a jar's goal and the stake what it costs
+   *   (`priceSale`), which is also every sale created before stakes were sent.
+   */
+  const SHAPES = {
+    typed: (stakeUsdt: number, rate: number): SaleQuote =>
+      priceStake(Math.round(stakeUsdt * 100), rate),
+    held: (stakeUsdt: number, rate: number): SaleQuote =>
+      priceSale(priceStake(Math.round(stakeUsdt * 100), rate).targetKopecks, rate)
+  }
+
+  const play = (
+    stakeUsdt: number,
+    rate: number,
+    deliveredKopecks: number,
+    shape: keyof typeof SHAPES = 'typed'
+  ) => {
+    const { targetKopecks: fiatAmount, requiredUsdtCents } = SHAPES[shape](stakeUsdt, rate)
 
     const order = {
       fiatAmount,
@@ -703,7 +725,7 @@ describe('the refunded tail never costs the user their rate', () => {
    * and the 0.15 rounded away was worth more than the profit inside the tail.
    */
   it('rounds a fractional tail up rather than to nearest', () => {
-    const target = targetForStake(100, 4_652)
+    const target = priceStake(10_000, 4_652).targetKopecks
     const { settled, shortfall } = play(100, 4_652, target - 100)
 
     // ₴1 is 2.15 cents at this rate. Rounding to nearest gives 2 and leaves the
@@ -720,29 +742,31 @@ describe('the refunded tail never costs the user their rate', () => {
     let overpaidBy = 0
     let checked = 0
 
-    for (const rate of [1_000, 3_000, 4_137, 4_652, 5_001, 7_000]) {
-      for (let stake = 10; stake <= 500; stake += 7) {
-        const target = targetForStake(stake, rate)
+    for (const shape of ['typed', 'held'] as const) {
+      for (const rate of [1_000, 3_000, 4_137, 4_652, 5_001, 7_000]) {
+        for (let stake = 10; stake <= 500; stake += 7) {
+          const target = SHAPES[shape](stake, rate).targetKopecks
 
-        for (let tail = 1; tail * 100 < DEFAULT_MIN_ORDER_KOPECKS; tail += 1) {
-          const delivered = target - tail * 100
-          if (delivered <= 0) continue
+          for (let tail = 1; tail * 100 < DEFAULT_MIN_ORDER_KOPECKS; tail += 1) {
+            const delivered = target - tail * 100
+            if (delivered <= 0) continue
 
-          const result = play(stake, rate, delivered)
-          if (!result.fires) continue
-          checked++
+            const result = play(stake, rate, delivered, shape)
+            if (!result.fires) continue
+            checked++
 
-          const where = `rate ${rate}, stake ${stake}, tail ₴${tail}`
+            const where = `${shape}: rate ${rate}, stake ${stake}, tail ₴${tail}`
 
-          // Never short: hryvnia in the jar plus USDT handed back must cover
-          // the target the user was quoted, every time.
-          if (result.shortfall > 0)
-            leftShort.push(`${where}: ${result.shortfall} kopecks short`)
-          if (result.took < result.paid) lostMoney.push(where)
-          if (result.settled.committedUsdtCents + result.settled.refundedUsdtCents !== result.frozen)
-            splitBroken.push(where)
+            // Never short: hryvnia in the jar plus USDT handed back must cover
+            // the target the user was quoted, every time.
+            if (result.shortfall > 0)
+              leftShort.push(`${where}: ${result.shortfall} kopecks short`)
+            if (result.took < result.paid) lostMoney.push(where)
+            if (result.settled.committedUsdtCents + result.settled.refundedUsdtCents !== result.frozen)
+              splitBroken.push(where)
 
-          overpaidBy = Math.max(overpaidBy, result.took - target)
+            overpaidBy = Math.max(overpaidBy, result.took - target)
+          }
         }
       }
     }

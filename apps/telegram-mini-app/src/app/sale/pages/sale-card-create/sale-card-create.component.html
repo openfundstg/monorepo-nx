@@ -101,9 +101,12 @@
 -->
 <app-sale-remainder [method]="SaleMethod.CARD" [(policy)]="remainderPolicy" />
 
-@if (submit.rateMoved()) {
-  <div class="validation-error">{{ 'sale.rate_moved' | translate }}</div>
-}
+<!--
+  What the rate did while the form was open, where the seller is about to
+  confirm. A card sale has no goal to hold, so the figures simply follow the
+  USDT typed and this says by how much.
+-->
+<app-sale-rate-notice />
 
 @if (submit.errorMsg()) {
   <div class="validation-error">{{ submit.errorMsg() }}</div>

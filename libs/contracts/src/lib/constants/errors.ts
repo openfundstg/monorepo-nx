@@ -251,17 +251,29 @@ export const ERROR = {
       message: 'No operator has taken this sale’s tail on yet',
     },
     /**
-     * The market moved between the quote and the submit, far enough to change
-     * the target the user was told to set as their jar's goal.
+     * The sell rate moved between the quote and the submit — by any amount.
      *
-     * Not an error in what they did — it is a race with the market. The client
-     * shows the new figure and asks them to check it against the goal already
-     * set in their bank, because a jar whose target no longer matches can never
-     * fill.
+     * Not an error in what they did — it is a race with the market. Every
+     * figure on the form was worked out at the rate it quoted, so a sale taken
+     * at another would stake a different amount than the one on screen. The
+     * client re-reads the rate, says what it moved from and to, and lets them
+     * confirm the new figures.
      */
     RATE_CHANGED: {
       code: 1316,
       message: 'The exchange rate changed; the order total no longer matches the quote',
+    },
+    /**
+     * The total sent is not the USDT sent, priced at the rate quoted.
+     *
+     * Never a race: the rate has already been checked, and a client using the
+     * shared `priceStake` cannot produce this. It means a client that priced the
+     * sale some other way, and the pair is refused rather than repriced — a sale
+     * is only ever the figures its form showed.
+     */
+    QUOTE_MISMATCH: {
+      code: 1328,
+      message: 'The order total is not the price of the USDT being sold',
     },
     /** The jar is closed or archived, so it can never receive the payment. */
     JAR_NOT_ACTIVE: { code: 1311, message: 'This jar is not active' },

@@ -1,0 +1,39 @@
+:host {
+  display: block;
+}
+
+/*
+  A warning, not a refusal: nothing is wrong with the form, it has been
+  re-priced. The same palette as the open-jar notice on the jar form — the other
+  thing on these screens that is news to act on rather than a mistake to fix.
+*/
+.rate-notice {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--c-warning);
+  border-radius: var(--r-md);
+  background: var(--c-warning-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.rate-notice-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--c-warning);
+}
+
+.rate-notice-amounts {
+  margin: 0;
+  color: var(--text);
+}
+
+/* `.link-btn` indents itself for use inside a sentence; this one stands alone. */
+.rate-notice-dismiss {
+  justify-self: start;
+  margin-left: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

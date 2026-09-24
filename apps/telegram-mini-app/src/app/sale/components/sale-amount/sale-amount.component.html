@@ -3,12 +3,18 @@
     {{ 'sale.amount_usdt_label' | translate }}
   </label>
   <div class="amount-input-wrap">
+    <!--
+      Bound one way and written back through the pricing service, because the
+      field is not always the user's own figure: while a jar sale is held at
+      its goal it shows the USDT that goal costs, and that follows the rate.
+      Typing takes it back.
+    -->
     <input
       id="sale-amount-input"
       type="number"
       [placeholder]="'sale.amount_usdt_placeholder' | translate"
-      [(ngModel)]="pricing.usdtAmount"
-      (ngModelChange)="submit.clearRateMoved()"
+      [ngModel]="pricing.amountField()"
+      (ngModelChange)="pricing.setAmount($event)"
       min="10"
       step="10"
       class="amount-input"
@@ -66,14 +72,19 @@
     <div class="validation-error">{{ 'sale.insufficient_balance' | translate }}</div>
   }
 
-  @if ((pricing.usdtAmount() ?? 0) > 0 && !pricing.rateUnavailable()) {
+  @if (pricing.targetKopecks() > 0 && !pricing.rateUnavailable()) {
     <div class="math-preview">
       <!--
         The total, and only the total. The rate is stated once above and
         repeating it here was two labels for one number.
+
+        The left side is the stake — what leaves the balance: the figure typed,
+        to the cent, or what a jar's goal costs while the total is held at it.
+        The right side is its price, rounded to the whole hryvnia a jar's goal
+        can hold.
       -->
       <div class="math-row total">
-        <span>{{ pricing.usdtAmount() }} {{ 'common.usdt' | translate }} =</span>
+        <span>{{ pricing.stakeCents() | usdt }} {{ 'common.usdt' | translate }} =</span>
         <span class="math-val"
           >{{ pricing.targetKopecks() | uah: true }} {{ 'common.uah' | translate }}</span
         >

@@ -73,6 +73,23 @@
   transform: scale(0.99);
 }
 
+/*
+  The method's mark in the same well the method picker draws it in — 44px, the
+  nested surface, the medium radius — so the tile tapped to start the sale and
+  the page it led to carry one shape. The extra margin separates it from the
+  label by a little more than the card's own gap does, since it heads the card
+  rather than being one of its lines.
+*/
+.public-id-method {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: var(--r-md);
+  background: var(--surface-nested);
+}
+
 .public-id-label {
   font-size: 12px;
   font-weight: 500;

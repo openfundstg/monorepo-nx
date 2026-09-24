@@ -20,6 +20,7 @@ import { CARD_SALE_BANKS, DEFAULT_CARD_SALE_BANK } from '../../constants/sale-ca
 import { DEFAULT_REMAINDER_POLICY } from '../../constants/sale-create.const'
 import { CardInstructionsComponent } from '../../components/card-instructions/card-instructions.component'
 import { SaleAmountComponent } from '../../components/sale-amount/sale-amount.component'
+import { SaleRateNoticeComponent } from '../../components/sale-rate-notice/sale-rate-notice.component'
 import { SaleRemainderComponent } from '../../components/sale-remainder/sale-remainder.component'
 import { SalePricingService } from '../../services/sale-pricing.service'
 import { SaleSubmitService } from '../../services/sale-submit.service'
@@ -45,6 +46,7 @@ import { SaleSubmitService } from '../../services/sale-submit.service'
     TranslatePipe,
     CardInstructionsComponent,
     SaleAmountComponent,
+    SaleRateNoticeComponent,
     SaleRemainderComponent
   ],
   templateUrl: './sale-card-create.component.html',
@@ -85,7 +87,7 @@ export class SaleCardCreateComponent implements OnInit {
   protected readonly minOrderUsdt = MIN_USDT_AMOUNT
   protected readonly cardLength = CARD_NUMBER_LENGTH
 
-  /** The submit half both forms share — the post, the recovery, the three flags. */
+  /** The submit half both forms share — the post, the recovery, the two flags. */
   readonly submit = inject(SaleSubmitService)
 
   /**
@@ -159,17 +161,15 @@ export class SaleCardCreateComponent implements OnInit {
   async onSubmit(): Promise<void> {
     if (!this.isValid()) return
 
+    // Where the money goes. The price — total, stake and rate — is the submit
+    // service's to add, from the pricing service, so this screen cannot send
+    // one figure priced differently from another.
     await this.submit.submit(() => ({
       saleMethod: SaleMethod.CARD,
-      fiatAmount: this.pricing.targetKopecks(),
       bankType: this.selectedBank(),
       cardNumber: cardDigits(this.cardNumber()),
       receiverName: this.receiverName().trim(),
-      remainderPolicy: this.remainderPolicy(),
-      // The rate this total was worked out at. The market moves while a form is
-      // being filled, and the server refuses a quote it has moved out from
-      // under rather than freezing a stake against a target it never agreed.
-      quotedRate: this.pricing.sellRateKopecks()
+      remainderPolicy: this.remainderPolicy()
     }))
   }
 }

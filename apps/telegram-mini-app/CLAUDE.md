@@ -127,6 +127,17 @@ Three things this bought that are worth not undoing:
   A screen that **prices** something still takes its rate from the response that
   carried the amounts — `/sales/config`, `/deposits/config`,
   `/fiat-deposits/options` — or the quote and the amount can disagree.
+  The poll may still be its *trigger*: the sale forms read the slice only to
+  learn that the market moved, then re-read `/sales/config` in the background
+  (`SalePricingService`) and say what changed (`SaleRateNoticeComponent`).
+  They used to read the rate once, and the server re-priced a stale quote in
+  silence — ten USDT typed became a 9.98 sale. Now `POST /tma/sales` refuses
+  any `quotedRate` but the live one, so the figures on the form are the sale.
+  **A typed amount is sold to the cent** (`priceStake`): the stake is the
+  figure typed and the total is its price rounded to the nearest hryvnia, never
+  the other way round. Only a total held at a jar's goal derives its stake
+  (`priceSale`). The form sends both, and the server refuses a pair that is not
+  one price (`ERROR.SALE.QUOTE_MISMATCH`) rather than repricing it.
 - **Derived state in selectors.** `selectTurnoverProgress` spans the `user` and
   `trust` slices; it is not a `computed` in the dashboard, because the levels
   page needs the same arithmetic.

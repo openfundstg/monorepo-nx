@@ -51,6 +51,7 @@ import { MetaPixelService } from '../../../shared/services/meta-pixel.service'
 import { PixelStandardEvent } from '../../../shared/enums/pixel-event.enum'
 import { TrackTapDirective } from '../../../shared/directives/track-tap.directive'
 import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
+import { SaleMethodIconComponent } from '../../../shared/components/sale-method-icon/sale-method-icon.component'
 import { environment } from '../../../../environments/environment'
 
 /** Prefix under which `SaleEventType` members are translated. */
@@ -96,7 +97,8 @@ const LIVE_STATUSES: ReadonlySet<TmaSaleStatus> = new Set([
     UahPipe,
     DateTimePipe,
     UsdtPipe,
-    TrackTapDirective
+    TrackTapDirective,
+    SaleMethodIconComponent
   ],
   templateUrl: './sale-status.component.html',
   styleUrl: './sale-status.component.scss',

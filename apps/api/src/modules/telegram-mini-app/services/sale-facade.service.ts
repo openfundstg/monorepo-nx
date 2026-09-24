@@ -3,11 +3,11 @@ import {
   cardTail,
   defaultRemainderPolicy,
   isGoalWithinTolerance,
-  isQuoteStillValid,
   isRemainderPolicyAvailable,
   MIN_USDT_AMOUNT,
   minSaleTargetKopecks,
   priceSale,
+  priceStake,
   SaleEventType,
   SaleMethod,
   SaleReceiverNameSource,
@@ -127,6 +127,10 @@ export class SaleFacadeService {
   ) {
     const { fiatAmount, bankType, cardNumber, quotedRate } = request
 
+    // The USDT typed, when the client sent it. `null` reads the same as absent:
+    // the DTO lets either through, and both mean "derive it from the total".
+    const stakeCents = request.stakeCents ?? null
+
     // Absent means a jar sale, which is what every client that predates the
     // choice is asking for and the only thing it could have meant.
     const saleMethod = request.saleMethod ?? SaleMethod.JAR
@@ -191,17 +195,23 @@ export class SaleFacadeService {
 
     // 2. Price the order.
     //
-    // One call, and the same one the create form makes: `priceSale` is
-    // the single statement of this arithmetic. It used to be written out here
-    // and again in the Mini App, with a comment on the second saying it
-    // mirrored this one step for step — which is precisely how the quote shown
-    // and the stake taken came to disagree by a cent.
+    // One call, and the same one the create form makes: `priceStake` and
+    // `priceSale` are the single statement of this arithmetic, one for each
+    // direction. It used to be written out here and again in the Mini App,
+    // with a comment on the second saying it mirrored this one step for step —
+    // which is precisely how the quote shown and the stake taken came to
+    // disagree by a cent.
     //
-    // Snapping the target to a whole hryvnia happens inside it. That matters
-    // here rather than being cosmetic: no bank accepts kopecks in a goal field,
-    // so a target of ₴9 490,08 could never be matched and the compliance check
-    // would block a correctly set-up order. Doing it server-side also means an
-    // out-of-date Mini App cannot store one.
+    // A stake sent is the USDT the user typed, and it is frozen exactly as
+    // sent: `priceStake` rounds its price to the nearest hryvnia for the total
+    // instead. A request without one — anything that predates it — sends only
+    // a total, and `priceSale` derives the stake from that, as it always did.
+    //
+    // Either way the target is a whole hryvnia. That matters here rather than
+    // being cosmetic: no bank accepts kopecks in a goal field, so a target of
+    // ₴9 490,08 could never be matched and the compliance check would block a
+    // correctly set-up order. Doing it server-side also means an out-of-date
+    // Mini App cannot store one.
     // Resolved here rather than beside the Transacto call, because the order
     // records it too — and a figure written to our own database after the
     // upstream call would be missing on every order whose creation failed
@@ -213,29 +223,34 @@ export class SaleFacadeService {
     // them a reason to abandon the transfer rather than trust it. The
     // correlation that identifier provided is not lost — `terminal_name`
     // carries the order's public id, which resolves to the user.
-    const { targetKopecks: target, requiredUsdtCents } = priceSale(
-      fiatAmount,
-      sellRateKopecks
-    )
+    const { targetKopecks: target, requiredUsdtCents } =
+      stakeCents === null
+        ? priceSale(fiatAmount, sellRateKopecks)
+        : priceStake(stakeCents, sellRateKopecks)
 
-    if (target !== fiatAmount)
+    if (stakeCents === null && target !== fiatAmount)
       this.logger.debug(`Snapped sale target ${fiatAmount} to a whole hryvnia: ${target}`)
 
-    // 2. Refuse a quote the market has moved out from under.
+    // 2. Refuse a quote at any rate but the live one.
     //
-    // Checked on the *target*, not on the rate. The rate always changes — it is
-    // re-read every five minutes — and refusing on that alone would reject
-    // most submissions for nothing. What matters is whether it moved far enough
-    // to shift the figure the user was told to type into their bank, because a
-    // jar whose goal no longer matches the order can never fill: it would sit
-    // unfillable until the compliance check blocked it, with the stake frozen.
+    // Every figure on the form — the rate, the hryvnia total, the USDT it
+    // stakes — was worked out at `quotedRate`, and the sale snapshots all three.
+    // A quote taken at another rate is a price the user was never shown.
     //
-    // The tolerance is the same one hryvnia every other goal check allows, so a
-    // user is never troubled by a drift too small to matter.
-    if (!isQuoteStillValid(target, quotedRate, sellRateKopecks)) {
+    // This used to tolerate a drift of up to a hryvnia or a percent of the
+    // target, on the grounds that the rate always moves and refusing on that
+    // alone would reject most submissions. It did move, and it was accepted in
+    // silence: the form read the rate once and kept quoting it, this line
+    // re-derived the stake at the live one, and a seller who typed ten USDT
+    // found a 9.98 sale with nothing on screen having said a word. The form now
+    // follows the rate while it is open and says so when it moves, so what
+    // reaches this line at a stale rate is the few seconds between a move and
+    // the next poll — and refusing those costs the user one tap, where
+    // accepting them cost the reason to trust the quote.
+    if (quotedRate !== sellRateKopecks) {
       this.logger.log(
         `Refused a sale for telegramId ${telegramId}: quoted at ${quotedRate} ` +
-          `kopecks/USDT, the sell rate is now ${sellRateKopecks} — the target has moved`
+          `kopecks/USDT, the sell rate is now ${sellRateKopecks}`
       )
       throw new BadRequestException({
         ...ERROR.SALE.RATE_CHANGED,
@@ -243,7 +258,27 @@ export class SaleFacadeService {
       })
     }
 
-    // 2a. Refuse a jar whose target does not match, before anything is frozen.
+    // 2a. Refuse a total that is not the price of the stake sent.
+    //
+    // After the rate, so a race with the market gets the refusal that says so.
+    // With the rate agreed, a client pricing through `priceStake` cannot fail
+    // this, and a stake a jar's goal was priced into by `priceSale` passes it
+    // too. A pair that fails was priced some other way, and it is refused
+    // rather than repriced: the total is the figure a jar owner was told to
+    // type, and substituting another in silence is the repricing the rate check
+    // above exists to end.
+    if (stakeCents !== null && target !== roundToWholeUah(fiatAmount)) {
+      this.logger.warn(
+        `Refused a sale for telegramId ${telegramId}: ${stakeCents} cents is ${target} ` +
+          `kopecks at ${sellRateKopecks} kopecks/USDT, not the ${fiatAmount} sent`
+      )
+      throw new BadRequestException({
+        ...ERROR.SALE.QUOTE_MISMATCH,
+        details: `${stakeCents / 100} USDT is ${target / 100} UAH at this rate, not ${fiatAmount / 100}`
+      })
+    }
+
+    // 2b. Refuse a jar whose target does not match, before anything is frozen.
     //
     // The same rule is enforced later by `SaleComplianceService`, but by
     // then the order exists, the stake is frozen and money may already be
@@ -258,14 +293,15 @@ export class SaleFacadeService {
       })
     }
 
-    // 2b. Enforce the floor on how much is actually being sold.
+    // 2c. Enforce the floor on how much is actually being sold.
     //
     // **It used to compare `requiredUsdtCents` against a flat `MIN_USDT_CENTS`,
-    // and that refused the minimum itself.** A user types whole USDT, the
-    // target is floored to a whole hryvnia so their stake never lands above
-    // what they typed, and the stake is then recovered from that floored
-    // target — so ten USDT arrived here as 9.99 and was turned away for being
-    // under ten, on every rate that is not a multiple of ten kopecks.
+    // and that refused the minimum itself.** The target was floored to a whole
+    // hryvnia and the stake recovered from it, so ten USDT arrived here as 9.99
+    // and was turned away for being under ten, on every rate that is not a
+    // multiple of ten kopecks. A typed stake is exact now, but a total held at
+    // a jar's goal still has its stake recovered from it, and the floor has to
+    // serve both.
     //
     // `minSaleTargetKopecks` is the same floor in the units the drift happens
     // in, and the same call the create form makes. It is **not** the old "check

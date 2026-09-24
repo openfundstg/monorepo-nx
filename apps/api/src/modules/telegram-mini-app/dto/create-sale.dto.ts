@@ -1,5 +1,6 @@
 import {
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -31,6 +32,19 @@ export class CreateSaleDto {
   @IsNumber()
   @Min(100)
   fiatAmount: number
+
+  /**
+   * The USDT to sell, in cents — frozen exactly as sent, once
+   * `SaleFacadeService` has checked that {@link fiatAmount} is its price.
+   *
+   * An integer because it is a count of cents: a fraction of one is a stake no
+   * balance can hold. Optional, and absent means the stake is derived from the
+   * total, which is all a client that predates it knows how to ask for.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  stakeCents?: number
 
   @IsEnum(BankProvider)
   bankType: BankProvider
@@ -65,13 +79,12 @@ export class CreateSaleDto {
   receiverName?: string
 
   /**
-   * The rate, in kopecks per USDT, that {@link fiatAmount} was worked out at.
+   * The rate, in kopecks per USDT, that every figure on the form was worked
+   * out at.
    *
-   * The market moves while a form is being filled, and the target the user was
-   * told to set as their jar's goal moves with it. Without knowing which rate
-   * they were quoted, the server cannot tell a stale figure from a current one
-   * — it would happily freeze a stake against a target the jar can no longer
-   * reach, and the order would sit unfillable until it was blocked.
+   * The market moves while a form is being filled. Knowing which rate the user
+   * was quoted is what lets the server refuse a figure the screen never showed
+   * — any rate but the live one — rather than freeze a stake nobody agreed to.
    */
   @IsNumber()
   @Min(1)

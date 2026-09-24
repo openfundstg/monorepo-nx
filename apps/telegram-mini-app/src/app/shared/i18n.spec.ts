@@ -230,9 +230,19 @@ describe('i18n dictionaries', () => {
       'referral.sold',
       'referral.empty',
 
-      // The way out of a goal mismatch — rendered only while that error is on
-      // screen, so nothing else would notice it missing.
-      'sale.goal_use_suggested',
+      // The way out of a goal the total has left — rendered only while the two
+      // differ, so nothing else would notice it missing.
+      'sale.goal_differs',
+      'sale.goal_pull_up',
+      'sale.goal_held',
+
+      // What the rate did while a sale form was open. Drawn only in the
+      // seconds after the market moves, which no ordinary visit to the screen
+      // will catch — and a missing string there is a raw key in front of
+      // somebody deciding whether to trust a changed price.
+      'sale.rate_changed',
+      'sale.rate_changed_amounts',
+      'sale.rate_changed_dismiss',
 
       'sale.public_id',
       'sale.public_id_copied',

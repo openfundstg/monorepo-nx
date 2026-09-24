@@ -122,29 +122,25 @@
       <p class="link-status checking">{{ 'sale.link_checking' | translate }}</p>
     } @else if (linkError()) {
       <p class="link-status error">{{ linkError() }}</p>
-    } @else if (goalMismatch()) {
+    } @else if (goalDiffers()) {
       <!--
-        Shown the moment the link resolves, not at submit: the user is still in
-        their bank app and can fix the goal there and then. Both figures are
-        named so there is nothing to work out.
+        Shown the moment the link resolves, and again whenever the rate moves
+        the total off a goal already set. Both figures are named so there is
+        nothing to work out. Past the goal check's tolerance it is a refusal;
+        inside it, a difference one tap removes.
       -->
-      <p class="link-status error">
+      <p class="link-status" [class.error]="goalMismatch()">
         {{
-          'sale.goal_mismatch'
+          (goalMismatch() ? 'sale.goal_mismatch' : 'sale.goal_differs')
             | translate
               : { actual: (jarGoal() | uah: true), required: (pricing.targetKopecks() | uah: true) }
         }}
       </p>
-      <!--
-        Naming both figures told the user what was wrong and left them solving
-        for the amount by hand, at a rate they cannot see, with the profit
-        folded in. This is the answer, as a tap.
-      -->
-      @if (suggestedUsdtCents(); as suggested) {
-        <button type="button" class="link-btn goal-fix" (click)="useSuggestedAmount()">
-          {{ 'sale.goal_use_suggested' | translate: { amount: suggested | usdt } }}
-        </button>
-      }
+      <ng-container [ngTemplateOutlet]="pullUp" />
+    } @else if (heldAtGoal()) {
+      <p class="link-status ok">
+        {{ 'sale.goal_held' | translate: { goal: (jarGoal() | uah: true) } }}
+      </p>
     } @else if (linkResolved()) {
       <p class="link-status ok">{{ 'sale.link_resolved' | translate }}</p>
     }
@@ -222,6 +218,18 @@
   -->
   <app-sale-remainder [method]="SaleMethod.JAR" [(policy)]="remainderPolicy" />
 
+  <!--
+    What the rate did while the form was open, where the seller is about to
+    confirm. When the move took the total off a goal already set in the bank,
+    the answer goes with it: changing the goal means a minute in a banking app,
+    long enough for the rate to move again — which is the loop this replaces.
+  -->
+  <app-sale-rate-notice>
+    @if (goalDiffers()) {
+      <ng-container [ngTemplateOutlet]="pullUp" />
+    }
+  </app-sale-rate-notice>
+
   <!-- Submit -->
   <!-- Static `disabled` as well as the binding — see deposit-create for why. -->
   <button
@@ -242,20 +250,18 @@
   @if (submit.errorMsg()) {
     <p class="error-msg">{{ submit.errorMsg() }}</p>
   }
+</div>
 
-  <!--
-    The market moved between the quote and the submit, and this is the way out
-    that does not involve the bank: the jar's goal stays exactly as it is and
-    the USDT is recomputed to buy it at the rate that now applies. Changing the
-    goal instead means a minute inside a banking app, which is long enough for
-    the rate to move again — which is the loop this replaces.
-
-    Only offered when the jar published a goal to aim at; without one there is
-    nothing to derive an amount from and the message stands on its own.
-  -->
-  @if (submit.rateMoved() && suggestedUsdtCents(); as suggested) {
-    <button type="button" class="primary-btn rate-fix" (click)="useCurrentRate()">
-      {{ 'sale.rate_use_current' | translate: { amount: suggested | usdt } }}
+<!--
+  Pulling the amount up to the jar's goal: the goal stays exactly as it is in
+  the bank and the USDT is derived from it, and held there through later moves
+  of the rate. One template for the two places that offer it — under the link,
+  where the goal is discussed, and in the rate notice, where a move is reported.
+-->
+<ng-template #pullUp>
+  @if (suggestedUsdtCents(); as suggested) {
+    <button type="button" class="ghost-btn goal-fix" (click)="pullUpToGoal()">
+      {{ 'sale.goal_pull_up' | translate: { uah: (jarGoal() | uah: true), usdt: (suggested | usdt) } }}
     </button>
   }
-</div>
+</ng-template>

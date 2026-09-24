@@ -115,21 +115,19 @@
   row that has to stay readable, being the only answer to "why". The bank tiles
   learned this the hard way and moved their dimming onto the contents too.
 */
-/* The answer to the goal mismatch, directly under the sentence that states it. */
-.goal-fix {
-  margin-top: 6px;
-  font-size: 13px;
-}
-
 /*
-  The answer to a moved rate, under the message that reports it.
+  Pulling the amount up to the jar's goal, directly under the sentence that
+  names both figures — and inside the rate notice, when a move is what put them
+  apart.
 
-  A full-width button rather than the link the goal-mismatch fix uses: that one
-  sits inside a paragraph explaining a mismatch, while this one is the only
-  thing standing between the user and a second attempt.
+  A full-width button rather than the underlined link it used to be: it is the
+  answer the seller asked for to a moved rate, not an aside to a sentence, and
+  on the notice it is the only thing between them and a sale that matches their
+  jar.
 */
-.rate-fix {
-  margin-top: 12px;
+.goal-fix {
+  width: 100%;
+  margin-top: 10px;
 }
 
 /**

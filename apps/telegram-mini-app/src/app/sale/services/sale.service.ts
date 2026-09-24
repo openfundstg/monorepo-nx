@@ -15,8 +15,9 @@ import { SaleApiService, type CreateSaleReq } from './sale.api.service';
 export class SaleService {
   private readonly api = inject(SaleApiService);
 
-  getConfig(): Promise<SaleConfigResponse> {
-    return firstValueFrom(this.api.getConfig());
+  /** See {@link SaleApiService.getConfig}. */
+  getConfig(background = false): Promise<SaleConfigResponse> {
+    return firstValueFrom(this.api.getConfig(background));
   }
 
   create(req: CreateSaleReq): Promise<CreateSaleResponse> {

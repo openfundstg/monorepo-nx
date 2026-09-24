@@ -7,21 +7,12 @@ import {
 import { BANK_NAME_KEY } from '../../shared/constants/bank-name.const';
 
 /**
- * Smallest order the backend will accept, in whole USDT.
- *
- * Re-exported from the contract rather than restated: the backend enforces the
- * same constant, and a local copy that drifted would either block orders the
- * server would take or offer ones it will refuse.
- */
-export { MIN_USDT_AMOUNT as MIN_ORDER_USDT } from '@transacto/contracts';
-
-/**
  * Ukrainian bank cards are 16 digits.
  *
- * Re-exported from the contract rather than restated, like {@link MIN_ORDER_USDT}
- * above: the server compares the same card against the one the bank names, and
- * a client that disagreed about what a whole card looks like would either check
- * a half-typed number or never check at all.
+ * Re-exported from the contract rather than restated: the server compares the
+ * same card against the one the bank names, and a client that disagreed about
+ * what a whole card looks like would either check a half-typed number or never
+ * check at all.
  */
 export { CARD_NUMBER_LENGTH } from '@transacto/contracts';
 
@@ -162,7 +153,7 @@ export const DEFAULT_REMAINDER_POLICY: SaleRemainderPolicy = (
  * The smallest order the payment pipeline routes, until the server says
  * otherwise.
  *
- * Re-exported from the contract, like {@link MIN_ORDER_USDT}: the create form
+ * Re-exported from the contract, like {@link CARD_NUMBER_LENGTH}: the create form
  * has to *name* this figure — "anything under ₴300 comes back" — and
  * `GET /sales/config` ships the live value, which may be configured
  * differently. This is only what the screen says before that lands.

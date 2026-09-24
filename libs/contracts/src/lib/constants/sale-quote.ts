@@ -1,9 +1,8 @@
 import {
   floorToWholeUah,
   goalToleranceKopecks,
-  isGoalWithinTolerance,
   KOPECKS_PER_UAH,
-  MIN_USDT_AMOUNT,
+  MIN_USDT_CENTS,
   roundToWholeUah,
 } from './money.js';
 
@@ -11,10 +10,12 @@ import {
 export const CENTS_PER_USDT = 100;
 
 /**
- * Everything a sale's money is made of, derived from one target.
+ * Everything a sale's money is made of: the total and the stake.
  *
- * All figures are integers in their own smallest unit: hryvnia in kopecks,
- * USDT in cents. Nothing here is a float a caller has to round again.
+ * One is always derived from the other — {@link priceStake} when the user typed
+ * the USDT, {@link priceSale} when a total is given, such as a jar's goal. All
+ * figures are integers in their own smallest unit: hryvnia in kopecks, USDT in
+ * cents. Nothing here is a float a caller has to round again.
  */
 export interface SaleQuote {
   /**
@@ -23,7 +24,7 @@ export interface SaleQuote {
    * compares against.
    */
   readonly targetKopecks: number;
-  /** USDT cents frozen for this order — the target at the sell rate. */
+  /** USDT cents frozen for this order — the stake typed, or the total's price at the sell rate. */
   readonly requiredUsdtCents: number;
 }
 
@@ -45,10 +46,10 @@ export interface SaleQuote {
  * it cannot arrive at a different answer from the one that quoted it.
  *
  * The target is the fixed point: it is snapped to a whole hryvnia first, and
- * the stake comes off the snapped figure. `roundToWholeUah` rather than
- * `floorToWholeUah` here on purpose — this is *normalising* a target that
- * already exists, where nearest is right. Deriving a new one from a stake is
- * {@link targetForStake}, which rounds down.
+ * the stake comes off the snapped figure. `roundToWholeUah` here on purpose —
+ * this is *normalising* a target that already exists, where nearest is right.
+ * That is the direction a jar's goal takes. A stake the user typed takes the
+ * other, {@link priceStake}, where the stake is the fixed point instead.
  *
  * A rate of zero or less yields a zero stake rather than an Infinity: callers
  * render this before the market has answered, and a screen full of `Infinity`
@@ -70,48 +71,68 @@ export const priceSale = (
 };
 
 /**
- * The target a given stake buys — the other direction, for the create form.
+ * Prices a sale from the USDT the user typed — the other direction from
+ * {@link priceSale}, and the one every typed amount takes.
  *
- * Rounded **down**, which is what keeps the stake at or below the USDT the user
- * actually typed. Rounding to nearest let the derived stake land a cent above
- * it, and a user holding exactly their balance was told they had insufficient
- * funds — see {@link floorToWholeUah}.
+ * **The stake is the figure typed, to the cent, and the total gives way.** A
+ * total has to be a whole hryvnia — it is the goal a jar owner types into their
+ * bank — and at most rates no whole hryvnia is worth exactly the stake: at
+ * ₴48.15, ₴481 is 9.99 USDT and ₴482 is 10.01. Deriving the stake from the
+ * total, as this product did until 2026-09-24, therefore sold a different
+ * amount from the one typed more often than not — seven times in ten across
+ * whole amounts at that month's rates, always a cent or two short — and a
+ * seller who typed ten and found 9.98 on the finished sale read it as money
+ * going missing.
  *
- * Feed the result to {@link priceSale} for the rest; the two are inverse
- * by construction, so what the form shows is what the server takes.
+ * So the rounding moves to the side that has to be whole. The total is the
+ * stake's exact price rounded to the **nearest** hryvnia, which puts it at most
+ * half a hryvnia either side of that price; an exact half goes up, so across
+ * sales it leans a few kopecks the seller's way and never against them. Not
+ * down: a floored total prices every sale up to a hryvnia under the quoted
+ * rate, and always against the seller.
+ *
+ * The stake in cents times the rate in kopecks is an exact integer, so the one
+ * division before the rounding can only land on a half where the price really
+ * is one — no float puts a total on the wrong side of it.
+ *
+ * A rate of zero or less yields a zero total: callers render this before the
+ * market has answered, and a total invented without a rate is not a price.
  */
-export const targetForStake = (
-  usdtAmount: number,
+export const priceStake = (
+  stakeCents: number,
   sellRateKopecksPerUsdt: number,
-): number => floorToWholeUah(usdtAmount * sellRateKopecksPerUsdt);
+): SaleQuote => ({
+  targetKopecks:
+    sellRateKopecksPerUsdt > 0
+      ? roundToWholeUah((stakeCents * sellRateKopecksPerUsdt) / CENTS_PER_USDT)
+      : 0,
+  requiredUsdtCents: stakeCents,
+});
 
 /**
- * What {@link targetForStake}'s own floor can take off a target, in kopecks.
+ * How far a whole-hryvnia total can sit below the exact price of the stake it
+ * stands for, in kopecks — whichever way it was rounded on its way here.
  *
- * One hryvnia, and not a tolerance anybody picked: the function floors to a
- * whole hryvnia so the derived stake never lands above the amount the user
- * typed, and a whole hryvnia is therefore exactly the most it can shave.
+ * One hryvnia. {@link priceStake} rounds to the nearest and never goes more
+ * than half of one below; a floored total can go a whole one below, and that
+ * is how every client priced a typed sale before 2026-09-24 and how a jar owner
+ * who types their goal down sets it. The minimum has to admit all of them.
  */
-export const TARGET_FLOOR_SLACK_KOPECKS = KOPECKS_PER_UAH;
+export const TARGET_ROUNDING_SLACK_KOPECKS = KOPECKS_PER_UAH;
 
 /**
  * The smallest target a sale may carry, in kopecks, at this rate.
  *
- * **The bug this exists to end: a user could not sell the minimum amount.**
- * They type ten USDT; {@link targetForStake} floors the total to a whole
- * hryvnia; {@link priceSale} recovers the stake from that floored total. The
- * round trip is lossy by construction, so ten came back as 9.99 — and both the
- * form and the server refused it for being under ten, beside a line reading
- * "minimum 10 USDT". Not an edge case: it happened on every rate that is not a
- * multiple of ten kopecks, which is most of them.
- *
- * **Measured in hryvnia, not in cents, and that is the fix as much as the slack
- * is.** The old check compared a *recovered stake* against a flat
- * `MIN_USDT_CENTS`, which put the floor in different units from every rounding
- * step that had already touched it — so each step's hryvnia of slop arrived as
- * an unpredictable number of cents, and the two tolerances in the chain could
- * not be reasoned about together. Here the threshold is a target, the drift is
- * a target, and {@link isQuoteStillValid} speaks the same units.
+ * **Measured as a total, not as a stake.** A typed sale's stake is exact —
+ * {@link priceStake} — and could be held against ten USDT directly. A sale held
+ * at a jar's goal cannot: its stake is recovered from the goal, lands a cent
+ * either side of any round figure, and drifts further as the rate moves while
+ * the form is open. Comparing a recovered stake against a flat `MIN_USDT_CENTS`
+ * is what once refused the minimum itself — ten typed, 9.99 recovered, refused
+ * beside a line reading "minimum 10 USDT" — because it put the floor in
+ * different units from every rounding step that had already touched the
+ * figure. One threshold, in the units the drift happens in, serves both kinds
+ * of sale.
  *
  * **This is not the old "check the stake, never the total" mistake.** That rule
  * is about comparing a target against a *fixed hryvnia figure*, which would let
@@ -123,74 +144,28 @@ export const TARGET_FLOOR_SLACK_KOPECKS = KOPECKS_PER_UAH;
  * **Two allowances, and each is somebody else's number rather than one picked
  * here:**
  *
- * - {@link TARGET_FLOOR_SLACK_KOPECKS}, for the floor described above.
- * - {@link goalToleranceKopecks}, for the drift {@link isQuoteStillValid}
- *   already declares acceptable. The server prices the *submitted* target at
- *   the *current* rate, so a rate that ticks up while the form is open leaves
- *   the same target worth slightly less USDT — and a floor that did not allow
- *   it would refuse a sale for becoming cheaper, after the quote check had
- *   already waved the move through. Anything larger is refused there, with a
- *   message that names the rate.
+ * - {@link TARGET_ROUNDING_SLACK_KOPECKS}, for a total rounded to a whole
+ *   hryvnia on its way here, whoever rounded it.
+ * - {@link goalToleranceKopecks}, for a sale held at its jar's goal while the
+ *   rate moves. The jar form keeps the goal and re-derives the stake when the
+ *   market ticks, because the goal lives in a banking app and the stake is a
+ *   number on the screen — so a rise leaves the same target worth slightly
+ *   less USDT, and a floor that did not allow it would refuse a sale for
+ *   becoming cheaper. The allowance is the goal check's own: a jar within it
+ *   of the minimum target is, to every other rule, a jar set to the minimum.
  *
- * Together they put the effective floor around 9.84 USDT at the worst rate,
- * which is the price of the two roundings and is immaterial to what the minimum
- * is for: below it the fixed cost of a transfer outweighs the amount moved.
+ * Together they put the effective floor around 9.85 USDT at the worst rate,
+ * which is the price of the roundings and is immaterial to what the minimum is
+ * for: below it the fixed cost of a transfer outweighs the amount moved.
  *
  * A rate of zero yields a floor of zero, which is the same "nothing is priced
  * yet" answer {@link priceSale} gives: a screen renders this before the market
  * has answered, and a floor invented without a rate is not a floor.
  */
 export const minSaleTargetKopecks = (sellRateKopecksPerUsdt: number): number => {
-  const nominal = targetForStake(MIN_USDT_AMOUNT, sellRateKopecksPerUsdt);
+  const nominal = priceStake(MIN_USDT_CENTS, sellRateKopecksPerUsdt).targetKopecks;
 
-  return Math.max(0, nominal - TARGET_FLOOR_SLACK_KOPECKS - goalToleranceKopecks(nominal));
-};
-
-/**
- * Whether a target quoted at one rate still stands at another.
- *
- * The rate moves while a user is filling the form, and the figure they were
- * told to set as their jar's goal moves with it. What matters is not that the
- * rate changed — it always does — but whether it changed enough to move the
- * target off the goal they have already set in their bank.
- *
- * So the comparison is between targets, not between rates, and it allows the
- * same one hryvnia every other goal check allows. A rate that drifts a fraction
- * of a percent leaves the target where it was and nobody is troubled; one that
- * moves it further is a real problem, because the jar will never fill to a
- * target that no longer matches.
- *
- * Both rates are **sell** rates. Passing a market rate to either side would
- * compare a target against one it was never quoted at, and the check would fail
- * on a market that had not moved at all.
- */
-export const isQuoteStillValid = (
-  quotedTargetKopecks: number,
-  quotedSellRateKopecksPerUsdt: number,
-  currentSellRateKopecksPerUsdt: number,
-): boolean => {
-  if (quotedSellRateKopecksPerUsdt <= 0 || currentSellRateKopecksPerUsdt <= 0) return false;
-
-  // The stake the user is committing, recovered from what they were quoted.
-  const { requiredUsdtCents } = priceSale(
-    quotedTargetKopecks,
-    quotedSellRateKopecksPerUsdt,
-  );
-  const stake = requiredUsdtCents / CENTS_PER_USDT;
-
-  // Both sides go through `targetForStake`, deliberately — including the one at
-  // the rate the user was already quoted at.
-  //
-  // Comparing against the submitted target instead looks more direct and is
-  // wrong: `targetForStake` floors, so recovering a target from its own stake
-  // lands a little low even when nothing has moved. That spent the whole
-  // tolerance before the market did anything, and a one-kopeck drift then read
-  // as a stale quote. Measuring both ends the same way cancels it, and leaves
-  // the tolerance to mean what it says: how far the *rate* moved the target.
-  const targetThen = targetForStake(stake, quotedSellRateKopecksPerUsdt);
-  const targetNow = targetForStake(stake, currentSellRateKopecksPerUsdt);
-
-  return isGoalWithinTolerance(targetNow, targetThen);
+  return Math.max(0, nominal - TARGET_ROUNDING_SLACK_KOPECKS - goalToleranceKopecks(nominal));
 };
 
 /**

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal, inject, OnInit, computed } from '@angular/core'
 import { Router } from '@angular/router'
 import { FormsModule } from '@angular/forms'
+import { NgTemplateOutlet } from '@angular/common'
 import {
   BankProvider,
   disclosesCardNumber,
@@ -9,8 +10,8 @@ import {
   isGoalWithinTolerance,
   isSameCardNumber,
   matchesMaskedCard,
-  CENTS_PER_USDT,
   priceSale,
+  roundToWholeUah,
   SaleMethod,
   SaleRemainderPolicy,
 } from '@transacto/contracts'
@@ -21,6 +22,7 @@ import { SaleService } from '../../services/sale.service'
 import { SalePricingService } from '../../services/sale-pricing.service'
 import { SaleSubmitService } from '../../services/sale-submit.service'
 import { SaleAmountComponent } from '../../components/sale-amount/sale-amount.component'
+import { SaleRateNoticeComponent } from '../../components/sale-rate-notice/sale-rate-notice.component'
 import { SaleRemainderComponent } from '../../components/sale-remainder/sale-remainder.component'
 import { TmaService } from '../../../auth/services/tma.service'
 import { UahPipe } from '../../../shared/pipes/uah.pipe'
@@ -30,7 +32,6 @@ import {
   CARD_NUMBER_LENGTH,
   DEFAULT_BANK,
   DEFAULT_REMAINDER_POLICY,
-  MIN_ORDER_USDT,
   SALE_BANKS,
 } from '../../constants/sale-create.const'
 import { MetaPixelService } from '../../../shared/services/meta-pixel.service'
@@ -42,12 +43,13 @@ import { PixelTapEvent } from '../../../shared/enums/pixel-event.enum'
   selector: 'app-sale-create',
   imports: [
     FormsModule,
+    NgTemplateOutlet,
     TranslatePipe,
     UahPipe,
     UsdtPipe,
     BankInstructionsComponent,
     TrackTapDirective,
-    ExchangeRateComponent, SaleAmountComponent, SaleRemainderComponent],
+    ExchangeRateComponent, SaleAmountComponent, SaleRateNoticeComponent, SaleRemainderComponent],
   // Route-scoped state: two sale forms must not inherit each other's amount.
   providers: [SalePricingService, SaleSubmitService],
   templateUrl: './sale-create.component.html',
@@ -85,8 +87,6 @@ export class SaleCreateComponent implements OnInit {
   /** Which sale this form creates — the remainder picker asks. */
   protected readonly SaleMethod = SaleMethod
   protected readonly PixelTapEvent = PixelTapEvent
-  /** The floor, named on screen rather than only enforced. */
-  protected readonly minOrderUsdt = MIN_ORDER_USDT
 
   /**
    * Both read straight from the contract the server enforces, rather than from
@@ -107,7 +107,7 @@ export class SaleCreateComponent implements OnInit {
    * screen shows and what the server stores cannot come apart on a default.
    */
   readonly remainderPolicy = signal<SaleRemainderPolicy>(DEFAULT_REMAINDER_POLICY)
-  /** The submit half both forms share — the post, the recovery, the three flags. */
+  /** The submit half both forms share — the post, the recovery, the two flags. */
   readonly submit = inject(SaleSubmitService)
 
   /** In flight while the backend follows the bank's redirects. */
@@ -170,7 +170,7 @@ export class SaleCreateComponent implements OnInit {
   })
 
   /**
-   * The stake that would make the target land on the jar's own goal, in USDT.
+   * What pulling the amount up to the jar's goal would stake, in USDT cents.
    *
    * The check was reactive from the start — it recomputes on every keystroke —
    * but being told "your target is ₴930 and the jar wants ₴800" left the user
@@ -180,9 +180,10 @@ export class SaleCreateComponent implements OnInit {
    *
    * `priceSale` is the server's own pricing run backwards: hand it the
    * goal as the target and it answers with the stake that buys it. Using it
-   * rather than solving the arithmetic again here is what keeps the suggestion
-   * and the check from disagreeing — see its own doc comment on why one
-   * calculation is not written twice in this repository.
+   * rather than solving the arithmetic again here is what keeps the offer, the
+   * held total it produces and the server's stake from disagreeing — see its
+   * own doc comment on why one calculation is not written twice in this
+   * repository.
    *
    * `null` when there is no goal to aim at, which is every bank that does not
    * publish one and every moment before a link resolves.
@@ -195,6 +196,35 @@ export class SaleCreateComponent implements OnInit {
       .requiredUsdtCents
 
     return cents > 0 ? cents : null
+  })
+
+  /**
+   * Whether the jar's goal and this sale's total are different figures at all,
+   * the goal check's tolerance aside.
+   *
+   * The pull-up is offered on this rather than on {@link goalMismatch}: a jar a
+   * hryvnia off the total passes that check and is still not the sale being
+   * made, and the point of the offer is that the seller never has to choose
+   * between the two — least of all after the rate has moved the total off a
+   * goal they set a minute ago.
+   */
+  readonly goalDiffers = computed(() => {
+    const goal = this.jarGoal()
+
+    return goal !== null && roundToWholeUah(goal) !== this.pricing.targetKopecks()
+  })
+
+  /**
+   * Whether the total is held at the jar's goal — the state the pull-up leaves
+   * the form in, where a move in the rate re-derives the USDT rather than the
+   * total. Said on screen, or the USDT changing by itself would look like the
+   * very thing this replaced.
+   */
+  readonly heldAtGoal = computed(() => {
+    const goal = this.jarGoal()
+    const held = this.pricing.heldTargetKopecks()
+
+    return goal !== null && held !== null && held === roundToWholeUah(goal)
   })
 
   /**
@@ -246,43 +276,6 @@ export class SaleCreateComponent implements OnInit {
    * field, so without this the same link is re-resolved on the way past.
    */
   private lastResolvedInput = ''
-
-  /**
-   * The three figures on the maths preview, all whole hryvnia.
-   *
-   * Whole hryvnia because the target is the goal the user types into their
-   * bank, and banks take hryvnia — a target of ₴9 490,08 is one nobody can
-   * enter, and the backend blocks an order whose jar target does not match.
-   * Deriving the other two from the quantised target rather than quantising
-   * each separately is what keeps the preview's own arithmetic adding up on
-   * screen.
-   *
-   * **Down, not to nearest** — see `floorToWholeUah` in contracts. The stake is
-   * derived back out of the target, so a target rounded *up* quotes a stake
-   * above the USDT the user typed. On roughly 29% of possible balances that
-   * put the full balance one cent out of reach: a user holding 10,02 USDT
-   * could stake at most 10,01. Only whole USDT amounts were ever immune.
-   *
-   * Mirrors `SaleFacadeService` step for step, via the same shared
-   * helpers: if the two ever disagreed, the quote shown here would freeze a
-   * different stake than the one the server takes.
-   */
-  /**
-   * The order's money, all of it, from one shared calculation.
-   *
-   * `priceSale` and `targetForStake` in `@transacto/contracts` are the
-   * only statement of this arithmetic. This screen used to re-derive every
-   * figure and carried a comment promising it mirrored the server "step for
-   * step" — which is how the quote shown and the stake taken came to disagree
-   * by a cent, putting a user's whole balance out of reach.
-   *
-   * Whole hryvnia because the target is the goal the user types into their
-   * bank, and banks take hryvnia — ₴9 490,08 is a figure nobody can enter, and
-   * the backend blocks an order whose jar target does not match.
-   */
-  readonly quote = computed(() =>
-    priceSale(this.pricing.targetKopecks(), this.pricing.sellRateKopecks())
-  )
 
   /**
    * Whether the trust level's allowance is already spent.
@@ -348,34 +341,37 @@ export class SaleCreateComponent implements OnInit {
   )
 
   /**
-   * USDT cents the server will freeze — the same figure it computes, not a
-   * second derivation of it.
+   * USDT cents the server will freeze — the pricing service's own figure, not
+   * a second derivation of it.
    *
-   * Only the **pre-profit** leg is staked: the server strips the profit back
-   * off the target and converts what is left. The units are the whole point —
-   * `targetKopecks()` is kopecks including profit and `balanceCents()` is USDT
-   * cents, and comparing those two directly is wrong by roughly the exchange
-   * rate — a mistake this screen has made before.
+   * This screen used to price the order again from the total, and a figure
+   * worked out twice is a figure that can disagree with itself: it did, by a
+   * cent, and that put a user's whole balance out of reach. The units are the
+   * other half of the point — `targetKopecks()` is kopecks and `balanceCents()`
+   * is USDT cents, and comparing those two directly is wrong by roughly the
+   * exchange rate, a mistake this screen has made before.
    */
-  readonly requiredCents = computed(() => this.quote().requiredUsdtCents)
+  readonly requiredCents = computed(() => this.pricing.stakeCents())
 
   readonly isValid = computed(() => {
-    const amount = this.pricing.usdtAmount() ?? 0
     const link = this.dropLink().trim()
     const card = this.cardNumber().replace(/\D/g, '')
 
     return (
-      amount >= MIN_ORDER_USDT &&
-      // No rate, no quote: submitting would price the order at whatever the
+      // The rate, the floor, the balance and the allowance — the rules both
+      // forms share, judged on the sale the server would actually take. No
+      // rate, no quote: submitting would price the order at whatever the
       // server fetches, which is not the number the user was shown.
-      !this.pricing.rateUnavailable() &&
-      !this.pricing.slotsExhausted() &&
+      //
+      // It used to require the *typed* amount to reach ten on top, which
+      // refused the jar's own pull-up: a goal of ₴481 at ₴48.19 is 9.98 USDT,
+      // a sale the floor and the server both accept, beside a disabled button.
+      this.pricing.isPriced() &&
       this.isBankEnabled(this.selectedBank()) &&
       // For a disclosing bank the card must have come from the bank. The
       // length check below passes on an auto-filled one, but would also pass
       // on a stale value left behind by a previous link.
       (!this.cardIsFromBank() || this.dropCardNumber() !== null) &&
-      this.pricing.hasSufficientBalance() &&
       !this.goalMismatch() &&
       !this.cardMismatch() &&
       link.startsWith('http') &&
@@ -476,18 +472,21 @@ export class SaleCreateComponent implements OnInit {
    * note under it would be a lie.
    */
   /**
-   * Fills the amount in with the stake the jar's goal asks for.
+   * Pulls the amount up to the jar's goal, and keeps it there.
    *
-   * Held in cents and divided only here, so the figure on screen goes through
-   * the same `usdt` pipe as every other USDT amount in the app and cannot
-   * render as `17.4`.
+   * The way out of a total that no longer matches the jar, and it moves the
+   * half that is ours to move. The goal is set inside a banking app and takes a
+   * minute to change — long enough for the rate to move again, which is the
+   * loop users were stuck in — while the stake is a number on this screen. So
+   * the goal stays and the USDT is derived from it, and from here on the total
+   * is *held*: a later move re-derives the USDT again, and the notice above the
+   * button says by how much. Typing an amount lets go.
    */
-  useSuggestedAmount(): void {
-    const cents = this.suggestedUsdtCents()
-    if (cents === null) return
+  pullUpToGoal(): void {
+    const goal = this.jarGoal()
+    if (goal === null) return
 
-    this.pricing.usdtAmount.set(cents / CENTS_PER_USDT)
-    this.submit.clearRateMoved()
+    this.pricing.holdTarget(goal)
     this.tma.hapticFeedback('light')
   }
 
@@ -509,37 +508,16 @@ export class SaleCreateComponent implements OnInit {
     this.lastResolvedInput = ''
   }
 
-  /**
-   * Re-prices the order at the current rate, leaving the jar alone.
-   *
-   * The way out of a moved market, and it moves the half that is ours to move.
-   * The jar's goal is set inside a banking app and takes a minute to change —
-   * long enough for the rate to move again, which is exactly the loop users
-   * were stuck in — while the stake is a number on this screen. So the goal
-   * stays and the USDT is recomputed to buy it at the rate that now applies.
-   */
-  useCurrentRate(): void {
-    const cents = this.suggestedUsdtCents()
-    if (cents === null) return
-
-    this.pricing.usdtAmount.set(cents / CENTS_PER_USDT)
-    this.submit.clearRateMoved()
-    this.submit.errorMsg.set('')
-    this.tma.hapticFeedback('light')
-  }
-
   async onSubmit(): Promise<void> {
     if (!this.isValid()) return
 
+    // Where the money goes. The price — total, stake and rate — is the submit
+    // service's to add, from the pricing service, so this screen cannot send
+    // one figure priced differently from another.
     await this.submit.submit(() => ({
-      fiatAmount: this.pricing.targetKopecks(),
       bankType: this.selectedBank(),
       dropLink: this.dropLink().trim(),
       cardNumber: cardDigits(this.cardNumber()),
-      // The rate this total was worked out at. The market moves while a form is
-      // being filled, and the server refuses a quote it has moved out from
-      // under rather than freezing a stake against an unreachable target.
-      quotedRate: this.pricing.sellRateKopecks(),
       remainderPolicy: this.remainderPolicy()
     }))
   }

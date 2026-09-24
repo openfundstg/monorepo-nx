@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common'
 import {
   ERROR,
+  priceSale,
+  priceStake,
   SaleEventType,
   SaleRemainderPolicy,
   sellRate,
@@ -804,10 +806,9 @@ describe('SaleFacadeService', () => {
    * first scrape.
    */
   /**
-   * The market moves while a form is being filled, and the target the user was
-   * told to set as their jar's goal moves with it. Submitting against a stale
-   * quote would freeze a stake on a target the jar can never reach — it would
-   * sit unfillable until compliance blocked it.
+   * The market moves while a form is being filled. Every figure the user was
+   * shown — the rate, the hryvnia total, the USDT it stakes — was worked out at
+   * the rate they quote, and the sale snapshots all three.
    */
   describe('a quote the market has moved out from under', () => {
     const submit = (quotedRate: number) =>
@@ -820,31 +821,129 @@ describe('SaleFacadeService', () => {
     })
 
     /**
-     * Judged on the target, not on the rate. The rate is re-read every five
-     * minutes and always differs by something; refusing on that alone would
-     * reject most submissions for nothing a user could act on.
+     * **The bug this replaced.** A drift too small to move the target was
+     * waved through and the stake re-derived at the new rate without a word —
+     * a seller who typed ten USDT on a form left open for a minute found a
+     * 9.98 sale. The form follows the rate now and says when it moves, so a
+     * quote a kopeck out is one the screen never showed.
      */
     it.each([
-      ['a rate a kopeck higher', RATE + 1],
-      ['a rate a kopeck lower', RATE - 1],
-    ])('accepts %s, which does not move the target', async (_label, quoted) => {
-      await submit(quoted).catch(() => undefined)
-
-      expect(ledger.freeze).toHaveBeenCalled()
-    })
-
-    it.each([
-      ['risen far enough to move the target', RATE - 300],
-      ['fallen far enough to move the target', RATE + 300],
-    ])('refuses a quote the market has %s', async (_label, quoted) => {
-      await expect(submit(quoted)).rejects.toBeInstanceOf(BadRequestException)
+      ['a kopeck higher', RATE + 1],
+      ['a kopeck lower', RATE - 1],
+      ['far higher', RATE + 300],
+      ['far lower', RATE - 300],
+    ])('refuses a quote at a rate %s than the live one', async (_label, quoted) => {
+      await expect(submit(quoted)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: ERROR.SALE.RATE_CHANGED.code })
+      })
     })
 
     /** Refused before anything is frozen — that is the point of checking here. */
-    it('freezes nothing when the quote is stale', async () => {
-      await submit(RATE - 300).catch(() => undefined)
+    it.each([RATE - 1, RATE - 300])('freezes nothing at a stale rate of %p', async (quoted) => {
+      await submit(quoted).catch(() => undefined)
 
       expect(ledger.freeze).not.toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * **What the seller asked for: "if I type 10 USDT, it is 10 USDT".** A typed
+   * amount arrives as the stake, to the cent, beside its price rounded to the
+   * nearest hryvnia, and is frozen exactly as sent. Deriving it from the total
+   * instead — as every sale was priced before — sold a different amount from
+   * the one typed more often than not.
+   */
+  describe('a stake sent with its price', () => {
+    const submit = (stakeCents: number, fiatAmount: number, quotedRate = RATE) =>
+      facade.createSale(TELEGRAM_ID, {
+        fiatAmount,
+        stakeCents,
+        bankType: 'PRIVAT' as never,
+        dropLink: PRIVAT_LINK,
+        cardNumber: DROP_CARD,
+        quotedRate
+      })
+
+    it('freezes exactly the stake sent', async () => {
+      // Ten USDT at ₴47.46 is ₴474.60, so ₴475 — which priced back the old way
+      // is 10.01 USDT, not the ten typed.
+      const { targetKopecks } = priceStake(1_000, RATE)
+      expect(priceSale(targetKopecks, RATE).requiredUsdtCents).not.toBe(1_000)
+
+      await submit(1_000, targetKopecks).catch(() => undefined)
+
+      expect(ledger.freeze).toHaveBeenCalledWith(TELEGRAM_ID, 1_000)
+      expect(db.create).toHaveBeenCalledWith(
+        expect.objectContaining({ frozenUsdt: 1_000, fiatAmount: targetKopecks, exchangeRate: RATE })
+      )
+    })
+
+    /** The other direction, a jar's goal and what it costs, passes the same rule. */
+    it('accepts the stake a jar’s goal costs', async () => {
+      const goal = priceSale(100_000, RATE)
+
+      await submit(goal.requiredUsdtCents, goal.targetKopecks).catch(() => undefined)
+
+      expect(ledger.freeze).toHaveBeenCalledWith(TELEGRAM_ID, goal.requiredUsdtCents)
+    })
+
+    /**
+     * A pair `priceStake` could not have produced is refused, not repriced: the
+     * total is what a jar owner was told to type, and substituting another in
+     * silence is the thing this whole path exists to stop.
+     */
+    it.each([
+      ['a hryvnia over', 100],
+      ['a hryvnia under', -100]
+    ])('refuses a total %s the stake’s price', async (_label, offset) => {
+      const { targetKopecks } = priceStake(1_000, RATE)
+
+      await expect(submit(1_000, targetKopecks + offset)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: ERROR.SALE.QUOTE_MISMATCH.code })
+      })
+      expect(ledger.freeze).not.toHaveBeenCalled()
+    })
+
+    /** A race with the market is reported as one, not as a mismatch it causes. */
+    it('reports a stale rate as a moved rate', async () => {
+      const { targetKopecks } = priceStake(1_000, RATE + 1)
+
+      await expect(submit(1_000, targetKopecks, RATE + 1)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: ERROR.SALE.RATE_CHANGED.code })
+      })
+    })
+
+    /** A client that predates the field keeps getting exactly what it always got. */
+    it('derives the stake from the total when none is sent', async () => {
+      await facade
+        .createSale(TELEGRAM_ID, {
+          fiatAmount: 100_000,
+          bankType: 'PRIVAT' as never,
+          dropLink: PRIVAT_LINK,
+          cardNumber: DROP_CARD,
+          quotedRate: RATE
+        })
+        .catch(() => undefined)
+
+      expect(ledger.freeze).toHaveBeenCalledWith(
+        TELEGRAM_ID,
+        priceSale(100_000, RATE).requiredUsdtCents
+      )
+    })
+
+    /** The balance check is on the stake as sent — a whole balance is sellable. */
+    it('sells a whole balance that is not whole USDT', async () => {
+      users.findByTelegramId.mockResolvedValue({
+        balance: 1_002,
+        frozenBalance: 0,
+        firstName: 'Роман',
+        lastName: 'Петренко',
+        username: 'roman'
+      })
+
+      await submit(1_002, priceStake(1_002, RATE).targetKopecks).catch(() => undefined)
+
+      expect(ledger.freeze).toHaveBeenCalledWith(TELEGRAM_ID, 1_002)
     })
   })
 
