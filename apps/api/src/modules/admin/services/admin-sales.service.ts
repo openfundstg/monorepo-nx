@@ -410,6 +410,10 @@ export class AdminSalesService {
    * arrives from Transacto's panel holding.** That lookup used to live on a
    * separate screen; folding it in is what lets one search box answer both
    * "find me this sale" and "find me this dispute".
+   *
+   * **Not a person's name.** It used to match the receiver's, and the sale no
+   * longer keeps one to match: the name lives on the terminal, in Transacto,
+   * where `terminal_name` carries the public id this box already finds.
    */
   private searchFilter(search: string | undefined): QueryFilter<TmaSale> {
     if (!search) return {}
@@ -424,7 +428,6 @@ export class AdminSalesService {
       $or: [
         { publicId: pattern },
         { dropLink: pattern },
-        { receiverName: pattern },
         ...(numeric
           ? [
               { telegramId: asNumber },

@@ -122,7 +122,6 @@ export const toAdminSale = (
     transactoTerminalId: number | null
     cardId: number | null
     traderId: number | null
-    receiverName: string | null
     receiverNameSource?: SaleReceiverNameSource
     // The orders a card sale has taken. Absent on a jar sale, and absent on
     // every sale written before card sales existed — a lean read applies no
@@ -157,7 +156,6 @@ export const toAdminSale = (
   cardId: order.cardId,
   traderId: order.traderId,
   saleMethod: order.saleMethod ?? SaleMethod.JAR,
-  receiverName: order.receiverName,
   // A sale written before the field existed carries what it actually had: a
   // name the seller typed and nothing that vouched for it.
   receiverNameSource: order.receiverNameSource ?? SaleReceiverNameSource.DECLARED,

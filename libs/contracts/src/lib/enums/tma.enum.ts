@@ -222,7 +222,11 @@ export enum SaleCardOrderState {
 }
 
 /**
- * How much the recipient's name on a sale has been proven.
+ * How much the recipient's name on a sale's terminal has been proven.
+ *
+ * **The name itself is never on the wire, and never stored beside this.** It
+ * goes to Transacto as the terminal's `name`, which is what a payer is shown,
+ * and that is where it lives. This says only whose word it stands on.
  *
  * Two states, not a list of sources, because only one distinction matters: has
  * a bank document replaced what was assembled at creation, or not.

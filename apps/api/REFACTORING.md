@@ -1128,9 +1128,11 @@ indistinguishable: "Петренко І." is a bank's statement about an account
 display name, and only one of them has been checked by anyone.
 
 The correlation the old identifier gave an operator is not lost: `terminal_name` is
-`TMA-<publicId>`, and the public id resolves to the order and so to the user. The chosen name is
-also stored on the order as `receiverName`, so support can answer "what name did the payer see?"
-without going to ask Transacto.
+`TMA-<publicId>`, and the public id resolves to the order and so to the user. The chosen name was
+also stored on the order as `receiverName`, so support could answer "what name did the payer see?"
+without going to ask Transacto. Nothing ever rendered it, and a person's name held forever for a
+question no screen asked is the wrong trade: it is no longer written, and
+`0006-forget-receiver-names` removed the copies. The terminal holds the name and is where it is read.
 
 ### Monobank names its owner too
 

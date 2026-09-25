@@ -98,8 +98,8 @@ export class CardSaleDestinationService implements SaleDestinationStrategy {
     // name that does not match the card they are paying has been given a reason
     // to abandon the transfer.
     //
-    // It is a claim, and it is treated as one — the first accepted statement
-    // rewrites it with what the bank says.
+    // It is a claim, and it is treated as one. It becomes the terminal's name at
+    // Transacto, which is what a payer reads, and is not written down here.
     const receiverName = collapseWhitespace(request.receiverName)
     if (receiverName.length < MIN_RECEIVER_NAME_LENGTH)
       throw new BadRequestException(ERROR.SALE_CARD.RECEIVER_NAME_REQUIRED)

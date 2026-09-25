@@ -213,16 +213,13 @@ export interface TmaSale {
   /** The same tail in UAH kopecks, before it was converted at the order's rate. */
   refundedRemainderFiat?: number;
   /**
-   * The name a payer sees as the recipient.
+   * Whose word the name a payer sees stands on.
    *
-   * On a {@link SaleMethod.JAR} sale it comes from the bank behind the link, or
-   * from the seller's Telegram profile where the bank says nothing. On a
-   * {@link SaleMethod.CARD} sale the seller types it, because nothing else can.
-   * Either way it is unchecked until a statement rewrites it — see
-   * {@link receiverNameSource}.
+   * The name itself is not here. On a {@link SaleMethod.JAR} sale it comes from
+   * the bank behind the link, or from the seller's Telegram profile where the
+   * bank says nothing; on a {@link SaleMethod.CARD} sale the seller types it.
+   * Either way it goes to Transacto as the terminal's name and is not kept.
    */
-  receiverName?: string | null;
-  /** Which of those two wrote {@link receiverName}. */
   receiverNameSource?: SaleReceiverNameSource;
   /**
    * The last four digits of the card a {@link SaleMethod.CARD} sale pays out to.
@@ -543,8 +540,8 @@ export interface CreateSaleReq {
    *
    * Required on a {@link SaleMethod.CARD} sale and ignored on a jar one, where
    * the bank names the jar's owner and a form field would only be a second,
-   * worse answer. It is rewritten from the first accepted statement — see
-   * {@link SaleReceiverNameSource}.
+   * worse answer. It becomes the terminal's name at Transacto and is not stored
+   * anywhere of ours — see {@link SaleReceiverNameSource}.
    */
   receiverName?: string;
   /**

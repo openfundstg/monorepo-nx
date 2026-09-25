@@ -13,7 +13,6 @@ import {
   SALE_STATEMENT_MAX_BYTES,
   SaleCardOrderState,
   SaleEventType,
-  SaleReceiverNameSource,
   SaleStatementStatus
 } from '@transacto/contracts'
 import {
@@ -181,12 +180,6 @@ export class SaleStatementService {
 
       return this.reread(saleId, sale)
     }
-
-    // A bank naming its own customer outranks anything typed into a form. Done
-    // for an accepted statement whichever way it went — the document is the
-    // bank's either way, and who the account belongs to does not depend on
-    // whether a particular credit was on it.
-    if (statement !== null) await this.adoptReceiverName(sale, statement.ownerName)
 
     // **The document is a checkpoint, not an answer about one payment.** It
     // covers a period, and every claim the seller made inside that period has
@@ -380,59 +373,6 @@ export class SaleStatementService {
     // this upload was addressed to settles nothing; the ones the checkpoint
     // moved may have funded the sale or pushed it into its tail.
     return this.cardOrders.reconsiderFunding(latest)
-  }
-
-  /**
-   * Replaces the recipient's name with the one the bank states.
-   *
-   * **The name the seller typed decides nothing, and a disagreement here is
-   * noted rather than acted on.** The bank's own word replaces it and the
-   * statement's verdict is untouched: nothing is refused, held or flagged over
-   * a name. That is deliberate, because the comparison cannot tell the case
-   * worth knowing about from the commonest honest one — a seller who wrote
-   * `Петренко Р. І.` for an account the bank calls `Петренко Роман Іванович`
-   * disagrees with it exactly as loudly as somebody naming a different person,
-   * and no amount of string handling separates the two. A check that cannot be
-   * trusted must not be a gate.
-   *
-   * It is still worth a line. On this variant nothing else ever looks at who
-   * the destination belongs to, so this is the only place the fact is ever
-   * stated at all — and an operator reading a sale afterwards has it.
-   *
-   * **Nothing is sent upstream, and that is Transacto's limit rather than an
-   * omission.** The name a payer sees lives on the credential, and their
-   * `credentials_update` does not accept `name` — nor `cred`, nor
-   * `terminal_name`; nothing identifying a credential can be changed after it
-   * exists, and no endpoint in their API renames anything. See
-   * {@link TransactoCredentialsUpdateRequest}. So this sale's payers keep
-   * seeing whatever the seller typed, and what the bank says is kept for the
-   * operator, for the admin panel, and for the next sale to be created with.
-   */
-  private async adoptReceiverName(sale: StoredSale, ownerName: string): Promise<void> {
-    if (sale.receiverNameSource === SaleReceiverNameSource.STATEMENT) return
-
-    const declared = (sale.receiverName ?? '').trim()
-
-    if (declared !== '' && declared.toLowerCase() !== ownerName.toLowerCase()) {
-      // A record, not a finding. `warn` rather than `error` because nothing is
-      // waiting on it: the bank's name is adopted below and the document's
-      // verdict stands either way. It used to say "for an operator", which read
-      // as a statement being held for one — and it was read that way.
-      this.logger.warn(
-        `Sale ${sale.publicId}: the seller named the payout account differently from the bank. ` +
-          `Taking the bank's name; the statement is unaffected.`
-      )
-    }
-
-    await this.saleDbService
-      .rewriteReceiverName(sale._id.toString(), ownerName)
-      .catch((error: unknown) => {
-        // The verdict is what matters and it has already been applied. A name
-        // that did not move is cosmetic beside it.
-        this.logger.error(
-          `Sale ${sale.publicId}: could not adopt the statement's name: ${describeError(error)}`
-        )
-      })
   }
 
   /**

@@ -376,11 +376,12 @@ export class SaleFacadeService {
             // Empty on a card sale, which has no jar to route anybody to.
             dropLink: resolvedDropLink ?? '',
             remainderPolicy,
-            receiverName,
-            // Unchecked, on either variant: a jar's owner name and a seller's
-            // typed one are both assembled from what was available rather than
-            // read off the account the money lands on. Only a statement moves
-            // this, and only a card sale can produce one.
+            // The name itself is not written down. It goes to Transacto below
+            // as the terminal's `name` — the one place a payer reads it — and
+            // nowhere else. What the sale keeps is whose word it stands on:
+            // nobody's yet, on either variant, because a jar's owner name and a
+            // seller's typed one are both assembled from what was available
+            // rather than read off the account the money lands on.
             receiverNameSource: SaleReceiverNameSource.DECLARED,
             // Four digits, never sixteen: enough to recognise the payout
             // account on a statement and to name it on screen, and not a

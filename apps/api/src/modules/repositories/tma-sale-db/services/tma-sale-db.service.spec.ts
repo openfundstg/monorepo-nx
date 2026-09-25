@@ -46,6 +46,7 @@ describe('TmaSaleDbService', () => {
     findOneAndUpdate: jest.Mock
     find: jest.Mock
     updateOne: jest.Mock
+    updateMany: jest.Mock
   }
   let sortSpy: jest.Mock
   let service: TmaSaleDbService
@@ -59,6 +60,7 @@ describe('TmaSaleDbService', () => {
       findOneAndUpdate: jest.fn().mockReturnValue({ lean: () => Promise.resolve(null) }),
       find: jest.fn(),
       updateOne: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
     }
     sortSpy = jest.fn().mockReturnValue({ lean: () => Promise.resolve([]) })
     model.find.mockReturnValue({ sort: sortSpy, lean: () => Promise.resolve([]) })
@@ -439,6 +441,33 @@ describe('TmaSaleDbService', () => {
       model.updateOne.mockResolvedValue({ modifiedCount: 0 })
 
       await expect(service.repriceToSellRate(ORDER_ID as never, 4_660)).resolves.toBe(false)
+    })
+  })
+
+  /**
+   * Migration `0006`'s write — the same trap as `0003`, from the other side.
+   *
+   * The schema stopped declaring `receiverName` precisely so that nothing writes
+   * it again, and that same absence is what makes Mongoose's default strip the
+   * `$unset`. Without the option the migration reports zero documents, records
+   * itself as run, and every name stays exactly where it was.
+   */
+  describe('forgetReceiverNames', () => {
+    it('turns strict mode off, or the unset is silently dropped', async () => {
+      model.updateMany.mockResolvedValue({ modifiedCount: 20 })
+
+      await expect(service.forgetReceiverNames()).resolves.toBe(20)
+
+      expect(model.updateMany).toHaveBeenCalledWith(
+        { receiverName: { $exists: true } },
+        { $unset: { receiverName: '' } },
+        { strict: false },
+      )
+    })
+
+    /** A second run finds nothing, and says so rather than failing. */
+    it('reports zero once every name is gone', async () => {
+      await expect(service.forgetReceiverNames()).resolves.toBe(0)
     })
   })
 

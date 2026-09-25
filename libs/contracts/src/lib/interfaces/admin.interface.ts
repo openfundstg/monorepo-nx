@@ -334,13 +334,15 @@ export interface AdminSaleListItem {
    * a row that does not say which invites both to be read as the first.
    */
   readonly saleMethod: SaleMethod;
-  readonly receiverName: string | null;
   /**
-   * Whether {@link receiverName} is what the seller typed or what a bank said.
+   * Whether the name on this sale's terminal is what the seller typed or what a
+   * bank said.
    *
    * A card sale has no drop link to vouch for its destination, so until a
-   * statement is accepted this name is only a form field — and that difference
-   * is the whole of what an operator is judging in a dispute.
+   * statement is accepted the name is only a form field — and that difference
+   * is the whole of what an operator is judging in a dispute. The name itself is
+   * not on this row: the sale keeps none, and the terminal in Transacto's panel
+   * — `TMA-` plus {@link publicId} — is where it is read.
    */
   readonly receiverNameSource: SaleReceiverNameSource;
   /**

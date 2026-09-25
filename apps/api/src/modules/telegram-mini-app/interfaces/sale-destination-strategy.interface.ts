@@ -34,6 +34,9 @@ export interface SaleDestination {
    *
    * Not a slot for our own identifiers — it used to read `TMA-885140`, which
    * gave payers a reason to abandon the transfer rather than trust it.
+   *
+   * **Never persisted**, like {@link payoutCardNumber}. It goes upstream as the
+   * terminal's `name`, which is where a payer and an operator both read it.
    */
   readonly receiverName: string
   /**

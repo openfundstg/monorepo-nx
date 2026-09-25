@@ -9,6 +9,7 @@ import {
   priceSale,
   priceStake,
   SaleEventType,
+  SaleReceiverNameSource,
   SaleRemainderPolicy,
   sellRate,
   TerminalHistoryAlertType,
@@ -769,14 +770,21 @@ describe('SaleFacadeService', () => {
       })
 
       /**
-       * Stored as well as sent, so support can answer "what name did the payer
-       * see?" without going to ask Transacto.
+       * **Sent, and never written down.** The terminal is where the name does its
+       * job and where an operator reads it; a copy on the order was a person's
+       * name kept forever for a question no screen asked. The order records only
+       * whose word the name stands on.
        */
-      it('is recorded on the order', async () => {
+      it('is not kept on the order', async () => {
         await create()
 
+        expect(transacto.createCredential).toHaveBeenCalledWith(
+          't',
+          expect.objectContaining({ name: 'Роман Петренко' }),
+        )
+        expect(db.create.mock.calls[0][0]).not.toHaveProperty('receiverName')
         expect(db.create).toHaveBeenCalledWith(
-          expect.objectContaining({ receiverName: 'Роман Петренко' }),
+          expect.objectContaining({ receiverNameSource: SaleReceiverNameSource.DECLARED }),
         )
       })
 
@@ -1179,13 +1187,13 @@ describe('SaleFacadeService', () => {
 
       await expect(createOn('PUMB')).resolves.toBeDefined()
       expect(db.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bankType: 'PUMB',
-          cardVerifiedByBank: false,
-          // PUMB names its owner now, so the terminal a payer sees carries a
-          // real receiver rather than a fallback.
-          receiverName: 'Іван П.'
-        })
+        expect.objectContaining({ bankType: 'PUMB', cardVerifiedByBank: false })
+      )
+      // PUMB names its owner now, so the terminal a payer sees carries a real
+      // receiver rather than a fallback.
+      expect(transacto.createCredential).toHaveBeenCalledWith(
+        't',
+        expect.objectContaining({ name: 'Іван П.' })
       )
     })
 

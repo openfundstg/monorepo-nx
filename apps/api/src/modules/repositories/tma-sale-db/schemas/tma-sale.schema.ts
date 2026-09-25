@@ -186,10 +186,10 @@ export class TmaSaleStatement {
   /**
    * The account holder's name as the document states it.
    *
-   * What rewrites the sale's `receiverName` on the first accepted statement:
-   * the bank naming its own customer outranks a form field. Kept per statement
-   * rather than only on the sale, because a later statement naming somebody
-   * else is a fact worth having both halves of.
+   * The bank naming its own customer, which outranks anything typed into a
+   * form. Kept per statement, because a later statement naming somebody else is
+   * a fact worth having both halves of — and because the sale itself keeps no
+   * name at all; see {@link TmaSale.receiverNameSource}.
    */
   @Prop({ type: String, default: null })
   ownerName: string | null
@@ -442,32 +442,26 @@ export class TmaSale {
   openingJarBalance: number | null
 
   /**
-   * The receiver name sent to Transacto as this terminal's `name`.
+   * Whose word the name on this sale's terminal stands on.
    *
-   * What a payer is shown as the person they are paying, and what comes back on
-   * every order as `receiver_name`. Stored because support is otherwise asked
-   * "what name did the payer see?" and has to go and ask Transacto — and
-   * because the answer is a judgement made once at creation, from whichever
-   * source was available: see `resolveReceiverName`.
-   *
-   * `null` on orders created before the field existed, which is also every
-   * order whose `name` was the old `TMA-<telegramId>`.
-   */
-  @Prop({ type: String, default: null })
-  receiverName: string | null
-
-  /**
-   * How much {@link receiverName} has been proven.
+   * **The name itself is not kept here, and used to be.** It is what a payer is
+   * shown as the person they are paying, so it goes to Transacto as the
+   * credential's `name` at creation and comes back on every order as
+   * `receiver_name` — the terminal is where it does its job, and the terminal is
+   * the record of it. A copy sat on this document "so support could answer what
+   * name the payer saw", and nothing ever rendered it: a person's name held
+   * forever for a question nobody asked. `0006-forget-receiver-names` removed
+   * it; an operator reads the name off the terminal in Transacto's panel, where
+   * `terminal_name` is `TMA-` plus this sale's public id.
    *
    * `DECLARED` on every sale at creation: a jar's owner name and a card
    * seller's typed one are both assembled from what was available, and neither
-   * has been checked against the account the money lands on. The first accepted
-   * statement moves it to `STATEMENT`, which only a card sale can produce.
+   * has been checked against the account the money lands on. Only an accepted
+   * statement can prove it, and only a card sale can produce one.
    *
-   * Recorded rather than inferred because the rewrite is the interesting part:
-   * a statement naming somebody other than who the seller typed means money has
-   * already gone to a card whose holder they described wrongly, and that is a
-   * question for an operator rather than a field update.
+   * Sales closed before the name left this document may read `STATEMENT` for a
+   * statement that replaced the local copy and never reached the terminal. All
+   * of them are closed, so nothing is routed to what that flag describes.
    */
   @Prop({
     type: String,

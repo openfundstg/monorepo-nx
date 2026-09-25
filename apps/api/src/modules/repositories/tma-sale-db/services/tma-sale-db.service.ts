@@ -123,7 +123,10 @@ export class TmaSaleDbService {
     /** The resolved jar link, or `''` on a card sale. */
     dropLink: string
     remainderPolicy: SaleRemainderPolicy
-    receiverName: string
+    /**
+     * Whose word the terminal's name stands on. The name itself is not taken:
+     * it goes to Transacto and is not written down here.
+     */
     receiverNameSource: SaleReceiverNameSource
     /**
      * The last four digits of the payout card, on a card sale.
@@ -1267,32 +1270,6 @@ export class TmaSaleDbService {
   }
 
   /**
-   * Replaces the recipient's name with the one a bank stated.
-   *
-   * Only ever moves `DECLARED` to `STATEMENT`, never back and never between two
-   * statements: the first accepted document settles who the account belongs to,
-   * and a later one disagreeing is an operator's question rather than another
-   * overwrite. The filter is what makes that true rather than remembered.
-   */
-  async rewriteReceiverName(
-    id: string,
-    receiverName: string
-  ): Promise<(TmaSale & { _id: Types.ObjectId }) | null> {
-    return this.saleModel
-      .findOneAndUpdate(
-        { _id: id, receiverNameSource: SaleReceiverNameSource.DECLARED },
-        {
-          $set: {
-            receiverName,
-            receiverNameSource: SaleReceiverNameSource.STATEMENT
-          }
-        },
-        { returnDocument: 'after' }
-      )
-      .lean()
-  }
-
-  /**
    * Sales holding a statement whose bytes are older than the cut-off.
    *
    * Whole sales rather than statements: they are nested two levels deep, the
@@ -1632,6 +1609,31 @@ export class TmaSaleDbService {
     )
 
     return (result.modifiedCount ?? 0) > 0
+  }
+
+  // --- Migration 0006: the receiver's name leaves the sale ------------------
+
+  /**
+   * Removes the receiver's name from every sale that still carries one.
+   *
+   * A person's name, kept beside a terminal that already holds it, for a
+   * question no screen asked — see {@link TmaSale.receiverNameSource}. The
+   * legacy field is named here and in migration `0006` and nowhere else.
+   *
+   * **`strict: false`, for the reason {@link repriceToSellRate} gives in
+   * full.** The schema no longer declares `receiverName`, and Mongoose's default
+   * silently drops an `$unset` of an undeclared path: the update would report
+   * nothing modified, the field would stay, and the migration would record a
+   * run that removed nothing. The filter is what makes a second run a no-op.
+   */
+  async forgetReceiverNames(): Promise<number> {
+    const { modifiedCount } = await this.saleModel.updateMany(
+      { receiverName: { $exists: true } } as QueryFilter<TmaSale>,
+      { $unset: { receiverName: '' } },
+      { strict: false }
+    )
+
+    return modifiedCount ?? 0
   }
 
   // --- Admin reads ----------------------------------------------------------

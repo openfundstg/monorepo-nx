@@ -35,7 +35,6 @@ const sale = (overrides: Record<string, unknown> = {}) => ({
   status: TmaSaleStatus.AWAITING_FIAT,
   bankType: BankProvider.PRIVAT,
   payoutCardTail: '8065',
-  receiverName: 'Петренко Роман Іванович',
   receiverNameSource: null,
   fiatAmount: 96_000,
   receivedAmount: 90_000,
@@ -95,7 +94,6 @@ describe('SaleStatementService', () => {
       markStatementParsed: jest.fn(async () => sale()),
       applyStatementCheckpoint: jest.fn(async () => sale()),
       corroborateEvents: jest.fn(async () => 0),
-      rewriteReceiverName: jest.fn(async () => sale()),
       findById: jest.fn(async () => sale())
     }
     storage = {
@@ -229,67 +227,17 @@ describe('SaleStatementService', () => {
     })
 
     /** And the job it *was* sent to do still happens. */
-    it('still applies the checkpoint and adopts the bank’s own name', async () => {
+    it('still applies the checkpoint', async () => {
       confirmedWithClaim()
 
       await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
 
       expect(db.applyStatementCheckpoint).toHaveBeenCalled()
-      expect(db.rewriteReceiverName).toHaveBeenCalledWith(SALE_ID, 'Петренко Роман Іванович')
       expect(db.markStatementParsed).toHaveBeenCalledWith(
         SALE_ID,
         expect.anything(),
         expect.objectContaining({ status: SaleStatementStatus.ACCEPTED, rejection: null })
       )
-    })
-  })
-
-  /**
-   * **The name the seller typed decides nothing.**
-   *
-   * The bank's own word replaces it and the verdict is untouched — nothing is
-   * refused, held or flagged over a name. It cannot be: the comparison is exact,
-   * so an honest seller who abbreviated their own name disagrees with the bank
-   * exactly as loudly as somebody naming a different person, and no string
-   * handling separates the two. A check that cannot be trusted must not gate a
-   * document.
-   */
-  describe('when the seller named the account differently from the bank', () => {
-    const named = (declared: string) =>
-      withOrder({ state: SaleCardOrderState.DISPUTED }, { receiverName: declared })
-
-    it.each([
-      ['an abbreviation of the same name', 'Петренко Р. І.'],
-      ['a different person entirely', 'Ковальчук Ольга Степанівна']
-    ])('settles the order anyway — %s', async (_, declared) => {
-      named(declared)
-
-      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
-
-      expect(cardOrders.confirmFromStatement).toHaveBeenCalled()
-      expect(db.markStatementParsed).toHaveBeenCalledWith(
-        SALE_ID,
-        expect.anything(),
-        expect.objectContaining({ status: SaleStatementStatus.ACCEPTED, rejection: null })
-      )
-    })
-
-    it('adopts the bank’s name over the one that was typed', async () => {
-      named('Ковальчук Ольга Степанівна')
-
-      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
-
-      expect(db.rewriteReceiverName).toHaveBeenCalledWith(SALE_ID, 'Петренко Роман Іванович')
-    })
-
-    /** A name that could not be stored is cosmetic beside a verdict already applied. */
-    it('settles the order even when the name could not be written', async () => {
-      named('Ковальчук Ольга Степанівна')
-      db.rewriteReceiverName.mockRejectedValue(new Error('mongo is down'))
-
-      await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
-
-      expect(cardOrders.confirmFromStatement).toHaveBeenCalled()
     })
   })
 
@@ -328,7 +276,6 @@ describe('SaleStatementService', () => {
       await service.submit(TELEGRAM_ID, SALE_ID, ORDER_ID, file())
 
       expect(db.applyStatementCheckpoint).not.toHaveBeenCalled()
-      expect(db.rewriteReceiverName).not.toHaveBeenCalled()
     })
 
     it('records the refusal as an event of its own', async () => {
