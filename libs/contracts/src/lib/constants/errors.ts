@@ -543,6 +543,20 @@ export const ERROR = {
     DOCUMENT_FILE_GONE: { code: 2312, message: 'This document is past its retention' },
     /** No sale or deposit with that id. */
     RECORD_NOT_FOUND: { code: 2313, message: 'Record not found' },
+    /**
+     * A demo account was asked for on an account that holds money or is in
+     * the middle of something.
+     *
+     * Refused rather than allowed with a warning, because a demo account
+     * cannot act: every write it sends is refused. A real user switched over by
+     * mistake would see invented figures in place of their own and be unable
+     * to move the money they actually have — stakes frozen, a top-up they paid
+     * for waiting on a receipt they are no longer allowed to upload.
+     */
+    DEMO_ACCOUNT_NOT_EMPTY: {
+      code: 2314,
+      message: 'Only an account holding no money and running nothing can become a demo account',
+    },
   },
 
   /** 2400 — fiat top-ups settled by paying a Transacto payout */
@@ -853,6 +867,24 @@ export const ERROR = {
       code: 2614,
       message: 'More cannot have arrived than the order was for'
     },
+  },
+
+  /**
+   * 2700 — demo accounts: a promoter's account that shows a generated history
+   * and cannot move anything.
+   */
+  TMA_DEMO: {
+    /**
+     * A demo account asked to change something.
+     *
+     * Answered by the server for every write such an account sends, and by the
+     * Mini App itself for the ones it never sends. The screen showing a demo
+     * balance is showing money that does not exist, so nothing it offers may
+     * reach anything real — and a promoter pressing a button on camera must
+     * see an ordinary refusal rather than one naming the demo, which is why
+     * the clients translate this code without saying why.
+     */
+    READ_ONLY: { code: 2700, message: 'A demo account cannot change anything' },
   },
 } as const;
 

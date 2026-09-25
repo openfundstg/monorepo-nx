@@ -514,6 +514,19 @@ build` chain.
     manufactured. **The login rotates too**, which it did not: every other panel call goes
     through `run`, but with no session there is nothing for `run` to do.
 
+- **A demo account shows a history that exists nowhere, and can change nothing real.** An
+  operator switches a promoter's account over in the panel (`isDemo`, audited; the rule is
+  `DemoAccountService`'s, and it refuses an account holding money, running a sale or waiting on
+  a payment). `/auth` then hands the Mini App a generated
+  `TmaDemoPack` and the app answers its own screens from it, so a recording is not spent on
+  round trips over Tor; the server refuses every write the account sends
+  (`DemoReadOnlyGuard`). Two rules make it safe to put on camera and neither is cosmetic: the
+  pack is **derived, never typed in** — its balance is what its history adds up to and its
+  referral earnings are the real reward on the volumes beside them — and the recipient card a
+  top-up shows **fails the Luhn check**, because somebody watching will try to pay it. Nothing
+  about it is stored but the flag; the panel always shows the account's real figures. Details:
+  [apps/telegram-mini-app/CLAUDE.md](apps/telegram-mini-app/CLAUDE.md#demo-accounts).
+
 - **The whole site is kept out of search results at the edge**, by both halves of the job:
   `robots.txt` asks crawlers not to fetch, and an `X-Robots-Tag: noindex` header on every
   response — including the proxied ones — tells them not to index what they fetched anyway,

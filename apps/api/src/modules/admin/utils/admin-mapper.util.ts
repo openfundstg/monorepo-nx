@@ -36,6 +36,7 @@ import type { TmaFiatDepositRecord } from 'src/modules/repositories/tma-fiat-dep
 import { getBankProvider, saleRefundSplit } from 'src/shared/utils'
 import { allowedSaleActions } from './sale-actions.util'
 import type { StoredTmaUser } from 'src/modules/repositories/tma-user-db/services'
+import { isDemoAccount } from 'src/modules/telegram-mini-app/utils'
 import type {
   TmaSaleCardOrder,
   TmaSaleEvent,
@@ -91,6 +92,7 @@ export const toAdminUser = (user: StoredTmaUser, openOrders: number): AdminTmaUs
   // so the badge here and the badge there cannot disagree.
   trustLevel: getTrustLevel(user.totalTurnover).level,
   isActive: user.isActive,
+  isDemo: isDemoAccount(user),
   referralCode: user.referralCode,
   referredBy: user.referredBy,
   openOrders,

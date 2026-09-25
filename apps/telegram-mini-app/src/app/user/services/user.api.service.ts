@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpContext } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import type { BalanceHistoryEntry, UserProfileResponse } from '@transacto/contracts';
+import type { BalanceHistoryResponse, UserProfileResponse } from '@transacto/contracts';
 import { environment } from '../../../environments/environment';
 import { SKIP_LOADING } from '../../shared/constants/loading.const';
 
@@ -21,8 +21,8 @@ export class UserApiService {
     });
   }
 
-  getBalanceHistory(): Observable<{ history: BalanceHistoryEntry[] }> {
-    return this.http.get<{ history: BalanceHistoryEntry[] }>(
+  getBalanceHistory(): Observable<BalanceHistoryResponse> {
+    return this.http.get<BalanceHistoryResponse>(
       `${environment.apiUrl}/user/balance-history`,
     );
   }

@@ -18,7 +18,7 @@ import {
   ReasonDialogComponent,
 } from '../../../shared/components';
 import { USERS_FEATURE, userActions, usersCollection } from '../../store/users.collection';
-import { UserAction } from '../../constants/user-columns.const';
+import { USER_ROW_ACTIONS, UserAction } from '../../constants/user-columns.const';
 import { UserListComponent } from './user-list.component';
 
 const USER: AdminTmaUserListItem = {
@@ -32,6 +32,7 @@ const USER: AdminTmaUserListItem = {
   totalTurnover: 0,
   trustLevel: 'NEWBIE' as AdminTmaUserListItem['trustLevel'],
   isActive: true,
+  isDemo: false,
   referralCode: null,
   referredBy: null,
   openOrders: 0,
@@ -168,5 +169,85 @@ describe('UserListComponent balance flow', () => {
     build().onAction({ actionId: UserAction.BLOCK, row: USER });
 
     expect(opened).toEqual([ReasonDialogComponent]);
+  });
+});
+
+/**
+ * A demo account shows its owner invented figures and refuses everything they
+ * send, so the menu must never offer it where it would hide real money — and
+ * must never switch anything without a reason on the audit row.
+ */
+describe('UserListComponent demo flow', () => {
+  const dispatch = vi.fn();
+  const dialogStub = {
+    open: vi.fn<(component: unknown) => OpenResult>(() => ({
+      afterClosed: () => of('рекламна кампанія'),
+    })),
+  };
+
+  const build = (): UserListComponent => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([]),
+        provideTranslateService(),
+        provideStore(),
+        provideState(USERS_FEATURE, usersCollection.reducer),
+        { provide: MatDialog, useValue: dialogStub },
+      ],
+    });
+
+    vi.spyOn(TestBed.inject(Store), 'dispatch').mockImplementation(dispatch);
+
+    return TestBed.createComponent(UserListComponent).componentInstance;
+  };
+
+  const visible = (id: UserAction, user: AdminTmaUserListItem): boolean =>
+    USER_ROW_ACTIONS.find((action) => action.id === id)?.visible?.(user) ?? true;
+
+  const demoDispatches = () =>
+    dispatch.mock.calls
+      .map(([action]) => action as { type: string })
+      .filter((action) => action.type === userActions.setDemo.type);
+
+  const EMPTY: AdminTmaUserListItem = { ...USER, balance: 0 };
+
+  beforeEach(() => {
+    dispatch.mockReset();
+    dialogStub.open.mockClear();
+  });
+
+  it('offers the demo only on an account with nothing on it', () => {
+    expect(visible(UserAction.ENABLE_DEMO, EMPTY)).toBe(true);
+    expect(visible(UserAction.ENABLE_DEMO, USER)).toBe(false);
+    expect(visible(UserAction.ENABLE_DEMO, { ...EMPTY, openOrders: 1 })).toBe(false);
+    expect(visible(UserAction.DISABLE_DEMO, EMPTY)).toBe(false);
+  });
+
+  it('offers only the way back on a demo account', () => {
+    const demo = { ...EMPTY, isDemo: true };
+
+    expect(visible(UserAction.ENABLE_DEMO, demo)).toBe(false);
+    expect(visible(UserAction.DISABLE_DEMO, demo)).toBe(true);
+  });
+
+  it('asks for a reason and sends it with the switch', () => {
+    build().onAction({ actionId: UserAction.ENABLE_DEMO, row: EMPTY });
+
+    expect(dialogStub.open).toHaveBeenCalledWith(ReasonDialogComponent, expect.anything());
+    expect(demoDispatches()).toEqual([
+      userActions.setDemo({
+        telegramId: EMPTY.telegramId,
+        body: { isDemo: true, reason: 'рекламна кампанія' },
+      }),
+    ]);
+  });
+
+  it('sends nothing when the dialog is dismissed', () => {
+    dialogStub.open.mockImplementationOnce(() => ({ afterClosed: () => of(undefined) }));
+
+    build().onAction({ actionId: UserAction.DISABLE_DEMO, row: { ...EMPTY, isDemo: true } });
+
+    expect(demoDispatches()).toEqual([]);
   });
 });

@@ -1,13 +1,14 @@
 import { inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
-import { createActionGroup, props } from '@ngrx/store';
+import { createActionGroup, props, type Action } from '@ngrx/store';
 import type {
   AdminAdjustBalanceReq,
   AdminSetUserActiveReq,
+  AdminSetUserDemoReq,
   AdminTmaUserListItem,
   ApiError,
 } from '@transacto/contracts';
-import { catchError, exhaustMap, map, of } from 'rxjs';
+import { catchError, exhaustMap, map, of, type Observable } from 'rxjs';
 import { AdminSocketService } from '../../core/services/admin-socket.service';
 import { createCollection, createCollectionEffects } from '../../shared/store';
 import { toApiError } from '../../shared/utils';
@@ -20,11 +21,12 @@ export const usersCollection = createCollection<AdminTmaUserListItem>(USERS_FEAT
   idOf: (user) => String(user.telegramId),
 });
 
-/** The two things an operator can do to a user, kept apart from the list's own actions. */
+/** What an operator can do to a user, kept apart from the list's own actions. */
 export const userActions = createActionGroup({
   source: 'Users',
   events: {
     'Set Active': props<{ telegramId: number; body: AdminSetUserActiveReq }>(),
+    'Set Demo': props<{ telegramId: number; body: AdminSetUserDemoReq }>(),
     'Adjust Balance': props<{ telegramId: number; body: AdminAdjustBalanceReq }>(),
     Failed: props<{ error: ApiError }>(),
   },
@@ -52,13 +54,24 @@ const liveUsers = createEffect(
 );
 
 /**
+ * An operator's decision about one user, answered with their new row.
+ *
+ * The response is fed straight back into the list — the socket will push the
+ * same row moments later and the reducer replaces rather than appends, so the
+ * duplicate is harmless and the screen does not wait for it. A refusal is the
+ * group's one failure action, whatever was refused.
+ */
+const upsertedOrFailed = (request: Observable<AdminTmaUserListItem>): Observable<Action> =>
+  request.pipe(
+    map((user) => usersCollection.actions.upserted({ item: user })),
+    catchError((error: unknown) => of(userActions.failed({ error: toApiError(error) }))),
+  );
+
+/**
  * Blocking or unblocking someone.
  *
  * `exhaustMap`, so a double-clicked menu item writes one audit row rather than
- * two. The response is the user's new row, fed straight back into the list —
- * the socket will push the same row moments later and the reducer replaces
- * rather than appends, so the duplicate is harmless and the screen does not
- * wait for it.
+ * two.
  */
 const setActive = createEffect(
   () => {
@@ -66,12 +79,20 @@ const setActive = createEffect(
 
     return inject(Actions).pipe(
       ofType(userActions.setActive),
-      exhaustMap(({ telegramId, body }) =>
-        api.setActive(telegramId, body).pipe(
-          map((user) => usersCollection.actions.upserted({ item: user })),
-          catchError((error: unknown) => of(userActions.failed({ error: toApiError(error) }))),
-        ),
-      ),
+      exhaustMap(({ telegramId, body }) => upsertedOrFailed(api.setActive(telegramId, body))),
+    );
+  },
+  { functional: true },
+);
+
+/** Turning a promoter's account into a demo account, or back — the same shape. */
+const setDemo = createEffect(
+  () => {
+    const api = inject(UsersApiService);
+
+    return inject(Actions).pipe(
+      ofType(userActions.setDemo),
+      exhaustMap(({ telegramId, body }) => upsertedOrFailed(api.setDemo(telegramId, body))),
     );
   },
   { functional: true },
@@ -103,4 +124,10 @@ const adjustBalance = createEffect(
   { functional: true },
 );
 
-export const usersEffects = { ...collectionEffects, liveUsers, setActive, adjustBalance };
+export const usersEffects = {
+  ...collectionEffects,
+  liveUsers,
+  setActive,
+  setDemo,
+  adjustBalance,
+};

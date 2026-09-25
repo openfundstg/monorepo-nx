@@ -14,6 +14,7 @@ import type {
 import type { BankProvider } from '../enums/bank-provider.enum.js';
 import type { TmaFiatDepositStatus } from '../enums/fiat-deposit.enum.js';
 import type { BalanceEntryKind } from '../enums/balance.enum.js';
+import type { TmaDemoPack } from './demo.interface.js';
 
 // --- User ------------------------------------------------------------------
 
@@ -82,6 +83,15 @@ export interface AuthResponse {
   user: TmaUser;
   trustLevel: TrustLevelInfo;
   isNewUser: boolean;
+  /**
+   * Present only on a demo account, and then {@link user} and
+   * {@link trustLevel} are the demo's too.
+   *
+   * **Absent, never `false`, on everybody else.** A flag every client carried
+   * would tell anyone reading their own traffic that the app has a mode for
+   * drawing balances, which is a screenshot nobody wants taken.
+   */
+  demo?: TmaDemoPack;
 }
 
 export interface UserProfileResponse {
@@ -128,6 +138,17 @@ export interface DepositConfigResponse {
   walletAddress: string;
   exchangeRate: number;
   expiryMinutes: number;
+}
+
+/**
+ * `POST /api/tma/deposits` — announcing a USDT transfer.
+ *
+ * Declared here now that two sides read it: the Mini App sends it, and a demo
+ * account's device answers it without sending it anywhere.
+ */
+export interface CreateDepositReq {
+  /** USDT in human units, as the deposit form takes it — `10.5`, never cents. */
+  cryptoAmount: number;
 }
 
 export interface CreateDepositResponse {
@@ -733,6 +754,37 @@ export type BalanceHistoryEntry =
   | FiatDepositHistoryEntry
   | SaleHistoryEntry
   | BalanceMovementHistoryEntry;
+
+/** `GET /api/tma/user/balance-history` — the timeline, newest first. */
+export interface BalanceHistoryResponse {
+  history: BalanceHistoryEntry[];
+}
+
+// --- List and detail envelopes ----------------------------------------------
+//
+// Named here rather than written out where they are read: the Mini App's api
+// services read them and a demo account's device answers them, and two
+// inline copies of one envelope agree only until one of them changes.
+
+/** `GET /api/tma/sales` — the caller's sales. */
+export interface SaleListResponse {
+  orders: TmaSale[];
+}
+
+/** `GET /api/tma/sales/:id`. */
+export interface SaleDetailResponse {
+  order: TmaSale;
+}
+
+/** `GET /api/tma/deposits` — the caller's USDT deposits. */
+export interface DepositListResponse {
+  deposits: TmaDeposit[];
+}
+
+/** `GET /api/tma/deposits/:id`. */
+export interface DepositDetailResponse {
+  deposit: TmaDeposit;
+}
 
 // --- Sale execution progress ---------------------------------------
 

@@ -237,6 +237,15 @@ export interface AdminTmaUserListItem {
   readonly totalTurnover: number;
   readonly trustLevel: TrustLevel;
   readonly isActive: boolean;
+  /**
+   * Whether this account shows a generated history instead of its own and may
+   * change nothing — a promoter's account, set up for recording the app.
+   *
+   * The figures on this row are the account's **real** ones either way: the
+   * panel never sees the demo, and an operator reading a demo account's
+   * balance here reads what it actually holds.
+   */
+  readonly isDemo: boolean;
   readonly referralCode: string | null;
   readonly referredBy: number | null;
   /** How many sales are holding a slot right now. */
@@ -270,6 +279,19 @@ export interface AdminTmaUserDetailRes {
 /** `POST /api/admin/users/:telegramId/active`. */
 export interface AdminSetUserActiveReq {
   readonly isActive: boolean;
+  /** Recorded on the audit row. Free text, operator-facing, never shown to the user. */
+  readonly reason: string;
+}
+
+/**
+ * `POST /api/admin/users/:telegramId/demo` — turning a promoter's account into
+ * a demo account, or back.
+ *
+ * Switching on is refused unless {@link isDemoEligible} holds and no hryvnia
+ * top-up is in flight; switching off is always allowed.
+ */
+export interface AdminSetUserDemoReq {
+  readonly isDemo: boolean;
   /** Recorded on the audit row. Free text, operator-facing, never shown to the user. */
   readonly reason: string;
 }

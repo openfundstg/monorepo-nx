@@ -58,6 +58,13 @@ export class TmaDepositDbService {
     return (limit === undefined ? query : query.limit(limit)).lean()
   }
 
+  /** Whether this user has a USDT deposit still waiting for its transfer. */
+  async hasPending(telegramId: number): Promise<boolean> {
+    return (
+      (await this.depositModel.exists({ telegramId, status: TmaDepositStatus.PENDING })) !== null
+    )
+  }
+
   async findPendingDeposits(): Promise<(TmaDeposit & { _id: any })[]> {
     return this.depositModel.find({ status: TmaDepositStatus.PENDING }).lean()
   }

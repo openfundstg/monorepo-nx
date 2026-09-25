@@ -1,11 +1,7 @@
 import { Controller, Get } from '@nestjs/common'
-import { TrustLevel } from '@transacto/contracts'
 import type { TrustLevelLadderResponse } from '@transacto/contracts'
 import { Public } from 'src/modules/auth'
-import { TRUST_LEVELS } from 'src/shared/constants'
-
-/** Cheapest rung first, which is the order the Mini App renders them in. */
-const LADDER: readonly TrustLevel[] = [TrustLevel.NEWBIE, TrustLevel.EXPERIENCED, TrustLevel.PRO]
+import { trustLadder } from 'src/shared/constants'
 
 /**
  * The trust ladder: what each level requires and what it allows.
@@ -25,12 +21,6 @@ export class TmaTrustLevelController {
   @Get()
   @Public()
   getLadder(): TrustLevelLadderResponse {
-    return {
-      levels: LADDER.map((level) => ({
-        level,
-        minTurnover: TRUST_LEVELS[level].minTurnover,
-        maxParallelOrders: TRUST_LEVELS[level].maxParallelOrders
-      }))
-    }
+    return trustLadder()
   }
 }

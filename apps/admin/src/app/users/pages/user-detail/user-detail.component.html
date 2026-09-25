@@ -21,6 +21,13 @@
         [value]="data.user.isActive ? 'common.yes' : 'common.no'"
         [tone]="flagTone(data.user.isActive)"
       />
+      <!--
+        The figures below are the account's real ones either way; this is what
+        says the owner's phone is showing something else.
+      -->
+      @if (data.user.isDemo) {
+        <app-status-chip value="users.demo_account" />
+      }
     </div>
   </div>
 

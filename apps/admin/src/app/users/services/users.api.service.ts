@@ -5,6 +5,7 @@ import type {
   AdminPageReq,
   AdminPaginatedRes,
   AdminSetUserActiveReq,
+  AdminSetUserDemoReq,
   AdminTmaUserDetailRes,
   AdminTmaUserListItem,
 } from '@transacto/contracts';
@@ -27,6 +28,13 @@ export class UsersApiService {
   setActive(telegramId: number, body: AdminSetUserActiveReq): Observable<AdminTmaUserListItem> {
     return this.http.command<AdminSetUserActiveReq, AdminTmaUserListItem>(
       `users/${telegramId}/active`,
+      body,
+    );
+  }
+
+  setDemo(telegramId: number, body: AdminSetUserDemoReq): Observable<AdminTmaUserListItem> {
+    return this.http.command<AdminSetUserDemoReq, AdminTmaUserListItem>(
+      `users/${telegramId}/demo`,
       body,
     );
   }

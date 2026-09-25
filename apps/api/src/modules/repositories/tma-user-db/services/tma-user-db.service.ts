@@ -439,6 +439,42 @@ export class TmaUserDbService {
   }
 
   /**
+   * Whether this account is a demo account. `false` for an unknown id.
+   *
+   * Asked of the index rather than of a loaded document: `exists` stops at the
+   * match, and a user stored before the flag, with no field at all, simply
+   * does not match `isDemo: true`.
+   */
+  async isDemo(telegramId: number): Promise<boolean> {
+    return (await this.userModel.exists({ telegramId, isDemo: true })) !== null
+  }
+
+  /**
+   * Makes an account a demo account, **only while it holds no money**.
+   *
+   * The guard is in the filter, for the reason {@link adjustBalance}'s is: a
+   * deposit credited between a caller's check and this write would otherwise
+   * put real money behind a screen that can no longer move it. `null` means no
+   * such user or a balance that is not empty; the caller tells them apart.
+   */
+  async markDemoIfEmpty(telegramId: number): Promise<StoredTmaUser | null> {
+    return this.userModel
+      .findOneAndUpdate(
+        { telegramId, balance: 0, frozenBalance: 0 },
+        { $set: { isDemo: true } },
+        { returnDocument: 'after' }
+      )
+      .lean()
+  }
+
+  /** Makes a demo account an ordinary one again. `null` if there is no such user. */
+  async unmarkDemo(telegramId: number): Promise<StoredTmaUser | null> {
+    return this.userModel
+      .findOneAndUpdate({ telegramId }, { $set: { isDemo: false } }, { returnDocument: 'after' })
+      .lean()
+  }
+
+  /**
    * Moves one balance field by a signed number of cents, atomically.
    *
    * The guard lives in the filter, not in a preceding read: `$gte` on the field

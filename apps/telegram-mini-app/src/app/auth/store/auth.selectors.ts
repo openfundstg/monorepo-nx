@@ -12,6 +12,18 @@ export const selectIsAuthenticated = createSelector(
 )
 
 /**
+ * A demo account's generated history, or `null` for everybody else.
+ *
+ * Part of the session because it arrives with it — `/auth` is the one request
+ * every launch makes, and the guard renders nothing before it has answered,
+ * so no screen can be drawn from real figures first and invented ones after.
+ */
+export const selectDemoPack = createSelector(selectSession, (session) => session?.demo ?? null)
+
+/** Whether this launch is a demo account's. */
+export const selectIsDemo = createSelector(selectDemoPack, (pack) => pack !== null)
+
+/**
  * Whether the server has answered at all.
  *
  * The guard waits on this rather than on {@link selectSession}, for the reason

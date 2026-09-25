@@ -4,13 +4,25 @@ import type {
   AdminTmaUserDetailRes,
   AdminTmaUserListItem
 } from '@transacto/contracts'
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  Req
+} from '@nestjs/common'
 import { UserTypeAdmin } from 'src/modules/auth'
 import type { AdminAuthenticatedRequest } from 'src/shared/interfaces'
 import {
   AdminAdjustBalanceReqDto,
   AdminPageQueryDto,
-  AdminSetUserActiveReqDto
+  AdminSetUserActiveReqDto,
+  AdminSetUserDemoReqDto
 } from 'src/modules/admin/dto'
 import { AdminUsersService } from 'src/modules/admin/services'
 
@@ -40,6 +52,23 @@ export class AdminUsersController {
     @Req() request: AdminAuthenticatedRequest
   ): Promise<AdminTmaUserListItem> {
     return this.usersService.setActive(telegramId, body, request.admin, this.ip(request))
+  }
+
+  /**
+   * Makes a promoter's account a demo account, or an ordinary one again.
+   *
+   * `200` rather than the `201` a `POST` defaults to: nothing is created, a
+   * flag on an existing account changes.
+   */
+  @Post(':telegramId/demo')
+  @HttpCode(HttpStatus.OK)
+  @UserTypeAdmin()
+  async setDemo(
+    @Param('telegramId', ParseIntPipe) telegramId: number,
+    @Body() body: AdminSetUserDemoReqDto,
+    @Req() request: AdminAuthenticatedRequest
+  ): Promise<AdminTmaUserListItem> {
+    return this.usersService.setDemo(telegramId, body, request.admin, this.ip(request))
   }
 
   @Post(':telegramId/balance')

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common'
+import type { DepositConfigResponse } from '@transacto/contracts'
 import { Public, UserTypeTMA } from 'src/modules/auth'
 import type { TmaAuthenticatedRequest } from 'src/shared/interfaces'
 import { DepositFacadeService } from 'src/modules/telegram-mini-app/services/deposit-facade.service'
@@ -19,14 +20,8 @@ export class TmaDepositController {
    */
   @Get('config')
   @Public()
-  async getConfig() {
-    const exchangeRate = await this.depositFacade.getBuyRate()
-
-    return {
-      walletAddress: this.depositFacade.getWalletAddress(),
-      exchangeRate,
-      expiryMinutes: 60
-    }
+  async getConfig(): Promise<DepositConfigResponse> {
+    return this.depositFacade.getConfig()
   }
 
   /**

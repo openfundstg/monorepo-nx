@@ -5,7 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { Store } from '@ngrx/store';
 import { AdminBalanceTarget } from '@transacto/contracts';
 import type { AdminSortDirection, AdminTmaUserListItem } from '@transacto/contracts';
-import { filter, map, switchMap } from 'rxjs';
+import { filter, map, switchMap, type Observable } from 'rxjs';
 import {
   BalanceDialogComponent,
   CollectionTableComponent,
@@ -13,6 +13,7 @@ import {
   PageHeaderComponent,
   ReasonDialogComponent,
   SearchFieldComponent,
+  type ReasonDialogData,
   type RowActionEvent,
 } from '../../../shared/components';
 import { bindListQuery, formatUsdt } from '../../../shared/utils';
@@ -75,31 +76,57 @@ export class UserListComponent {
         return this.confirmActive(row, false);
       case UserAction.UNBLOCK:
         return this.confirmActive(row, true);
+      case UserAction.ENABLE_DEMO:
+        return this.confirmDemo(row, true);
+      case UserAction.DISABLE_DEMO:
+        return this.confirmDemo(row, false);
       case UserAction.ADJUST_BALANCE:
         return this.openBalanceDialog(row);
     }
   }
 
   private confirmActive(user: AdminTmaUserListItem, isActive: boolean): void {
-    this.dialog
-      .open(ReasonDialogComponent, {
-        data: {
-          title: isActive ? 'users.unblock' : 'users.block',
-          message: isActive ? 'users.unblock_confirm' : 'users.block_confirm',
-          messageParams: { name: this.name(user) },
-          confirmLabel: isActive ? 'users.unblock' : 'users.block',
-          destructive: !isActive,
-        },
-      })
+    this.askReason({
+      title: isActive ? 'users.unblock' : 'users.block',
+      message: isActive ? 'users.unblock_confirm' : 'users.block_confirm',
+      messageParams: { name: this.name(user) },
+      confirmLabel: isActive ? 'users.unblock' : 'users.block',
+      destructive: !isActive,
+    }).subscribe((reason) =>
+      this.store.dispatch(
+        userActions.setActive({ telegramId: user.telegramId, body: { isActive, reason } }),
+      ),
+    );
+  }
+
+  /**
+   * Switching a promoter's account over, or back — with a reason, because the
+   * audit row is the only record of whose campaign it was for.
+   */
+  private confirmDemo(user: AdminTmaUserListItem, isDemo: boolean): void {
+    this.askReason({
+      title: isDemo ? 'users.enable_demo' : 'users.disable_demo',
+      message: isDemo ? 'users.enable_demo_confirm' : 'users.disable_demo_confirm',
+      messageParams: { name: this.name(user) },
+      confirmLabel: isDemo ? 'users.enable_demo' : 'users.disable_demo',
+      destructive: false,
+    }).subscribe((reason) =>
+      this.store.dispatch(
+        userActions.setDemo({ telegramId: user.telegramId, body: { isDemo, reason } }),
+      ),
+    );
+  }
+
+  /**
+   * The reason an operator gives for a decision — and nothing at all when they
+   * back out: a dialog dismissed with Escape or a click outside closes with
+   * `undefined`, which must not read as an empty reason.
+   */
+  private askReason(data: ReasonDialogData): Observable<string> {
+    return this.dialog
+      .open(ReasonDialogComponent, { data })
       .afterClosed()
-      // A dialog dismissed with Escape or a click outside closes with
-      // `undefined`, which must not read as an empty reason.
-      .pipe(filter((reason): reason is string => Boolean(reason)))
-      .subscribe((reason) =>
-        this.store.dispatch(
-          userActions.setActive({ telegramId: user.telegramId, body: { isActive, reason } }),
-        ),
-      );
+      .pipe(filter((reason): reason is string => Boolean(reason)));
   }
 
   /**

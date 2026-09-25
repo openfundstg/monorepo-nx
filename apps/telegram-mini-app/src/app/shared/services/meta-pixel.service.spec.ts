@@ -248,6 +248,35 @@ describe('MetaPixelService', () => {
     });
   });
 
+  /**
+   * A demo account is a promoter recording the app. Every take would otherwise
+   * be a registration, a checkout and a purchase in the ad account that
+   * measures the very campaign being recorded.
+   */
+  describe('once suspended', () => {
+    it('reports nothing more — no views, no taps, no conversions', () => {
+      const service = build();
+      service.suspend();
+      fbq.mockClear();
+
+      events.next(navigationTo('/sale'));
+      service.trackAction(PixelTapEvent.START_SALE);
+      service.trackConversion(PixelStandardEvent.INITIATE_CHECKOUT, 468_000);
+
+      expect(fbq).not.toHaveBeenCalled();
+    });
+
+    /**
+     * Meta's script reports button taps by itself once initialised, which it
+     * is at startup — the flag alone would silence only what goes through here.
+     */
+    it('revokes consent, so the pixel stops reporting on its own too', () => {
+      build().suspend();
+
+      expect(fbq).toHaveBeenCalledWith('consent', 'revoke', undefined);
+    });
+  });
+
   describe('when the pixel never answers', () => {
     /**
      * An ad blocker, a WebView with no network. Analytics must never be the

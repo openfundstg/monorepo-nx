@@ -9,8 +9,9 @@ import type {
   ResolveDropLinkReq,
   ResolveDropLinkRes,
   SaleConfigResponse,
+  SaleDetailResponse,
+  SaleListResponse,
   SaleProgress,
-  TmaSale,
   CreateSaleReq,
 } from '@transacto/contracts';
 import { environment } from '../../../environments/environment';
@@ -58,12 +59,12 @@ export class SaleApiService {
     return this.http.post<CancelSaleRes>(`${this.base}/${id}/cancel`, {});
   }
 
-  list(): Observable<{ orders: TmaSale[] }> {
-    return this.http.get<{ orders: TmaSale[] }>(this.base);
+  list(): Observable<SaleListResponse> {
+    return this.http.get<SaleListResponse>(this.base);
   }
 
-  getById(id: string): Observable<{ order: TmaSale }> {
-    return this.http.get<{ order: TmaSale }>(`${this.base}/${id}`);
+  getById(id: string): Observable<SaleDetailResponse> {
+    return this.http.get<SaleDetailResponse>(`${this.base}/${id}`);
   }
 
   /** The live snapshot the status page renders — same shape as the WS push. */

@@ -20,7 +20,7 @@ import { BankScraperModule } from 'src/modules/bank-scraper'
 import { ExtensionModule } from 'src/modules/extension/extension.module'
 import { TerminalHistoryModule } from 'src/modules/terminal-history/terminal-history.module'
 import { SafeBoxDbModule } from 'src/modules/repositories/safe-box-db/safe-box-db.module'
-import { TelegramMiniAppModule } from 'src/modules/telegram-mini-app'
+import { DemoReadOnlyGuard, TelegramMiniAppModule } from 'src/modules/telegram-mini-app'
 import { AuthModule, CsrfGuard, UserTypesGuard } from 'src/modules/auth'
 import { SupportModule } from 'src/modules/support'
 import { AdminModule } from 'src/modules/admin'
@@ -78,7 +78,10 @@ import { MigrationsModule } from 'src/migrations/migrations.module'
     // Global guards run in registration order. CSRF first: it is a cheap header
     // comparison and must not depend on a DB round-trip having succeeded.
     { provide: APP_GUARD, useClass: CsrfGuard },
-    { provide: APP_GUARD, useClass: UserTypesGuard }
+    { provide: APP_GUARD, useClass: UserTypesGuard },
+    // Last, because it reads who the request is from: a demo account's writes
+    // are refused here, whatever screen sent them.
+    { provide: APP_GUARD, useExisting: DemoReadOnlyGuard }
   ]
 })
 export class AppModule {}

@@ -1,6 +1,8 @@
 import { Injectable, signal, inject, OnDestroy } from '@angular/core'
+import { Store } from '@ngrx/store'
 import { io, Socket } from 'socket.io-client'
 import { TmaService } from '../../auth/services/tma.service'
+import { selectIsDemo } from '../../auth/store/auth.selectors'
 import { TmaWsEventNames } from '@transacto/contracts'
 import type {
   DepositStatusEvent,
@@ -33,6 +35,7 @@ export type {
 @Injectable({ providedIn: 'root' })
 export class WsService implements OnDestroy {
   private readonly tmaService = inject(TmaService)
+  private readonly isDemo = inject(Store).selectSignal(selectIsDemo)
 
   private socket: Socket | null = null
 
@@ -67,6 +70,16 @@ export class WsService implements OnDestroy {
   readonly connectionEpoch = signal(0)
 
   connect(): void {
+    // A demo account's screens are drawn from a pack nothing on the server
+    // moves, and a real push would paint real figures over it mid-recording —
+    // the promoter's own referral paying out is enough. So no socket at all:
+    // the screens are simply told they are live, which, for figures nothing
+    // can change, they are.
+    if (this.isDemo()) {
+      this.pretendConnected()
+      return
+    }
+
     const initData = this.tmaService.initData()
     if (!initData || this.socket) return
 
@@ -116,6 +129,14 @@ export class WsService implements OnDestroy {
         this.referralBalanceUpdated.set({ ...data })
       }
     )
+  }
+
+  /** Once, the way a first real connection is counted. */
+  private pretendConnected(): void {
+    if (this.connected()) return
+
+    this.connected.set(true)
+    this.connectionEpoch.update((epoch) => epoch + 1)
   }
 
   disconnect(): void {

@@ -20,6 +20,7 @@ export * from './lib/interfaces/referral.interface.js';
 export * from './lib/interfaces/admin.interface.js';
 export * from './lib/interfaces/fiat-deposit.interface.js';
 export * from './lib/interfaces/income-analytics.interface.js';
+export * from './lib/interfaces/demo.interface.js';
 
 // WebSocket contracts
 export * from './lib/ws/ws-events.enum.js';
@@ -44,3 +45,6 @@ export * from './lib/constants/sale-remainder.js';
 export * from './lib/constants/rate-spread.js';
 export * from './lib/constants/brand.js';
 export * from './lib/constants/mini-app-start-param.js';
+export * from './lib/constants/demo.js';
+export * from './lib/constants/top-up-quote.js';
+export * from './lib/constants/object-id.js';

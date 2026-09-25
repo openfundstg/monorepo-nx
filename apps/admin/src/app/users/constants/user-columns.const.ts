@@ -1,4 +1,4 @@
-import type { AdminTmaUserListItem } from '@transacto/contracts';
+import { isDemoEligible, type AdminTmaUserListItem } from '@transacto/contracts';
 import { ColumnType } from '../../shared/enums';
 import type { ColumnDef, RowAction } from '../../shared/interfaces';
 import {
@@ -111,6 +111,17 @@ export const USER_COLUMNS: readonly ColumnDef<AdminTmaUserListItem>[] = [
     value: (user) => user.isActive,
   },
   {
+    /**
+     * On the row because a demo account looks, from here, like an ordinary one
+     * with nothing on it — and support has to know why somebody showing a
+     * healthy balance on their phone cannot sell a cent of it.
+     */
+    key: 'isDemo',
+    header: 'users.demo',
+    type: ColumnType.BOOL,
+    value: (user) => user.isDemo,
+  },
+  {
     key: 'createdAt',
     header: 'common.created',
     type: ColumnType.DATE,
@@ -124,6 +135,8 @@ export const UserAction = {
   OPEN: 'open',
   BLOCK: 'block',
   UNBLOCK: 'unblock',
+  ENABLE_DEMO: 'enable-demo',
+  DISABLE_DEMO: 'disable-demo',
   ADJUST_BALANCE: 'adjust-balance',
 } as const;
 export type UserAction = (typeof UserAction)[keyof typeof UserAction];
@@ -149,6 +162,26 @@ export const USER_ROW_ACTIONS: readonly RowAction<AdminTmaUserListItem>[] = [
     label: 'users.unblock',
     icon: 'check_circle',
     visible: (user) => !user.isActive,
+  },
+  /**
+   * Two entries rather than a toggle, for the reason block and unblock are.
+   *
+   * Offered only where the server would accept it — `isDemoEligible`, from
+   * contracts, is the rule it checks, so the menu cannot offer what it would
+   * refuse. The one thing a row cannot show, a hryvnia top-up in flight, the
+   * server still refuses on its own.
+   */
+  {
+    id: UserAction.ENABLE_DEMO,
+    label: 'users.enable_demo',
+    icon: 'theaters',
+    visible: (user) => !user.isDemo && isDemoEligible(user),
+  },
+  {
+    id: UserAction.DISABLE_DEMO,
+    label: 'users.disable_demo',
+    icon: 'theaters',
+    visible: (user) => user.isDemo,
   },
   {
     id: UserAction.ADJUST_BALANCE,

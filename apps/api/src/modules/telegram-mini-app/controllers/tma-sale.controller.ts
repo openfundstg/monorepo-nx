@@ -55,6 +55,7 @@ import {
 } from 'src/shared/constants'
 import { transactoOrderFloorKopecks } from 'src/shared/utils'
 import type { Types } from 'mongoose'
+import { DemoAllowed } from 'src/modules/telegram-mini-app/decorators/demo-allowed.decorator'
 
 @Controller('tma/sales')
 export class TmaSaleController {
@@ -128,6 +129,10 @@ export class TmaSaleController {
    */
   @Post('resolve-link')
   @UserTypeTMA()
+  // A read that travels as a POST: it looks at a jar and changes nothing. A
+  // demo account needs it for real, because the jar a promoter pastes on camera
+  // is their own, and a made-up owner and card beside it would be the tell.
+  @DemoAllowed()
   async resolveDropLink(@Body() dto: ResolveDropLinkReqDto): Promise<ResolveDropLinkRes> {
     return this.dropLinkResolver.resolve(dto.bankType, dto.link)
   }

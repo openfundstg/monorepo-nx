@@ -38,6 +38,20 @@ export class TmaUser {
   isActive: boolean
 
   /**
+   * A promoter's account: `/auth` hands the Mini App a generated history to
+   * show instead of this document's figures, and every write the account sends
+   * is refused.
+   *
+   * Nothing about the demo is stored — not here, not anywhere. This flag is
+   * the whole of it, and switching it off leaves the account exactly as it was.
+   *
+   * Absent on every document written before it existed, and a lean read
+   * applies no default, so it is read as `=== true` and never as truthy.
+   */
+  @Prop({ type: Boolean, default: false })
+  isDemo: boolean
+
+  /**
    * This user's own referral code — the `startapp` payload of the link they
    * share. Same eight-character format as a sale's public id.
    *

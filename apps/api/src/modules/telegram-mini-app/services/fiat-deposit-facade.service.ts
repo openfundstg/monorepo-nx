@@ -6,11 +6,10 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common'
 import {
-  CentRounding,
   ERROR,
   isFiatDepositPayable,
   MIN_USDT_CENTS,
-  usdtCentsForKopecks,
+  topUpCreditCents,
   TmaFiatDepositStatus,
   type FiatDepositOptionsResponse,
   type TmaFiatDeposit
@@ -131,7 +130,7 @@ export class FiatDepositFacadeService {
 
     const options = offer.amountsUah
       .filter((amountUah) => this.ceiling.isWithin(amountUah, maxAmountUah))
-      .map((amountUah) => ({ amountUah, cryptoCents: this.creditFor(amountUah, exchangeRate) }))
+      .map((amountUah) => ({ amountUah, cryptoCents: topUpCreditCents(amountUah, exchangeRate) }))
       .filter(({ cryptoCents }) => cryptoCents >= MIN_USDT_CENTS)
 
     return {
@@ -143,20 +142,6 @@ export class FiatDepositFacadeService {
       watch,
       activeDepositId: active === null ? null : active._id.toString()
     }
-  }
-
-  /**
-   * What a hryvnia amount buys, in USDT cents.
-   *
-   * **Rounded down**, and through the same converter every other product uses
-   * — a sale's refund and a top-up's credit are the same arithmetic
-   * over the same units, and a second implementation of it here would be a
-   * second answer to "what is ₴1 706 worth". The direction is the argument:
-   * rounding a fraction of a cent up credits USDT nobody paid for, on every
-   * top-up, forever.
-   */
-  private creditFor(amountUah: number, exchangeRate: number): number {
-    return usdtCentsForKopecks(amountUah, exchangeRate, CentRounding.DOWN)
   }
 
   /** The user's live top-up, or `null`. */
@@ -203,7 +188,7 @@ export class FiatDepositFacadeService {
     }
 
     const exchangeRate = await this.exchangeRate.getBuyRate()
-    const cryptoCents = this.creditFor(amountUah, exchangeRate)
+    const cryptoCents = topUpCreditCents(amountUah, exchangeRate)
 
     if (cryptoCents < MIN_USDT_CENTS) {
       throw new BadRequestException({

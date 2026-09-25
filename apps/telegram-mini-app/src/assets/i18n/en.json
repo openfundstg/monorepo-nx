@@ -574,7 +574,8 @@
     "2612": "A card number must be 16 digits.",
     "2613": "This payment is not late yet — please wait.",
     "2614": "More cannot have arrived than the order was for.",
-    "1328": "The hryvnia total does not match the USDT amount. Reload the page and try again."
+    "1328": "The hryvnia total does not match the USDT amount. Reload the page and try again.",
+    "2700": "This action is not available right now."
   },
   "BLOCK_REASON": {
     "GOAL_MISMATCH": "The jar target does not match the order amount. It must be exactly {{target}} ₴.",

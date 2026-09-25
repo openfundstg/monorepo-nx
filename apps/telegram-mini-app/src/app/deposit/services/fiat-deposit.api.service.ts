@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import type {
+  CreateFiatDepositReq,
   FiatDepositOptionsResponse,
   FiatDepositWatch,
   SaveFiatDepositWatchReq,
@@ -44,7 +45,9 @@ export class FiatDepositApiService {
   }
 
   reserve(amountUah: number): Observable<TmaFiatDeposit> {
-    return this.http.post<TmaFiatDeposit>(this.base, { amountUah });
+    const body: CreateFiatDepositReq = { amountUah };
+
+    return this.http.post<TmaFiatDeposit>(this.base, body);
   }
 
   /**

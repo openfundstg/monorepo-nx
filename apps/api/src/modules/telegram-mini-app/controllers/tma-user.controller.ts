@@ -1,12 +1,16 @@
 import { Controller, Get, NotFoundException, Req } from '@nestjs/common'
 import { ERROR, SaleMethod } from '@transacto/contracts'
-import type { BalanceHistoryEntry, UserProfileResponse } from '@transacto/contracts'
+import type {
+  BalanceHistoryEntry,
+  BalanceHistoryResponse,
+  UserProfileResponse
+} from '@transacto/contracts'
 import { UserTypeTMA } from 'src/modules/auth'
 import type { TmaAuthenticatedRequest } from 'src/shared/interfaces'
 import { TmaUserDbService } from 'src/modules/repositories/tma-user-db/services'
 import { TmaDepositDbService } from 'src/modules/repositories/tma-deposit-db/services'
 import { TmaSaleDbService } from 'src/modules/repositories/tma-sale-db/services'
-import { toAwaitingJar } from 'src/modules/telegram-mini-app/utils'
+import { toAwaitingJar, toTmaUser } from 'src/modules/telegram-mini-app/utils'
 import { TmaFiatDepositDbService } from 'src/modules/repositories/tma-fiat-deposit-db/services'
 import { TmaBalanceEntryDbService } from 'src/modules/repositories/tma-balance-entry-db/services'
 import { USER_VISIBLE_BALANCE_KINDS } from 'src/modules/repositories/tma-balance-entry-db/schemas'
@@ -63,21 +67,7 @@ export class TmaUserController {
     )
 
     return {
-      user: {
-        telegramId: user.telegramId,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        balance: user.balance,
-        // Declared on the shared TmaUser contract but omitted here, so the
-        // dashboard's frozen row read `undefined` and never rendered.
-        frozenBalance: user.frozenBalance,
-        totalTurnover: user.totalTurnover,
-        isActive: user.isActive,
-        referralBalance: user.referralBalance,
-        totalReferralEarned: user.totalReferralEarned,
-        showNameToReferrer: user.showNameToReferrer
-      },
+      user: toTmaUser(user),
       trustLevel: trustLevel.level,
       maxParallelOrders: trustLevel.maxParallelOrders,
       slotsAwaitingJarClosure: awaitingJar.map(toAwaitingJar)
@@ -103,7 +93,7 @@ export class TmaUserController {
   @UserTypeTMA()
   async getBalanceHistory(
     @Req() req: TmaAuthenticatedRequest
-  ): Promise<{ history: BalanceHistoryEntry[] }> {
+  ): Promise<BalanceHistoryResponse> {
     const tmaUser = req.tmaUser
     const telegramId = tmaUser.id
 

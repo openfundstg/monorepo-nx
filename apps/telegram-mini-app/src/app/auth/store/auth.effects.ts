@@ -54,7 +54,8 @@ export const trackRegistration = createEffect(
 
     return inject(Actions).pipe(
       ofType(authActions.authenticateSuccess),
-      filter(({ session }) => session.isNewUser),
+      // Never a demo account's, whichever effect happens to run first.
+      filter(({ session }) => session.isNewUser && session.demo === undefined),
       tap(() => pixel.trackConversion(PixelStandardEvent.COMPLETE_REGISTRATION))
     )
   },
@@ -84,4 +85,28 @@ export const armOnboardingTour = createEffect(
   { functional: true, dispatch: false }
 )
 
-export const authEffects = { authenticate, trackRegistration, armOnboardingTour }
+/**
+ * Silences the pixel for a demo account, before its first screen reports a view.
+ *
+ * Here because this is where the app learns it is one: the pack arrives with
+ * `/auth`, and the guard lets nothing render until it has.
+ */
+export const suspendAnalyticsForDemo = createEffect(
+  () => {
+    const pixel = inject(MetaPixelService)
+
+    return inject(Actions).pipe(
+      ofType(authActions.authenticateSuccess),
+      filter(({ session }) => session.demo !== undefined),
+      tap(() => pixel.suspend())
+    )
+  },
+  { functional: true, dispatch: false }
+)
+
+export const authEffects = {
+  authenticate,
+  trackRegistration,
+  armOnboardingTour,
+  suspendAnalyticsForDemo
+}

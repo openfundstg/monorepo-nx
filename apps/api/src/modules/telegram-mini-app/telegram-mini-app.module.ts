@@ -65,6 +65,10 @@ import { FiatDepositFacadeService } from './services/fiat-deposit-facade.service
 import { FiatDepositSettlementService } from './services/fiat-deposit-settlement.service'
 import { FiatDepositReceiptService } from './services/fiat-deposit-receipt.service'
 import { FiatDepositReconcileService } from './services/fiat-deposit-reconcile.service'
+import { DemoPackService } from './services/demo-pack.service'
+import { DemoAccountService } from './services/demo-account.service'
+import { TmaSessionService } from './services/tma-session.service'
+import { DemoReadOnlyGuard } from './guards/demo-read-only.guard'
 
 // Guard
 
@@ -218,7 +222,12 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     FiatDepositSettlementService,
     FiatDepositReceiptService,
     FiatDepositReconcileService,
+    // Opening the app, and the generated history a demo account opens onto.
+    TmaSessionService,
+    DemoPackService,
+    DemoAccountService,
     // Guard
+    DemoReadOnlyGuard,
     // WebSocket
     TmaGateway,
     // BullMQ Worker
@@ -259,7 +268,14 @@ import { ReceiptVerificationModule } from 'src/modules/receipt-verification'
     FiatDepositSettlementService,
     // Re-exported for the admin panel, which corrects balances on an
     // operator's say-so and must go through the same door.
-    BalanceLedgerModule
+    BalanceLedgerModule,
+    // Registered as a global guard by `AppModule`, where the order of the
+    // global guards is visible in one place: it has to run after
+    // `UserTypesGuard` has said who is asking.
+    DemoReadOnlyGuard,
+    // Switching an account to a demo and back, for the admin panel — which
+    // audits the operator's decision and leaves the rule to this.
+    DemoAccountService
   ]
 })
 export class TelegramMiniAppModule implements OnModuleInit {

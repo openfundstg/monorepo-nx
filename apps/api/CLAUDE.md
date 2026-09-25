@@ -36,9 +36,13 @@ Detailed examples live in on-demand files, not here:
   writing fails, which is what makes it silent.
 
 - Mongoose: global `MongooseLeanVirtual` plugin — every query returns a plain JS object, never a Mongoose document.
-- Guard execution order is fixed: `CsrfGuard` → `UserTypesGuard`, both registered as `APP_GUARD`
-  in `app.module.ts`. There is no session guard — every caller authenticates with an explicit
-  header, so `UserTypesGuard` resolves the credential itself.
+- Guard execution order is fixed: `CsrfGuard` → `UserTypesGuard` → `DemoReadOnlyGuard`, all
+  registered as `APP_GUARD` in `app.module.ts`. There is no session guard — every caller
+  authenticates with an explicit header, so `UserTypesGuard` resolves the credential itself.
+  `DemoReadOnlyGuard` comes last because it needs to know who is asking: it refuses every
+  `POST`/`PUT`/`PATCH`/`DELETE` a **demo account** sends (`ERROR.TMA_DEMO.READ_ONLY`) unless the
+  handler carries `@DemoAllowed()` — which only the launch and the jar-link read do. Refusing is
+  the default so a write added later is covered without anybody remembering to.
 - The `src/*` alias resolves through `tsconfig.app.json` `paths` **and** a matching
   `resolve.alias` in `webpack.config.js`. Webpack does not read app-level tsconfig paths, so
   both must be kept in step. (`baseUrl` is deprecated in TypeScript 6 — do not reintroduce it.)

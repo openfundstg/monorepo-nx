@@ -1,6 +1,7 @@
+import type { CreateDepositReq } from '@transacto/contracts'
 import { IsNumber, Min } from 'class-validator'
 
-export class CreateDepositDto {
+export class CreateDepositDto implements CreateDepositReq {
   /**
    * USDT in human units, e.g. `10.5`.
    *

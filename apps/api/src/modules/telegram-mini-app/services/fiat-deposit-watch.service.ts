@@ -3,8 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import {
   ERROR,
   MIN_USDT_CENTS,
-  usdtCentsForKopecks,
-  CentRounding,
+  topUpCreditCents,
   type FiatDepositWatch,
   type SaveFiatDepositWatchReq
 } from '@transacto/contracts'
@@ -90,7 +89,7 @@ export class FiatDepositWatchService {
     // below it describes sums this screen would never list even when the book
     // is full of them.
     const rate = await this.exchangeRate.getBuyRate()
-    if (usdtCentsForKopecks(maxAmountUah, rate, CentRounding.DOWN) < MIN_USDT_CENTS)
+    if (!this.isOfferable(maxAmountUah, rate))
       throw new BadRequestException(ERROR.FIAT_DEPOSIT.WATCH_RANGE_INVALID)
 
     const maxAllowed = await this.ceiling.forUser(telegramId)
@@ -170,7 +169,7 @@ export class FiatDepositWatchService {
    * nothing.
    */
   private isOfferable(amountUah: number, rate: number): boolean {
-    return usdtCentsForKopecks(amountUah, rate, CentRounding.DOWN) >= MIN_USDT_CENTS
+    return topUpCreditCents(amountUah, rate) >= MIN_USDT_CENTS
   }
 
   /**

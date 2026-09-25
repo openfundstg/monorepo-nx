@@ -23,6 +23,8 @@ import { TmaGateway } from 'src/modules/telegram-mini-app/gateways/tma.gateway'
 import { ensure, miniAppLink } from 'src/shared/utils'
 import environments from 'src/environments'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
+import { referralRewardCents } from 'src/modules/telegram-mini-app/utils'
+import type { ReferralSharingTerms } from 'src/modules/telegram-mini-app/interfaces/referral-sharing-terms.interface'
 
 /**
  * Share of a referral's sold volume their referrer earns, when
@@ -53,17 +55,13 @@ export class ReferralService {
 
   /** Everything the Referral page renders, in one round trip. */
   async getSummary(telegramId: number): Promise<ReferralSummary> {
-    // Minted here if absent rather than assumed present: a user who signed up
-    // before the referral programme reaches this page without ever having had a
-    // code, and that must show them a link, not a 500.
-    const user = await this.userDbService.ensureReferralCode(
-      ensure(
-        await this.userDbService.findByTelegramId(telegramId),
-        new NotFoundException(ERROR.TMA_USER.NOT_FOUND)
-      )
+    const user = ensure(
+      await this.userDbService.findByTelegramId(telegramId),
+      new NotFoundException(ERROR.TMA_USER.NOT_FOUND)
     )
 
-    const [invited, totals, completedCount, invitedByCode] = await Promise.all([
+    const [terms, invited, totals, completedCount, invitedByCode] = await Promise.all([
+      this.sharingTerms(user),
       this.userDbService.findByReferrer(telegramId),
       this.referralDbService.sumByReferred(telegramId),
       this.saleDbService.countCompletedByTelegramId(telegramId),
@@ -79,15 +77,8 @@ export class ReferralService {
       // order so the list does not reshuffle between two identical loads.
       .toSorted((a, b) => b.earned - a.earned || a.joinedAt.localeCompare(b.joinedAt))
 
-    const code = ensure(
-      user.referralCode,
-      new InternalServerErrorException(ERROR.REFERRAL.CODE_GENERATION_FAILED)
-    )
-
     return {
-      code,
-      link: this.buildLink(code),
-      ratePercent: this.getRatePercent(),
+      ...terms,
       balance: user.referralBalance,
       totalEarned: user.totalReferralEarned,
       totalVolume: referrals.reduce((sum, entry) => sum + entry.soldVolume, 0),
@@ -95,6 +86,29 @@ export class ReferralService {
       canRedeemCode: user.referredBy === null && completedCount === 0,
       referrals
     }
+  }
+
+  /**
+   * The caller's own code, the link that carries it and the rate it earns —
+   * the part of the referral page that is about them rather than about the
+   * people below them.
+   *
+   * The code is minted here if absent rather than assumed present: a user who
+   * signed up before the referral programme reaches this without ever having
+   * had one, and that must give them a link, not a 500.
+   *
+   * Public because a demo account shows its **real** code and link beside an
+   * invented list: whoever follows the link in an advertisement must land on
+   * the promoter, or the advertisement recruits for nobody.
+   */
+  async sharingTerms(user: StoredTmaUser): Promise<ReferralSharingTerms> {
+    const withCode = await this.userDbService.ensureReferralCode(user)
+    const code = ensure(
+      withCode.referralCode,
+      new InternalServerErrorException(ERROR.REFERRAL.CODE_GENERATION_FAILED)
+    )
+
+    return { code, link: this.buildLink(code), ratePercent: this.getRatePercent() }
   }
 
   /**
@@ -215,7 +229,7 @@ export class ReferralService {
       // on an order that closed by refunding an unfillable tail the target
       // includes hryvnia nobody ever paid, and paying a referrer a cut of it
       // would be inventing money.
-      const amount = this.calculateReward(settledFiat, order.exchangeRate, ratePercent)
+      const amount = referralRewardCents(settledFiat, order.exchangeRate, ratePercent)
       // Sub-cent cuts round to nothing. Recording a zero-value row would only
       // add a line to the breakdown that reads as a bug.
       if (amount <= 0) return
@@ -257,23 +271,6 @@ export class ReferralService {
         }`
       )
     }
-  }
-
-  /**
-   * The cut for one sale, in USDT cents.
-   *
-   * `fiatAmount` is UAH kopecks and `exchangeRate` is UAH kopecks per USDT, so
-   * `kopecks × percent / 100` gives kopecks of reward, dividing by the rate
-   * gives USDT, and multiplying by 100 gives cents — the ×100 and ÷100 cancel,
-   * which is why the expression looks shorter than the derivation.
-   *
-   * The order's own snapshotted rate is used rather than today's, so a payout
-   * is worth what the order was priced at.
-   */
-  private calculateReward(fiatAmount: number, exchangeRate: number, ratePercent: number): number {
-    if (exchangeRate <= 0) return 0
-
-    return Math.round((fiatAmount * ratePercent) / exchangeRate)
   }
 
   /** Current referral rate from env, as a percentage. */

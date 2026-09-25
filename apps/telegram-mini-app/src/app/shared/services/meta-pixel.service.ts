@@ -54,6 +54,17 @@ export class MetaPixelService {
   private lastReported: string | null = null;
 
   /**
+   * Set for a demo account, and never cleared.
+   *
+   * A promoter recording the app is not a customer, and every take would
+   * otherwise report a registration, a checkout and a purchase — with sums —
+   * into the ad account that measures the campaign they are recording for.
+   * Meta's delivery optimises toward whatever the pixel calls a conversion, so
+   * those would spend real money looking for more people like the promoter.
+   */
+  private suspended = false;
+
+  /**
    * Whether this service may talk to a pixel at all.
    *
    * Stated rather than inferred from `window.fbq` being absent. Something else
@@ -148,7 +159,26 @@ export class MetaPixelService {
     this.send('track', 'PageView');
   }
 
+  /**
+   * Reports nothing more for the rest of this session.
+   *
+   * Two halves, because the pixel reports on its own as well as through this
+   * service: Meta's script sends automatic events — button taps it recognises
+   * — once it has been initialised, which it was at startup. Revoking consent
+   * is Meta's own switch for all of it; the flag covers what goes through here.
+   */
+  suspend(): void {
+    this.call('consent', 'revoke');
+    this.suspended = true;
+  }
+
   private send(command: string, event: string, parameters?: Record<string, unknown>): void {
+    if (this.suspended) return;
+
+    this.call(command, event, parameters);
+  }
+
+  private call(command: string, event: string, parameters?: Record<string, unknown>): void {
     if (!this.enabled) return;
 
     const fbq = (this.document.defaultView as (Window & { fbq?: Fbq }) | null)?.fbq;

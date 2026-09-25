@@ -11,6 +11,7 @@ import {
   type AdminPaginatedRes,
   type AdminReferralEarningListItem,
   type AdminSetUserActiveReq,
+  type AdminSetUserDemoReq,
   type AdminTmaUserDetailRes,
   type AdminTmaUserListItem
 } from '@transacto/contracts'
@@ -43,6 +44,8 @@ import {
   toPaginatedRes
 } from 'src/modules/admin/utils'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
+import { DemoAccountService } from 'src/modules/telegram-mini-app/services/demo-account.service'
+import { isDemoAccount } from 'src/modules/telegram-mini-app/utils'
 
 /**
  * Everything the panel does with Mini App users and their money.
@@ -63,7 +66,8 @@ export class AdminUsersService {
     private readonly referralDbService: TmaReferralDbService,
     private readonly auditService: AdminAuditService,
     private readonly gateway: AdminGateway,
-    private readonly balanceLedger: BalanceLedgerService
+    private readonly balanceLedger: BalanceLedgerService,
+    private readonly demoAccounts: DemoAccountService
   ) {}
 
   // --- Reads ----------------------------------------------------------------
@@ -200,6 +204,51 @@ export class AdminUsersService {
   }
 
   /**
+   * Makes a promoter's account a demo account, or an ordinary one again.
+   *
+   * The rule — who may become one, and what is checked on the way — belongs
+   * to `DemoAccountService`, like every other operation this panel performs
+   * on somebody's account. What stays here is the operator's side: the reason,
+   * the audit row and the row pushed to every open panel.
+   *
+   * **A switch to where the account already is changes nothing and records
+   * nothing.** A stale row, or two operators at once, would otherwise put a
+   * decision on the audit trail that never took effect — and that trail is the
+   * only record of whose campaign an account was switched for.
+   */
+  async setDemo(
+    telegramId: number,
+    request: AdminSetUserDemoReq,
+    admin: AdminPrincipal,
+    ip: string
+  ): Promise<AdminTmaUserListItem> {
+    const current = await this.requireUser(telegramId)
+    if (isDemoAccount(current) === request.isDemo) return this.rowOf(current)
+
+    const updated = request.isDemo
+      ? await this.demoAccounts.enable(telegramId)
+      : await this.demoAccounts.disable(telegramId)
+
+    await this.auditService.record({
+      actor: admin.username,
+      action: request.isDemo
+        ? AdminAuditAction.USER_DEMO_ENABLED
+        : AdminAuditAction.USER_DEMO_DISABLED,
+      targetType: AdminAuditTargetType.TMA_USER,
+      targetId: String(telegramId),
+      reason: request.reason,
+      ip
+    })
+
+    this.logger.log(
+      `Admin ${admin.username} ${request.isDemo ? 'enabled' : 'disabled'} ` +
+        `the demo on user ${telegramId}: ${request.reason}`
+    )
+
+    return this.publish(updated)
+  }
+
+  /**
    * Moves money onto or off a user's balance by hand.
    *
    * The direction is taken from {@link AdminBalanceOperation} and turned into a
@@ -271,12 +320,18 @@ export class AdminUsersService {
    * disagrees with the next refresh is the bug this shape avoids.
    */
   private async publish(user: StoredTmaUser): Promise<AdminTmaUserListItem> {
-    const openOrders = await this.saleDbService.countOpenByTelegramIds([user.telegramId])
-    const item = toAdminUser(user, openOrders[user.telegramId] ?? 0)
+    const item = await this.rowOf(user)
 
     this.gateway.emit(AdminWsEventNames.USER_UPDATED, { user: item })
 
     return item
+  }
+
+  /** One user as a list row, with the count of sales holding a slot. */
+  private async rowOf(user: StoredTmaUser): Promise<AdminTmaUserListItem> {
+    const openOrders = await this.saleDbService.countOpenByTelegramIds([user.telegramId])
+
+    return toAdminUser(user, openOrders[user.telegramId] ?? 0)
   }
 
   private async requireUser(telegramId: number): Promise<StoredTmaUser> {

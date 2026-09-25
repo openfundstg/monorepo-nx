@@ -6,3 +6,5 @@ export { SaleCardOrderService } from './services/sale-card-order.service'
 // …and whose reply in the operators' group takes a sale's tail on, which is
 // the one thing about a sale that nobody in the Mini App can do.
 export { SaleTailService } from './services/sale-tail.service'
+// Registered as a global guard by `AppModule`, after the one that authenticates.
+export { DemoReadOnlyGuard } from './guards/demo-read-only.guard'

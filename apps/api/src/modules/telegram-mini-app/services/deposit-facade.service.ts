@@ -1,4 +1,10 @@
-import { ERROR, MIN_USDT_AMOUNT, BalanceEntryKind } from '@transacto/contracts'
+import {
+  ERROR,
+  MIN_USDT_AMOUNT,
+  BalanceEntryKind,
+  depositFiatEquivalent,
+  type DepositConfigResponse
+} from '@transacto/contracts'
 import {
   BadRequestException,
   ConflictException,
@@ -23,6 +29,9 @@ import { TmaDepositStatus } from 'src/modules/repositories/tma-deposit-db/schema
 import { isSameTronAddress } from 'src/shared/utils'
 import environments from 'src/environments'
 import { BalanceLedgerService } from 'src/modules/telegram-mini-app/services/balance-ledger.service'
+
+/** Minutes a deposit waits when `TMA_DEPOSIT_EXPIRY_MINUTES` says nothing. */
+const DEFAULT_DEPOSIT_EXPIRY_MINUTES = '60'
 
 @Injectable()
 export class DepositFacadeService {
@@ -61,9 +70,8 @@ export class DepositFacadeService {
     // at — the same number the top-up screen shows. The market rate used to be
     // stored, which put a third figure on a screen already showing two.
     const exchangeRate = await this.exchangeRateService.getBuyRate() // kopecks per 1 USDT
-    const fiatEquivalent = Math.round(cryptoAmount * exchangeRate) // kopecks
-    const expiryMinutes = Number(environments.TMA_DEPOSIT_EXPIRY_MINUTES || '60')
-    const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000)
+    const fiatEquivalent = depositFiatEquivalent(cryptoAmount, exchangeRate) // kopecks
+    const expiresAt = new Date(Date.now() + this.expiryMinutes * 60 * 1000)
 
     const deposit = await this.depositDbService.create({
       telegramId,
@@ -245,6 +253,27 @@ export class DepositFacadeService {
   /** Returns the merchant wallet address from the strategy */
   getWalletAddress(): string {
     return this.blockchainStrategy.getWalletAddress()
+  }
+
+  /**
+   * What the deposit screen needs before anything exists: where to send, at
+   * what rate, and how long a deposit waits.
+   *
+   * The expiry is the one {@link createDeposit} applies. The screen used to be
+   * told a literal sixty whatever the deployment was configured with, which is
+   * a countdown promising time the deposit does not have.
+   */
+  async getConfig(): Promise<DepositConfigResponse> {
+    return {
+      walletAddress: this.getWalletAddress(),
+      exchangeRate: await this.getBuyRate(),
+      expiryMinutes: this.expiryMinutes
+    }
+  }
+
+  /** Minutes a created deposit waits for its transfer. */
+  get expiryMinutes(): number {
+    return Number(environments.TMA_DEPOSIT_EXPIRY_MINUTES || DEFAULT_DEPOSIT_EXPIRY_MINUTES)
   }
 
   /**

@@ -1,6 +1,7 @@
 export * from './admin-page.query.dto'
 export * from './admin-login.req.dto'
 export * from './admin-set-user-active.req.dto'
+export * from './admin-set-user-demo.req.dto'
 export * from './admin-adjust-balance.req.dto'
 export * from './admin-sale-action.req.dto'
 export * from './admin-fiat-deposit-action.req.dto'

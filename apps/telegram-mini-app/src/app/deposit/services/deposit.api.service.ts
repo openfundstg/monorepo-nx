@@ -2,9 +2,11 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import type {
+  CreateDepositReq,
   CreateDepositResponse,
   DepositConfigResponse,
-  TmaDeposit,
+  DepositDetailResponse,
+  DepositListResponse,
   VerifyTxResponse,
 } from '@transacto/contracts';
 import { environment } from '../../../environments/environment';
@@ -23,18 +25,20 @@ export class DepositApiService {
   }
 
   create(cryptoAmount: number): Observable<CreateDepositResponse> {
-    return this.http.post<CreateDepositResponse>(this.base, { cryptoAmount });
+    const body: CreateDepositReq = { cryptoAmount };
+
+    return this.http.post<CreateDepositResponse>(this.base, body);
   }
 
   verifyTx(depositId: string, txId: string): Observable<VerifyTxResponse> {
     return this.http.post<VerifyTxResponse>(`${this.base}/${depositId}/verify-tx`, { txId });
   }
 
-  list(): Observable<{ deposits: TmaDeposit[] }> {
-    return this.http.get<{ deposits: TmaDeposit[] }>(this.base);
+  list(): Observable<DepositListResponse> {
+    return this.http.get<DepositListResponse>(this.base);
   }
 
-  getById(id: string): Observable<{ deposit: TmaDeposit }> {
-    return this.http.get<{ deposit: TmaDeposit }>(`${this.base}/${id}`);
+  getById(id: string): Observable<DepositDetailResponse> {
+    return this.http.get<DepositDetailResponse>(`${this.base}/${id}`);
   }
 }

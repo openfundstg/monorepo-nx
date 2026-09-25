@@ -22,6 +22,7 @@ import { ratesReducer } from './core/store/rates.reducer'
 import { ratesEffects } from './core/store/rates.effects'
 import { tmaAuthInterceptor } from './auth/interceptors/tma-auth.interceptor'
 import { loadingInterceptor } from './shared/interceptors/loading.interceptor'
+import { demoInterceptor } from './demo/interceptors/demo.interceptor'
 import { StaleBundleRecoveryService } from './shared/services/stale-bundle-recovery.service'
 import { TmaService } from './auth/services/tma.service'
 
@@ -59,7 +60,12 @@ export const appConfig: ApplicationConfig = {
         inject(StaleBundleRecoveryService).recover(event.error, event.url)
       )
     ),
-    provideHttpClient(withInterceptors([tmaAuthInterceptor, loadingInterceptor])),
+    /**
+     * `demoInterceptor` last: a demo account's requests are answered on the
+     * device, and answering them after the other two means they still carry
+     * the credential and still raise the overlay, exactly as a real one does.
+     */
+    provideHttpClient(withInterceptors([tmaAuthInterceptor, loadingInterceptor, demoInterceptor])),
 
     /**
      * Three slices at the root, because all three are app-wide: the guard on

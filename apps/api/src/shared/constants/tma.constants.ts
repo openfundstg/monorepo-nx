@@ -3,7 +3,8 @@ import {
   KOPECKS_PER_UAH,
   TrustLevel,
   BankProvider,
-  type TrustLevelInfo
+  type TrustLevelInfo,
+  type TrustLevelLadderResponse
 } from '@transacto/contracts'
 import { SECOND_MS } from 'src/shared/constants/time.constants'
 import environments from 'src/environments'
@@ -70,12 +71,19 @@ export const TRUST_LEVELS: Record<
  */
 export const NEW_ACCOUNT_MAX_FIAT_DEPOSIT_UAH = 2_000 * 100
 
+/**
+ * Cheapest rung first — the order the Mini App renders the ladder in.
+ *
+ * Read off the thresholds rather than written out, so a level added to
+ * `TRUST_LEVELS` takes its place on the ladder and in {@link getTrustLevel}
+ * without a list here to remember.
+ */
+const LADDER_ORDER: readonly TrustLevel[] = Object.values(TrustLevel).toSorted(
+  (left, right) => TRUST_LEVELS[left].minTurnover - TRUST_LEVELS[right].minTurnover
+)
+
 /** Most senior first, so the first threshold a turnover clears is the level. */
-const LEVELS_BY_SENIORITY: readonly TrustLevel[] = [
-  TrustLevel.PRO,
-  TrustLevel.EXPERIENCED,
-  TrustLevel.NEWBIE
-]
+const LEVELS_BY_SENIORITY: readonly TrustLevel[] = LADDER_ORDER.toReversed()
 
 /**
  * Computes trust level dynamically from lifetime totalTurnover (in kopecks).
@@ -101,6 +109,21 @@ export function getTrustLevel(totalTurnover: number): TrustLevelInfo {
     maxParallelOrders: TRUST_LEVELS[level].maxParallelOrders
   }
 }
+
+/**
+ * The whole ladder, as `GET /tma/trust-levels` serves it.
+ *
+ * Here rather than in that controller because a demo account's pack carries
+ * the same answer, and two copies of one ladder is how a progress bar comes to
+ * measure against a threshold the badge does not use.
+ */
+export const trustLadder = (): TrustLevelLadderResponse => ({
+  levels: LADDER_ORDER.map((level) => ({
+    level,
+    minTurnover: TRUST_LEVELS[level].minTurnover,
+    maxParallelOrders: TRUST_LEVELS[level].maxParallelOrders
+  }))
+})
 
 /**
  * How long a card sale's seller has to answer one order, in minutes.
